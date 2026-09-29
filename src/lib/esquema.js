@@ -389,6 +389,7 @@ export const ESQUEMA = {
       peso_entrada: { tipo: "numero", rotulo: "Peso entrada / tara (kg)", casas: 1 },
       peso_saida: { tipo: "numero", rotulo: "Peso saída / bruto (kg)", casas: 1 },
       peso_liquido: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1, somenteLeitura: true },
+      volumes: { tipo: "numero", rotulo: "Nº de sacos / volumes", casas: 1 },
       desconto_kg: { tipo: "numero", rotulo: "Desconto (kg)", casas: 1 },
       unidade: { tipo: "opcoes", rotulo: "Preço por", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 3, dica: "Calculada pelo peso quando o preço é por peso" },
@@ -396,7 +397,8 @@ export const ESQUEMA = {
       valor_bruto: { tipo: "dinheiro", rotulo: "Valor bruto", somenteLeitura: true },
       valor_desconto: { tipo: "dinheiro", rotulo: "Valor do desconto", somenteLeitura: true },
       custo_ton: { tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
-      frete: { tipo: "dinheiro", rotulo: "Frete" },
+      frete_cobrado: { tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
+      frete: { tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
       comissao: { tipo: "dinheiro", rotulo: "Comissão" },
       juros: { tipo: "dinheiro", rotulo: "Juros / antecipação" },
       valor: { tipo: "dinheiro", rotulo: "Valor líquido", somenteLeitura: true },
@@ -425,7 +427,7 @@ export const ESQUEMA = {
       const bruto = num(quantidade) * num(r.preco_unitario);
       const desconto = kgUn ? (num(r.desconto_kg) / kgUn) * num(r.preco_unitario) : 0;
       const custo = (num(liquido) / 1000) * num(r.custo_ton);
-      const liquidoR = bruto - desconto - custo - num(r.frete) - num(r.comissao) - num(r.juros);
+      const liquidoR = bruto + num(r.frete_cobrado) - desconto - custo - num(r.frete) - num(r.comissao) - num(r.juros);
       return {
         peso_liquido: liquido,
         quantidade: quantidade == null || quantidade === "" ? null : +Number(quantidade).toFixed(3),

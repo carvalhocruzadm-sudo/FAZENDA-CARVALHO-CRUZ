@@ -31,7 +31,6 @@ O cadastro inicial já vem com as culturas, as fazendas e os sítios da laranja 
 
 ### Próximas etapas
 - **Emissão de NF-e** (por enquanto a venda guarda só o número da nota).
-- Importar o histórico das planilhas (2025/2026).
 - Perfis de acesso (o que cada funcionário pode ver e lançar).
 - Venda de laranja de terceiros, cotação de produtos.
 
@@ -56,6 +55,23 @@ Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas gu
 3. Em **Authentication → Users → Add user**, crie o login (e-mail e senha) de cada pessoa que vai usar.
 4. Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
    (**Project Settings → Data API / API Keys**).
+
+## 📥 Histórico das planilhas
+
+[`supabase/importacao-historico.sql`](supabase/importacao-historico.sql) traz o histórico das planilhas
+(vendas de milho, silagem e laranja de 2025 e 2026 com os recebimentos, despesas de janeiro/2026 e os
+fretes do caminhão). Cole no **SQL Editor** e clique em **Run**. Pode rodar de novo sem duplicar.
+Para desfazer: `delete from public.<tabela> where importado is not null;`.
+
+Para gerar de novo a partir das planilhas atualizadas:
+
+```bash
+pip install openpyxl
+python3 scripts/importar-planilhas.py <pasta com os .xlsx>
+```
+
+O script confere se o valor líquido de cada venda bate com a conta do sistema e lista as datas que
+estavam digitadas erradas (e como ficaram).
 
 ## ☁️ Publicar no Vercel
 

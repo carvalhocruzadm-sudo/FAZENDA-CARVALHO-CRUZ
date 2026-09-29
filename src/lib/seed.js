@@ -27,7 +27,7 @@ export const FAZENDAS = [
   id: id("8100", i + 1), nome, posse, socio, area_ha: area, municipio: null, ativo: true, observacao: null,
 }));
 
-const [SAO_RAIMUNDO, MURTINHA, TRIUNFO] = FAZENDAS.map((f) => f.id);
+const [SAO_RAIMUNDO, MURTINHA, TRIUNFO, AGUAS_CLARAS] = FAZENDAS.map((f) => f.id);
 
 export const TALHOES = [
   ["Galpão", SAO_RAIMUNDO, 6.6, 4059, LARANJA],
@@ -44,6 +44,7 @@ export const TALHOES = [
   ["Triunfo", TRIUNFO, 28.2, 16000, LARANJA],
   ["Gameleira", TRIUNFO, null, null, MILHO],
   ["Juerana", TRIUNFO, null, null, MILHO],
+  ["Águas Claras", AGUAS_CLARAS, 25, null, MILHO],
 ].map(([nome, fazenda_id, area_ha, pes, cultura_id], i) => ({
   id: id("8200", i + 1), nome, fazenda_id, area_ha, pes, cultura_id,
   variedade: null, safra: null, data_plantio: null, previsao_colheita: null, ativo: true, observacao: null,
