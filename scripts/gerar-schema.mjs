@@ -25,7 +25,8 @@ let sql = `-- ══════════════════════
 -- ════════════════════════════════════════════════════════════════════════
 
 -- Conta do Modo Campo: um usuário com perfil "campo" (o celular dos
--- tratoristas) só vê os cadastros e só lança abastecimento/horímetro.
+-- tratoristas) só vê os cadastros e só lança abastecimento, horímetro e
+-- as saídas/entradas do depósito de químicos.
 -- Para marcar um usuário como campo (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
 --   where email = 'campo@fazenda.com';
