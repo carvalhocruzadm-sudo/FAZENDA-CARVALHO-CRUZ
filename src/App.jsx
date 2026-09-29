@@ -9,10 +9,12 @@ import Login from "./pages/Login";
 import Painel from "./pages/Painel";
 import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
+import Ticket, { LINK_TICKET } from "./pages/Ticket";
 
 const MENU = [
   ["painel", "Painel", "painel", Painel],
   ["lavoura", "Lavoura e talhões", "cultura", Lavoura],
+  ["ticket", "Ticket da balança", "cesto", Ticket],
   ["vendas", "Vendas", "venda", Vendas],
   ["financeiro", "Financeiro", "dinheiro", Financeiro],
   ["maquinas", "Máquinas e horímetro", "trator", Maquinas],
@@ -50,6 +52,8 @@ function AvisoAtualizacao() {
 function Sistema({ sair, email }) {
   const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
   const [tela, setTela] = useState(() => {
+    // O link fixado no grupo do WhatsApp (/ticket) abre direto no lançamento do ticket.
+    if (location.pathname.replace(/\/+$/, "") === LINK_TICKET) return "ticket";
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
   });
   const [menuAberto, setMenuAberto] = useState(false);
@@ -58,6 +62,7 @@ function Sistema({ sair, email }) {
     setTela(id);
     setMenuAberto(false);
     window.scrollTo(0, 0);
+    if (location.pathname !== "/") history.replaceState(null, "", "/");
     try { localStorage.setItem("fcc-tela", id); } catch { /* sem armazenamento: só não lembra a aba */ }
   };
 

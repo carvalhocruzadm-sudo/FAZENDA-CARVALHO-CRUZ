@@ -41,13 +41,51 @@ export const FASES = [
   "3ª pulverização", "Colheita", "Operacional",
 ];
 
-/** Unidades de preço de venda e quantos kg cabem em cada uma. */
+/**
+ * Unidades de colheita/venda e quantos kg cabem em cada uma. A "saca" pesa o
+ * que estiver no cadastro da cultura (peso_saca).
+ */
 export const UNIDADES_VENDA = [
-  ["t", "Tonelada", 1000], ["kg", "Quilo", 1], ["sc60", "Saca 60 kg", 60],
+  ["t", "Tonelada", 1000], ["kg", "Quilo", 1], ["saca", "Saca (peso no cadastro da cultura)", null],
+  ["sc60", "Saca 60 kg", 60], ["cx408", "Caixa 40,8 kg (citros)", 40.8],
   ["arroba", "Arroba (15 kg)", 15], ["saco", "Saco (silagem)", null],
   ["caixa", "Caixa", null], ["unidade", "Unidade", null], ["cabeca", "Cabeça", null],
 ];
 const KG_POR_UNIDADE = Object.fromEntries(UNIDADES_VENDA.map(([v, , kg]) => [v, kg]));
+
+/** Quantos kg tem uma unidade (null quando não é de peso: saco, caixa, cabeça…). */
+export function kgPorUnidade(unidade, cultura) {
+  if (unidade === "saca") return Number(cultura?.peso_saca) || null;
+  return KG_POR_UNIDADE[unidade] ?? null;
+}
+
+/** Tipos de cultura. Cada um traz os padrões dos outros campos do cadastro. */
+export const GRUPOS_CULTURA = [
+  ["citros", "Citros (laranja, limão, tangerina)"],
+  ["graos", "Grãos (milho, soja, feijão, amendoim)"],
+  ["hortalicas", "Hortaliças e frutas (abóbora, milho verde)"],
+  ["forragem", "Forragem (silagem, capim)"],
+  ["pecuaria", "Pecuária (confinamento, gado)"],
+  ["outra", "Outra"],
+];
+
+export const MEDIDAS_PRODUTIVIDADE = [
+  ["t_ha", "Toneladas por hectare (t/ha)"],
+  ["sc_ha", "Sacas por hectare (sc/ha)"],
+  ["kg_ha", "Quilos por hectare (kg/ha)"],
+  ["kg_pe", "Quilos por pé (kg/pé)"],
+  ["cx_pe", "Caixas de 40,8 kg por pé (cx/pé)"],
+  ["nenhuma", "Não se aplica"],
+];
+
+const PADROES_GRUPO = {
+  citros: { unidade: "t", produtividade: "kg_pe", turma_colheita: true },
+  graos: { unidade: "saca", peso_saca: 60, produtividade: "sc_ha", turma_colheita: false },
+  hortalicas: { unidade: "kg", produtividade: "t_ha", turma_colheita: false },
+  forragem: { unidade: "t", produtividade: "t_ha", turma_colheita: false },
+  pecuaria: { unidade: "arroba", produtividade: "nenhuma", turma_colheita: false },
+  outra: {},
+};
 
 export const TIPOS_INSUMO = [
   ["herbicida", "Herbicida"], ["inseticida", "Inseticida"], ["fungicida", "Fungicida"],
@@ -80,12 +118,22 @@ export const ESQUEMA = {
     descricao: "Milho, laranja, abóbora, confinamento… Cadastre aqui cada cultura nova.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
-      tipo: { tipo: "opcoes", rotulo: "Tipo", opcoes: [["agricola", "Agrícola"], ["pecuaria", "Pecuária"]], padrao: "agricola" },
-      unidade: { tipo: "opcoes", rotulo: "Unidade de venda", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
+      grupo: { tipo: "opcoes", rotulo: "Tipo de cultura", opcoes: GRUPOS_CULTURA, padrao: "graos", obrigatorio: true, dica: "Escolher o tipo já preenche o resto; dá para mudar" },
+      // Agrícola × pecuária: sai do tipo de cultura, não aparece no formulário.
+      tipo: { tipo: "opcoes", rotulo: "Agrícola / pecuária", opcoes: [["agricola", "Agrícola"], ["pecuaria", "Pecuária"]], mostrarSe: () => false },
+      unidade: { tipo: "opcoes", rotulo: "Colhida e vendida em", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "saca" },
+      peso_saca: { tipo: "numero", rotulo: "Peso da saca (kg)", casas: 1, padrao: 60, mostrarSe: (r) => r.unidade === "saca", obrigatorio: true },
+      produtividade: { tipo: "opcoes", rotulo: "Produtividade medida em", opcoes: MEDIDAS_PRODUTIVIDADE, padrao: "sc_ha" },
+      turma_colheita: { tipo: "booleano", rotulo: "Colheita feita por turma (paga por tonelada)" },
+      custo_turma_ton: { tipo: "dinheiro", rotulo: "Valor padrão da turma por tonelada", mostrarSe: (r) => r.turma_colheita, dica: "O ticket já vem com ele; dá para mudar em cada carga" },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "tipo", "unidade", "ativo"],
+    aoMudar: {
+      grupo: (r) => PADROES_GRUPO[r.grupo] ?? {},
+    },
+    calcular: (r) => ({ tipo: r.grupo === "pecuaria" ? "pecuaria" : "agricola" }),
+    colunas: ["nome", "grupo", "unidade", "peso_saca", "produtividade", "turma_colheita", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => r.nome,
   },
@@ -376,10 +424,10 @@ export const ESQUEMA = {
 
   vendas: {
     titulo: "Vendas da produção", singular: "venda", icone: "venda", lancamento: true,
-    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos.",
+    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos. Os tickets da balança lançados pelo link rápido chegam aqui sem comprador e sem preço: é só abrir e completar.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
-      comprador: { tipo: "sugestao", rotulo: "Comprador", obrigatorio: true, sugestoesDe: ["vendas", "comprador"] },
+      comprador: { tipo: "sugestao", rotulo: "Comprador", sugestoesDe: ["vendas", "comprador"] },
       cultura_id: { ...refCultura, obrigatorio: true },
       safra: { tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"] },
       talhao_id: { ...refTalhao, rotulo: "Talhão / sítio" },
@@ -388,14 +436,15 @@ export const ESQUEMA = {
       tipo_carro: { tipo: "sugestao", rotulo: "Tipo de carro", sugestoes: ["Rodocaçamba", "Graneleiro", "Caçambão", "9 eixos", "Truck", "Toco"] },
       peso_entrada: { tipo: "numero", rotulo: "Peso entrada / tara (kg)", casas: 1 },
       peso_saida: { tipo: "numero", rotulo: "Peso saída / bruto (kg)", casas: 1 },
-      peso_liquido: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1, somenteLeitura: true },
+      peso_liquido: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1, dica: "Sai da entrada e saída; sem elas, digite o peso do ticket" },
       volumes: { tipo: "numero", rotulo: "Nº de sacos / volumes", casas: 1 },
       desconto_kg: { tipo: "numero", rotulo: "Desconto (kg)", casas: 1 },
       unidade: { tipo: "opcoes", rotulo: "Preço por", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 3, dica: "Calculada pelo peso quando o preço é por peso" },
-      preco_unitario: { tipo: "dinheiro", rotulo: "Preço", casas: 4, obrigatorio: true },
+      preco_unitario: { tipo: "dinheiro", rotulo: "Preço", casas: 4 },
       valor_bruto: { tipo: "dinheiro", rotulo: "Valor bruto", somenteLeitura: true },
       valor_desconto: { tipo: "dinheiro", rotulo: "Valor do desconto", somenteLeitura: true },
+      turma: { tipo: "sugestao", rotulo: "Turma de colheita", dica: "Laranja: a turma que colheu", sugestoesDe: ["vendas", "turma"] },
       custo_ton: { tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
       frete_cobrado: { tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
       frete: { tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
@@ -416,13 +465,17 @@ export const ESQUEMA = {
       },
       cultura_id: (reg, dados) => {
         const c = dados.culturas.find((x) => x.id === reg.cultura_id);
-        return c?.unidade ? { unidade: c.unidade } : {};
+        return {
+          ...(c?.unidade ? { unidade: c.unidade } : {}),
+          ...(c?.turma_colheita && c.custo_turma_ton != null && reg.custo_ton == null ? { custo_ton: c.custo_turma_ton } : {}),
+        };
       },
     },
-    calcular: (r) => {
+    calcular: (r, dados) => {
       const entrada = num(r.peso_entrada), saida = num(r.peso_saida);
-      const liquido = saida ? Math.abs(saida - entrada) : null;
-      const kgUn = KG_POR_UNIDADE[r.unidade];
+      // Sem entrada/saída vale o peso digitado (ticket da balança).
+      const liquido = saida ? Math.abs(saida - entrada) : r.peso_liquido == null || r.peso_liquido === "" ? null : num(r.peso_liquido);
+      const kgUn = kgPorUnidade(r.unidade, dados?.culturas?.find((c) => c.id === r.cultura_id));
       const quantidade = kgUn && liquido != null ? liquido / kgUn : r.quantidade;
       const bruto = num(quantidade) * num(r.preco_unitario);
       const desconto = kgUn ? (num(r.desconto_kg) / kgUn) * num(r.preco_unitario) : 0;
@@ -434,8 +487,8 @@ export const ESQUEMA = {
         valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2), valor: +liquidoR.toFixed(2),
       };
     },
-    validar: (r) => (r.quantidade == null ? "Informe os pesos ou a quantidade." : null),
-    colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor"],
+    validar: (r) => (r.quantidade == null && r.peso_liquido == null ? "Informe o peso ou a quantidade." : null),
+    colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "turma", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor"],
   },
 
   recebimentos: {
@@ -520,8 +573,9 @@ export function campoVisivel(campo, reg) {
 /**
  * Limpa e completa um registro antes de gravar: números viram número, campo
  * escondido vira nulo, os calculados são refeitos. Devolve { reg, erro }.
+ * `dados` serve às contas que dependem de outro cadastro (o peso da saca).
  */
-export function prepararRegistro(colecao, bruto) {
+export function prepararRegistro(colecao, bruto, dados) {
   const def = ESQUEMA[colecao];
   const reg = { ...bruto };
   for (const [chave, campo] of Object.entries(def.campos)) {
@@ -532,7 +586,7 @@ export function prepararRegistro(colecao, bruto) {
     if (typeof v === "string") v = v.trim() || null;
     reg[chave] = v;
   }
-  Object.assign(reg, def.calcular?.(reg) ?? {});
+  Object.assign(reg, def.calcular?.(reg, dados) ?? {});
 
   for (const [chave, campo] of Object.entries(def.campos)) {
     if (campoVisivel(campo, reg) && campoObrigatorio(campo, reg) && (reg[chave] == null || reg[chave] === "")) {

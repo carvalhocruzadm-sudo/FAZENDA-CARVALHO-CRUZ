@@ -47,5 +47,12 @@ for (const [tabela, itens] of Object.entries(SEED)) {
   }
 }
 
+// Culturas cadastradas antes de existir o "tipo de cultura": recebem os
+// padrões do cadastro inicial uma vez só (quem já preencheu não é tocado).
+sql += `\n-- ─── Tipo de cultura, medida de produtividade e turma nas culturas antigas ─\n`;
+for (const c of SEED.culturas) {
+  sql += `update public.culturas set grupo = ${lit(c.grupo)}, unidade = ${lit(c.unidade)}, peso_saca = ${lit(c.peso_saca)}, produtividade = ${lit(c.produtividade)}, turma_colheita = ${lit(c.turma_colheita)} where id = ${lit(c.id)} and grupo is null;\n`;
+}
+
 writeFileSync(new URL("../supabase/schema.sql", import.meta.url), sql);
 console.log("supabase/schema.sql gerado.");
