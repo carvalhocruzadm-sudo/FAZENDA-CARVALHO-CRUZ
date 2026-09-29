@@ -62,6 +62,8 @@ Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas gu
 1. Em [vercel.com](https://vercel.com), **Add New → Project** e escolha este repositório.
 2. Em **Environment Variables**, cadastre `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
 3. **Deploy**. O `vercel.json` já está pronto.
+4. Em **Settings → Environments → Production**, deixe a *Branch Tracking* em `main`: o site oficial
+   sai sempre da `main`.
 
 No celular, abra o endereço do site e use **Adicionar à tela inicial** para instalar como app.
 
