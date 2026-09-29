@@ -4,23 +4,26 @@
  */
 
 import { ultimaLeitura } from "./calculos";
-import { OPERACOES } from "./esquema";
+import { FIGURA_DA_OPERACAO, OPERACOES } from "./esquema";
 
 const n = (v) => Number(v) || 0;
 
-/** Desenho de cada serviço (quem não lê reconhece pela figura). */
-const FIGURA_SERVICO = {
-  "Gradagem": "🚜", "Aração": "⛏️", "Subsolagem": "🪨", "Plantio": "🌱", "Pulverização": "💦",
-  "Adubação": "🧪", "Roçagem": "✂️", "Colheita": "🌽", "Ensilagem": "🌾", "Transporte": "🚚",
-  "Distribuição de ração": "🐄", "Terraplanagem": "🏗️", "Serviço geral": "🔧",
-};
-
-export const figuraServico = (nome) => FIGURA_SERVICO[nome] ?? "🔧";
-
-/** Os serviços da lista padrão + os que já foram lançados no escritório. */
+/**
+ * Os serviços que o tratorista escolhe: os ativos do cadastro de Serviços.
+ * Enquanto o cadastro estiver vazio, usa a lista padrão.
+ * @returns {{ id, nome, figura, foto }[]}
+ */
 export function servicos(dados) {
-  const usados = dados.operacoes.map((o) => o.operacao).filter(Boolean);
-  return [...new Set([...OPERACOES, ...usados])];
+  const cadastrados = (dados.servicos ?? []).filter((s) => s.ativo !== false);
+  const lista = cadastrados.length ? cadastrados : OPERACOES.map((nome) => ({ id: nome, nome }));
+  return lista
+    .map((s) => ({ ...s, figura: s.figura || FIGURA_DA_OPERACAO[s.nome] || "🔧" }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+/** Figura do serviço pelo nome (na tela de conferir). */
+export function servicoPorNome(dados, nome) {
+  return servicos(dados).find((s) => s.nome === nome) ?? { nome, figura: FIGURA_DA_OPERACAO[nome] ?? "🔧" };
 }
 
 /** Máquinas que abastecem no PA: as que têm horímetro. */

@@ -306,3 +306,15 @@ table { border-collapse: collapse; }
   .cartao { box-shadow: none; padding: 0; }
   .etiquetas { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Botão 🔊 de cada item e da pergunta */
+.campo-item { position: relative; display: flex; }
+.campo-item .campo-cartao { flex: 1; }
+.btn-ouvir {
+  position: absolute; left: -6px; top: -8px; width: 46px; height: 46px; border-radius: 50%; border: 2px solid #fff;
+  background: var(--verde-escuro); color: #fff; font-size: 20px; cursor: pointer; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.btn-ouvir.na-pergunta { position: static; margin-left: auto; width: 52px; height: 52px; font-size: 24px; }
+.pronto h2 { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.pronto h2 .btn-ouvir { margin-left: 0; }

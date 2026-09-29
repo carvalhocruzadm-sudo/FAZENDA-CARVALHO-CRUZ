@@ -68,6 +68,22 @@ export const OPERACOES = [
   "Terraplanagem", "Serviço geral",
 ];
 
+/** Figuras que o gerente escolhe para cada serviço (quem não lê reconhece pelo desenho). */
+export const FIGURAS = [
+  ["🚜", "🚜 Trator / gradagem"], ["⛏️", "⛏️ Aração"], ["🪨", "🪨 Subsolagem"], ["🌱", "🌱 Plantio"],
+  ["💦", "💦 Pulverização"], ["🧪", "🧪 Adubação / químico"], ["✂️", "✂️ Roçagem"], ["🌽", "🌽 Milho / colheita"],
+  ["🍊", "🍊 Laranja"], ["🎃", "🎃 Abóbora"], ["🥜", "🥜 Amendoim"], ["🌾", "🌾 Silagem / capim"],
+  ["🚚", "🚚 Transporte"], ["🐄", "🐄 Gado / ração"], ["🏗️", "🏗️ Terraplanagem"], ["💧", "💧 Água / irrigação"],
+  ["🪵", "🪵 Lenha / madeira"], ["🧹", "🧹 Limpeza"], ["🔧", "🔧 Serviço geral / conserto"],
+];
+
+/** A figura de cada serviço da lista padrão. */
+export const FIGURA_DA_OPERACAO = {
+  "Gradagem": "🚜", "Aração": "⛏️", "Subsolagem": "🪨", "Plantio": "🌱", "Pulverização": "💦",
+  "Adubação": "🧪", "Roçagem": "✂️", "Colheita": "🌽", "Ensilagem": "🌾", "Transporte": "🚚",
+  "Distribuição de ração": "🐄", "Terraplanagem": "🏗️", "Serviço geral": "🔧",
+};
+
 const refTalhao = { tipo: "ref", colecao: "talhoes", rotulo: "Talhão" };
 const refCultura = { tipo: "ref", colecao: "culturas", rotulo: "Cultura" };
 
@@ -130,7 +146,7 @@ export const ESQUEMA = {
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "fazenda_id", "area_ha", "cultura_id", "pes", "safra", "data_plantio"],
+    colunas: ["nome", "foto", "fazenda_id", "area_ha", "cultura_id", "pes", "safra", "data_plantio"],
     ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }),
     resumo: (r) => r.nome,
   },
@@ -150,7 +166,7 @@ export const ESQUEMA = {
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "funcao", "vinculo", "salario", "telefone", "ativo"],
+    colunas: ["nome", "foto", "funcao", "vinculo", "salario", "telefone", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => r.nome,
   },
@@ -182,8 +198,23 @@ export const ESQUEMA = {
           : reg.categoria === "implemento" ? "nenhum" : "horas",
       }),
     },
-    colunas: ["nome", "categoria", "marca", "modelo", "placa", "medidor"],
+    colunas: ["nome", "foto", "categoria", "marca", "modelo", "placa", "medidor"],
     ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }),
+    resumo: (r) => r.nome,
+  },
+
+  servicos: {
+    titulo: "Serviços / operações", singular: "serviço", icone: "lista", campo: "le",
+    descricao: "A lista de serviços que o tratorista escolhe no Modo Campo (gradagem, plantio, pulverização…). Escolha uma figura e, se quiser, tire uma foto do serviço ou do implemento. Serviço que não se usa mais: desmarque Ativo.",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome do serviço", obrigatorio: true },
+      figura: { tipo: "opcoes", rotulo: "Figura", opcoes: FIGURAS, padrao: "🔧" },
+      foto: { tipo: "foto", rotulo: "Foto (aparece no lugar da figura)" },
+      ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["nome", "figura", "foto", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => r.nome,
   },
 
@@ -213,7 +244,7 @@ export const ESQUEMA = {
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / veículo", obrigatorio: true, filtro: (m) => m.medidor !== "nenhum" },
       implemento_id: { tipo: "ref", colecao: "maquinas", rotulo: "Implemento", filtro: (m) => m.categoria === "implemento" },
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
-      operacao: { tipo: "sugestao", rotulo: "Operação", sugestoes: OPERACOES, obrigatorio: true },
+      operacao: { tipo: "sugestao", rotulo: "Operação", sugestoes: OPERACOES, sugestoesDe: ["servicos", "nome"], obrigatorio: true },
       talhao_id: refTalhao,
       cultura_id: refCultura,
       leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, obrigatorio: true },

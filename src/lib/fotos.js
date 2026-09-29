@@ -85,7 +85,7 @@ export async function enviarFoto(caminho) {
 
 /** Baixa de uma vez as fotos dos cadastros, para o Modo Campo funcionar sem internet. */
 export function guardarFotosDosCadastros(dados) {
-  const caminhos = ["funcionarios", "maquinas", "talhoes"]
+  const caminhos = ["funcionarios", "maquinas", "talhoes", "servicos"]
     .flatMap((c) => (dados[c] ?? []).map((x) => x.foto))
     .filter(Boolean);
   for (const c of caminhos) urlDaFoto(c);

@@ -143,6 +143,27 @@ drop policy if exists "campo corrige maquinas" on public.maquinas;
 create policy "campo le maquinas" on public.maquinas
   for select to authenticated using (public.eh_campo());
 
+-- Serviços / operações
+create table if not exists public.servicos (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.servicos add column if not exists nome text;
+alter table public.servicos add column if not exists figura text;
+alter table public.servicos add column if not exists foto text;
+alter table public.servicos add column if not exists ativo boolean;
+alter table public.servicos add column if not exists observacao text;
+alter table public.servicos enable row level security;
+drop policy if exists "equipe acessa servicos" on public.servicos;
+create policy "equipe acessa servicos" on public.servicos
+  for all to authenticated using (not public.eh_campo()) with check (not public.eh_campo());
+drop policy if exists "campo le servicos" on public.servicos;
+drop policy if exists "campo lanca servicos" on public.servicos;
+drop policy if exists "campo corrige servicos" on public.servicos;
+create policy "campo le servicos" on public.servicos
+  for select to authenticated using (public.eh_campo());
+
 -- Produtos químicos e insumos
 create table if not exists public.insumos (
   id uuid primary key default gen_random_uuid(),
@@ -558,3 +579,16 @@ insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, vari
 insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000013', 'Gameleira', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
 insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000014', 'Juerana', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
 insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000015', 'Águas Claras', '00000000-0000-4000-8100-000000000004', 25, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000001', 'Gradagem', '🚜', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000002', 'Aração', '⛏️', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000003', 'Subsolagem', '🪨', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000004', 'Plantio', '🌱', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000005', 'Pulverização', '💦', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000006', 'Adubação', '🧪', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000007', 'Roçagem', '✂️', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000008', 'Colheita', '🌽', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000009', 'Ensilagem', '🌾', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000010', 'Transporte', '🚚', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000011', 'Distribuição de ração', '🐄', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000012', 'Terraplanagem', '🏗️', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000013', 'Serviço geral', '🔧', null, true, null) on conflict (id) do nothing;

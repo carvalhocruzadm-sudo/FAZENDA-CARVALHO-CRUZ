@@ -34,8 +34,7 @@ O cadastro inicial já vem com as culturas, as fazendas e os sítios da laranja 
 Telas feitas para quem não lê: uma pergunta por tela, fotos e figuras grandes, teclado de números
 gigante e o botão 🔊 que lê a pergunta em voz alta.
 
-**Abastecimento no PA**: cada trator tem um QR code (menu **Máquinas e horímetro → QR codes do PA**,
-botão **Imprimir**). O tratorista lê o QR com a câmera do celular e responde:
+**Abastecimento no PA**: cada trator tem um QR code (menu **Modo Campo (QR) → QR codes para imprimir**). O tratorista lê o QR com a câmera do celular e responde:
 1. **Quem é você?** (toca na própria foto)
 2. **Qual serviço?** (figuras)
 3. **Qual talhão?** (pode marcar mais de um)
@@ -49,8 +48,18 @@ aparecem sozinhos em **Diesel → Abastecimentos** (baixa o tanque) e em **Máqu
 operações**. Horímetro menor que o anterior, ou mais de 24 h desde o último, sai marcado com
 "CONFERIR" na observação.
 
-**Fotos**: funcionários, máquinas e talhões ganharam o campo **Foto** no cadastro. Cadastre a foto do
-rosto de cada tratorista e a de cada trator: é por ela que eles se acham na tela.
+**Tudo se cadastra pelo sistema**, no menu **Modo Campo (QR)**:
+- **Serviços**: nome, figura (🚜 🌱 💦 ✂️ 🍊…) e, se quiser, uma foto. Serviço que não se usa mais: desmarque Ativo.
+- **Operadores (fotos)**: a foto do rosto de cada tratorista (é por ela que ele se acha na tela).
+- **Tratores (fotos)**: a foto de cada trator (sai também na etiqueta QR).
+- **Talhões**: nome, área (ha, usada na divisão) e foto, se quiser.
+- **QR codes para imprimir**.
+
+Os números no alto mostram quantos tratoristas e tratores ainda estão sem foto.
+
+**Áudio**: o botão 🔊 grande no alto lê a pergunta da tela (e, no horímetro e nos litros, o número
+digitado; na tela "Está certo?", o resumo inteiro). Cada foto/figura tem um 🔊 pequeno que lê o nome
+sem escolher, para o tratorista ouvir antes de tocar.
 
 **Para ligar** (uma vez):
 1. Rode de novo o [`supabase/schema.sql`](supabase/schema.sql) no **SQL Editor** (cria o lugar das fotos

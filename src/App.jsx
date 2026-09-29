@@ -8,7 +8,7 @@ import { supabase, supabaseConfigurado } from "./lib/supabase";
 import ModoCampo from "./pages/Campo";
 import Login from "./pages/Login";
 import Painel from "./pages/Painel";
-import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
+import { CadastrosCampo, Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 
 const MENU = [
@@ -21,6 +21,7 @@ const MENU = [
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],
   ["fretes", "Caminhões e fretes", "caminhao", Fretes],
   ["equipe", "Funcionários", "pessoas", Equipe],
+  ["campo", "Modo Campo (QR)", "trator", CadastrosCampo],
   ["sync", "Sincronização", "nuvem", Sincronizacao],
 ];
 
@@ -112,7 +113,6 @@ function Sistema({ sair, email, abrirCampo }) {
           ))}
         </nav>
         <div className="rodape">
-          <button className="btn" style={{ marginBottom: 10 }} onClick={abrirCampo}><Icone nome="trator" /> Modo Campo</button>
           {email && <div style={{ marginBottom: 8, wordBreak: "break-all" }}>{email}</div>}
           {sair && <button className="btn" onClick={sair}><Icone nome="sair" /> Sair</button>}
         </div>
@@ -127,7 +127,7 @@ function Sistema({ sair, email, abrirCampo }) {
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
           {!pronto ? <div className="vazio">Carregando…</div> : (
             <Pagina key={tela} dados={dados} salvar={salvar} remover={remover} irPara={irPara}
-              sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} />
+              sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} abrirCampo={abrirCampo} />
           )}
         </div>
       </main>

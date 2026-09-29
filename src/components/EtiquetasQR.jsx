@@ -35,7 +35,7 @@ export default function EtiquetasQR({ dados }) {
         <p className="descricao" style={{ margin: 0, flex: 1 }}>
           Um QR code para cada máquina com horímetro. Cole perto da bomba do PA (ou no trator). O tratorista lê com a
           câmera do celular e cai direto no abastecimento daquele trator. O celular precisa estar conectado com a conta
-          do Modo Campo. Coloque a foto de cada máquina no Inventário para ela sair na etiqueta.
+          do Modo Campo. Coloque a foto de cada trator na aba Tratores (fotos) para ela sair na etiqueta.
         </p>
         <button className="btn primario" onClick={() => window.print()}>🖨️ Imprimir</button>
       </div>

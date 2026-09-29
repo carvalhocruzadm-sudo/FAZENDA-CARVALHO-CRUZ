@@ -4,6 +4,8 @@
  * supabase/schema.sql, para o modo demonstração e a nuvem baterem.
  */
 
+import { FIGURA_DA_OPERACAO, OPERACOES } from "./esquema.js";
+
 const id = (grupo, n) => `00000000-0000-4000-${grupo}-${String(n).padStart(12, "0")}`;
 
 export const CULTURAS = [
@@ -50,4 +52,8 @@ export const TALHOES = [
   variedade: null, safra: null, data_plantio: null, previsao_colheita: null, ativo: true, observacao: null,
 }));
 
-export const SEED = { culturas: CULTURAS, fazendas: FAZENDAS, talhoes: TALHOES };
+export const SERVICOS = OPERACOES.map((nome, i) => ({
+  id: id("8300", i + 1), nome, figura: FIGURA_DA_OPERACAO[nome] ?? "🔧", foto: null, ativo: true, observacao: null,
+}));
+
+export const SEED = { culturas: CULTURAS, fazendas: FAZENDAS, talhoes: TALHOES, servicos: SERVICOS };

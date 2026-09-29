@@ -4,7 +4,7 @@ import { BotaoFoto, Foto } from "../components/Foto";
 import { useDados } from "../hooks/useDados";
 import { useSync } from "../hooks/useSync";
 import {
-  falar, figuraServico, lancamentosDoPA, maquinasDoPA, operadores, paraNumero, servicos, vibrar,
+  falar, lancamentosDoPA, maquinasDoPA, operadores, paraNumero, servicoPorNome, servicos, vibrar,
 } from "../lib/campo";
 import { hoje, prepararRegistro } from "../lib/esquema";
 import { guardarFotosDosCadastros } from "../lib/fotos";
@@ -33,13 +33,31 @@ function FotoOuInicial({ caminho, nome }) {
   return <Foto caminho={caminho} alt={nome} className="foto" reserva={<Inicial nome={nome} />} />;
 }
 
-function Cartao({ marcado, aoTocar, children }) {
+/** Botão pequeno de alto-falante: lê o texto sem escolher nada. */
+function Ouvir({ texto, className = "" }) {
   return (
-    <button type="button" className={`campo-cartao ${marcado ? "marcado" : ""}`} onClick={aoTocar} aria-pressed={marcado}>
-      {marcado && <span className="marca-ok">✓</span>}
-      {children}
-    </button>
+    <button type="button" className={`btn-ouvir ${className}`} aria-label={`Ouvir: ${texto}`}
+      onClick={(e) => { e.stopPropagation(); falar(texto); }}>🔊</button>
   );
+}
+
+/** Um item para tocar (pessoa, serviço, talhão), com o 🔊 que lê o nome. */
+function Cartao({ marcado, aoTocar, fala, children }) {
+  return (
+    <div className="campo-item">
+      <button type="button" className={`campo-cartao ${marcado ? "marcado" : ""}`} onClick={aoTocar} aria-pressed={marcado}>
+        {marcado && <span className="marca-ok">✓</span>}
+        {children}
+      </button>
+      {fala && <Ouvir texto={fala} />}
+    </div>
+  );
+}
+
+function FiguraServico({ servico }) {
+  return servico.foto
+    ? <Foto caminho={servico.foto} alt={servico.nome} className="foto" reserva={<span className="figura">{servico.figura}</span>} />
+    : <span className="figura">{servico.figura}</span>;
 }
 
 function IndicadorSyncCampo() {
@@ -187,6 +205,18 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
   const operador = dados.funcionarios.find((f) => f.id === r.operador_id);
   const nomesTalhoes = r.talhoes.map((id) => dados.talhoes.find((t) => t.id === id)?.nome).filter(Boolean);
 
+  // O que o 🔊 lê em cada tela: a pergunta e, quando já tem, o que foi digitado.
+  const falaHorimetro = `${FALA.horimetro}${r.leitura ? ` Você digitou ${r.leitura} horas.` : ""}${r.foto_leitura ? " A foto já foi tirada." : ""}`;
+  const falaLitros = `${FALA.litros}${r.litros ? ` Você digitou ${r.litros} litros.` : ""}${r.foto_bomba ? " A foto já foi tirada." : ""}`;
+  const falaConferir = resumo ? [
+    resumo.aviso ? `Atenção: ${resumo.aviso}` : null,
+    `Operador: ${operador?.nome}.`, `Serviço: ${r.operacao}.`,
+    `${nomesTalhoes.length > 1 ? "Talhões" : "Talhão"}: ${nomesTalhoes.join(" e ")}.`,
+    `Horímetro: ${r.leitura} horas.`, `Diesel: ${r.litros} litros.`,
+    "Se estiver tudo certo, toque em salvar.",
+  ].filter(Boolean).join(" ") : "";
+  const falaTopo = { horimetro: falaHorimetro, litros: falaLitros, conferir: falaConferir }[passo] ?? FALA[passo];
+
   let corpo;
   let rodape;
   switch (passo) {
@@ -196,7 +226,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
           <Pergunta figura="👤">Quem é você?</Pergunta>
           <div className="campo-grade">
             {operadores(dados).map((f) => (
-              <Cartao key={f.id} marcado={r.operador_id === f.id}
+              <Cartao key={f.id} marcado={r.operador_id === f.id} fala={f.nome}
                 aoTocar={() => { mudar({ operador_id: f.id }); falar(f.nome); vibrar(); ir("servico"); }}>
                 <FotoOuInicial caminho={f.foto} nome={f.nome} />
                 <span>{f.nome}</span>
@@ -214,10 +244,10 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
           <Pergunta figura="🛠️">Qual serviço?</Pergunta>
           <div className="campo-grade">
             {servicos(dados).map((s) => (
-              <Cartao key={s} marcado={r.operacao === s}
-                aoTocar={() => { mudar({ operacao: s }); falar(s); vibrar(); ir("talhao"); }}>
-                <span className="figura">{figuraServico(s)}</span>
-                <span>{s}</span>
+              <Cartao key={s.id} marcado={r.operacao === s.nome} fala={s.nome}
+                aoTocar={() => { mudar({ operacao: s.nome }); falar(s.nome); vibrar(); ir("talhao"); }}>
+                <FiguraServico servico={s} />
+                <span>{s.nome}</span>
               </Cartao>
             ))}
           </div>
@@ -234,7 +264,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
             {talhoes.map((t) => {
               const marcado = r.talhoes.includes(t.id);
               return (
-                <Cartao key={t.id} marcado={marcado} aoTocar={() => {
+                <Cartao key={t.id} marcado={marcado} fala={t.nome} aoTocar={() => {
                   vibrar();
                   if (!marcado) falar(t.nome);
                   mudar({ talhoes: marcado ? r.talhoes.filter((x) => x !== t.id) : [...r.talhoes, t.id] });
@@ -287,7 +317,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
             <FotoOuInicial caminho={operador?.foto} nome={operador?.nome ?? "?"} /><span>{operador?.nome}</span>
           </div>
           <div className="resumo-linha" onClick={() => ir("servico")}>
-            <span className="figura">{figuraServico(r.operacao)}</span><span>{r.operacao}</span>
+            <FiguraServico servico={servicoPorNome(dados, r.operacao)} /><span>{r.operacao}</span>
           </div>
           <div className="resumo-linha" onClick={() => ir("talhao")}>
             <span className="figura">🗺️</span><span>{nomesTalhoes.join(" + ")}</span>
@@ -316,7 +346,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
       corpo = (
         <div className="pronto">
           <div className="check">✅</div>
-          <h2>Pronto!</h2>
+          <h2>Pronto! <Ouvir texto={FALA.pronto} className="na-pergunta" /></h2>
           <p>Abastecimento guardado.</p>
         </div>
       );
@@ -329,7 +359,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
 
   return (
     <div className="campo-app">
-      <Topo maquina={maquina} pergunta={FALA[passo]} />
+      <Topo maquina={maquina} pergunta={falaTopo} />
       {i >= 0 && <Passos total={PASSOS.length} atual={i} />}
       <div className="campo-corpo">{corpo}</div>
       {rodape}
@@ -350,7 +380,7 @@ function Inicio({ dados, irPara, sair, voltarAoSistema }) {
         {maquinas.length === 0 && <div className="campo-aviso">Nenhum trator com horímetro cadastrado. Chame o gerente.</div>}
         <div className="campo-grade">
           {maquinas.map((m) => (
-            <Cartao key={m.id} aoTocar={() => { falar(m.nome); irPara(`/campo/abastecer/${m.id}`); }}>
+            <Cartao key={m.id} fala={m.nome} aoTocar={() => { falar(m.nome); irPara(`/campo/abastecer/${m.id}`); }}>
               {m.foto ? <FotoOuInicial caminho={m.foto} nome={m.nome} /> : <span className="figura">🚜</span>}
               <span>{m.nome}</span>
             </Cartao>
