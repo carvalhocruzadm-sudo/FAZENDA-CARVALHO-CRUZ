@@ -17,6 +17,8 @@
  * `campo` diz o que a conta do Modo Campo (perfil "campo", celular dos
  * tratoristas) pode fazer na tabela: "le" (só ver) ou "grava" (ver e lançar).
  * Sem `campo`, essa conta não enxerga a tabela. Vale no banco (RLS).
+ * `campoSql` limita as linhas que ela vê e corrige (ex.: só as entradas que
+ * ela mesma lançou e o escritório ainda não conferiu, sem os preços das outras).
  *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
@@ -219,18 +221,22 @@ export const ESQUEMA = {
   },
 
   insumos: {
-    titulo: "Produtos químicos e insumos", singular: "produto", icone: "frasco",
-    descricao: "Defensivos, adubos, sementes, ração… O estoque é a conta: entradas − aplicações.",
+    titulo: "Produtos químicos e insumos", singular: "produto", icone: "frasco", campo: "le",
+    descricao: "Defensivos, adubos, sementes, ração… O estoque é a conta: entradas − aplicações. A foto e a embalagem são o que o tratorista vê no depósito (\"pegue 3 galões\").",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome comercial", obrigatorio: true },
+      foto: { tipo: "foto", rotulo: "Foto da embalagem (o tratorista acha o produto por ela)" },
       tipo: { tipo: "opcoes", rotulo: "Tipo", opcoes: TIPOS_INSUMO, padrao: "herbicida" },
       principio_ativo: { tipo: "texto", rotulo: "Princípio ativo" },
       unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: ["L", "kg", "saco", "t", "unidade", "dose"], padrao: "L", obrigatorio: true },
+      embalagem_tipo: { tipo: "sugestao", rotulo: "Embalagem", sugestoes: ["Galão", "Bombona", "Frasco", "Balde", "Saco", "Caixa", "Tambor"], padrao: "Galão" },
+      embalagem: { tipo: "numero", rotulo: "Quanto cabe numa embalagem", casas: 3, dica: "Na unidade do produto. Ex.: galão de 5 L → 5" },
+      codigo_barras: { tipo: "texto", rotulo: "Código de barras (se tiver)", dica: "Os números embaixo das barras. Sem código, use a etiqueta QR do sistema." },
       estoque_minimo: { tipo: "numero", rotulo: "Estoque mínimo", casas: 2 },
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "tipo", "principio_ativo", "unidade", "estoque_minimo"],
+    colunas: ["nome", "foto", "tipo", "principio_ativo", "unidade", "embalagem_tipo", "embalagem", "estoque_minimo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => `${r.nome} (${r.unidade})`,
   },
@@ -319,27 +325,32 @@ export const ESQUEMA = {
 
   insumo_entradas: {
     titulo: "Entradas de químicos/insumos", singular: "entrada", icone: "caixa", lancamento: true,
-    descricao: "Compras que entram no estoque. O custo médio sai daqui.",
+    campo: "grava", campoSql: "a_conferir = true",
+    descricao: "Compras que entram no estoque. O custo médio sai daqui. As lançadas no depósito pelo QR code chegam sem preço e marcadas \"Falta conferir\": complete o valor e a nota e desmarque.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2, obrigatorio: true },
-      valor: { tipo: "dinheiro", rotulo: "Valor total", obrigatorio: true },
+      valor: { tipo: "dinheiro", rotulo: "Valor total", obrigatorio: (r) => !r.a_conferir },
+      a_conferir: { tipo: "booleano", rotulo: "Falta conferir (veio do depósito sem preço)" },
+      foto: { tipo: "foto", rotulo: "Foto (produto / nota)", lado: 1280 },
+      responsavel_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Quem recebeu" },
       cultura_id: { ...refCultura, rotulo: "Comprado para a cultura" },
       fornecedor: { tipo: "texto", rotulo: "Fornecedor" },
       nota: { tipo: "texto", rotulo: "Nota fiscal" },
       lote: { tipo: "texto", rotulo: "Lote / validade" },
     },
-    colunas: ["data", "insumo_id", "quantidade", "valor", "cultura_id", "fornecedor"],
+    colunas: ["data", "insumo_id", "quantidade", "valor", "a_conferir", "cultura_id", "fornecedor"],
   },
 
   aplicacoes: {
-    titulo: "Aplicações / saídas", singular: "aplicação", icone: "spray", lancamento: true,
-    descricao: "Produto que saiu do estoque para um talhão. Vira custo do talhão e da cultura.",
+    titulo: "Aplicações / saídas", singular: "aplicação", icone: "spray", lancamento: true, campo: "grava",
+    descricao: "Produto que saiu do estoque para um talhão. Vira custo do talhão e da cultura. Sobra que voltou da pulverização entra aqui com quantidade negativa.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
-      quantidade: { tipo: "numero", rotulo: "Quantidade total", casas: 2, obrigatorio: true },
+      quantidade: { tipo: "numero", rotulo: "Quantidade total", casas: 2, obrigatorio: true, dica: "Negativa quando é sobra que voltou para o estoque" },
+      pulverizacao_id: { tipo: "ref", colecao: "pulverizacoes", rotulo: "Ordem de pulverização" },
       talhao_id: { ...refTalhao, obrigatorio: true },
       cultura_id: refCultura,
       dose_ha: { tipo: "numero", rotulo: "Dose por ha", casas: 3 },
@@ -350,6 +361,41 @@ export const ESQUEMA = {
     },
     aoMudar: culturaDoTalhao,
     colunas: ["data", "insumo_id", "quantidade", "talhao_id", "cultura_id", "dose_ha", "responsavel_id"],
+  },
+
+  pulverizacoes: {
+    titulo: "Ordens de pulverização", singular: "ordem de pulverização", icone: "spray", lancamento: true, campo: "grava",
+    descricao: "O gerente cria a ordem (talhão, trator, produtos e dose por ha). No depósito, o tratorista lê o QR de SAÍDA, vê a ordem com as fotos dos produtos e confere cada um pelo QR code.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      talhao_id: { ...refTalhao, obrigatorio: true },
+      cultura_id: refCultura,
+      area_ha: { tipo: "numero", rotulo: "Área a pulverizar (ha)", casas: 2, obrigatorio: true },
+      maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Trator / pulverizador", filtro: (m) => m.medidor === "horas" },
+      operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Tratorista" },
+      situacao: { tipo: "opcoes", rotulo: "Situação", padrao: "aberta", opcoes: [["aberta", "Aberta (esperando separar)"], ["separada", "Produtos separados"], ["concluida", "Concluída"], ["cancelada", "Cancelada"]] },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    aoMudar: {
+      // Escolher o talhão traz a cultura e a área dele.
+      talhao_id: (reg, dados) => {
+        const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
+        return t ? { cultura_id: t.cultura_id ?? null, area_ha: t.area_ha ?? reg.area_ha } : {};
+      },
+    },
+    colunas: ["data", "talhao_id", "area_ha", "maquina_id", "operador_id", "situacao"],
+    resumo: (r) => `Pulverização de ${String(r.data ?? "").split("-").reverse().join("/")}`,
+  },
+
+  pulverizacao_itens: {
+    titulo: "Produtos da ordem de pulverização", singular: "produto da ordem", icone: "frasco", campo: "le",
+    campos: {
+      pulverizacao_id: { tipo: "ref", colecao: "pulverizacoes", rotulo: "Ordem", obrigatorio: true },
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
+      dose_ha: { tipo: "numero", rotulo: "Dose por ha", casas: 3 },
+      quantidade: { tipo: "numero", rotulo: "Quantidade total", casas: 3, obrigatorio: true },
+    },
+    colunas: ["pulverizacao_id", "insumo_id", "dose_ha", "quantidade"],
   },
 
   despesas: {

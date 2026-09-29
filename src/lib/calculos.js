@@ -102,19 +102,26 @@ export function consumoPorMaquina(dados, periodo) {
 
 // ─── Químicos / insumos ─────────────────────────────────────────────────────
 
+/**
+ * Estoque de cada produto: entradas − aplicações (a sobra que voltou da
+ * pulverização é aplicação negativa). O custo médio só conta as entradas com
+ * preço: a que chegou pelo depósito e ainda não foi conferida não o derruba.
+ */
 export function estoqueInsumos(dados) {
   const mapa = new Map();
-  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0 });
+  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0, qtdComPreco: 0 });
   for (const e of dados.insumo_entradas) {
     const x = mapa.get(e.insumo_id);
-    if (x) { x.entrada += n(e.quantidade); x.valorEntrada += n(e.valor); }
+    if (!x) continue;
+    x.entrada += n(e.quantidade);
+    if (n(e.valor) > 0) { x.valorEntrada += n(e.valor); x.qtdComPreco += n(e.quantidade); }
   }
   for (const a of dados.aplicacoes) {
     const x = mapa.get(a.insumo_id);
     if (x) x.saida += n(a.quantidade);
   }
   return [...mapa.values()].map((x) => {
-    const custoMedio = x.entrada ? x.valorEntrada / x.entrada : 0;
+    const custoMedio = x.qtdComPreco ? x.valorEntrada / x.qtdComPreco : 0;
     const saldo = x.entrada - x.saida;
     const minimo = n(x.insumo.estoque_minimo);
     return {

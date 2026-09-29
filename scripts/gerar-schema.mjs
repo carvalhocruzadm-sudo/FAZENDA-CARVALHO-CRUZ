@@ -49,15 +49,17 @@ create policy "equipe acessa ${tabela}" on public.${tabela}
 drop policy if exists "campo le ${tabela}" on public.${tabela};
 drop policy if exists "campo lanca ${tabela}" on public.${tabela};
 drop policy if exists "campo corrige ${tabela}" on public.${tabela};\n`;
+  // campoSql: as linhas que a conta de campo pode ver e corrigir (ex.: só as que ela lançou).
+  const linhas = def.campoSql ? `public.eh_campo() and ${def.campoSql}` : "public.eh_campo()";
   if (def.campo) {
     sql += `create policy "campo le ${tabela}" on public.${tabela}
-  for select to authenticated using (public.eh_campo());\n`;
+  for select to authenticated using (${linhas});\n`;
   }
   if (def.campo === "grava") {
     sql += `create policy "campo lanca ${tabela}" on public.${tabela}
-  for insert to authenticated with check (public.eh_campo());
+  for insert to authenticated with check (${linhas});
 create policy "campo corrige ${tabela}" on public.${tabela}
-  for update to authenticated using (public.eh_campo()) with check (public.eh_campo());\n`;
+  for update to authenticated using (${linhas}) with check (${linhas});\n`;
   }
   sql += "\n";
 }

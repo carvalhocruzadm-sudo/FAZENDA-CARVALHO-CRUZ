@@ -48,7 +48,8 @@ aparecem sozinhos em **Diesel → Abastecimentos** (baixa o tanque) e em **Máqu
 operações**. Horímetro menor que o anterior, ou mais de 24 h desde o último, sai marcado com
 "CONFERIR" na observação.
 
-**Tudo se cadastra pelo sistema**, no menu **Modo Campo (QR)**:
+**Tudo se cadastra pelo sistema**, no menu **Modo Campo (QR)** (lá estão também os produtos do
+depósito com foto e os QR codes do depósito):
 - **Serviços**: nome, figura (🚜 🌱 💦 ✂️ 🍊…) e, se quiser, uma foto. Serviço que não se usa mais: desmarque Ativo.
 - **Operadores (fotos)**: a foto do rosto de cada tratorista (é por ela que ele se acha na tela).
 - **Tratores (fotos)**: a foto de cada trator (sai também na etiqueta QR).
@@ -76,9 +77,43 @@ sem escolher, para o tratorista ouvir antes de tocar.
 
 Quem tem o login do escritório também pode abrir o Modo Campo pelo botão **Modo Campo** no menu, para testar.
 
+### 🧴 Depósito de químicos pelo QR code
+
+O Modo Campo abre com três botões grandes: **⛽ Abastecer trator**, **📤 Tirar do depósito** e
+**📥 Guardar no depósito**.
+
+**No escritório**
+- **Químicos → Produtos**: foto da embalagem, tipo e tamanho da embalagem (ex.: Galão de 5 L) e, se
+  tiver, o código de barras. Com a embalagem, o tratorista vê "pegue 2 galões de 5 L e mais 3,2 L".
+- **Químicos → Ordens de pulverização**: o gerente cria a ordem com talhão (a área vem sozinha),
+  trator e produtos com a dose por ha. O total é dose × área. Dá para **copiar os produtos do
+  Planejamento da safra**.
+- **Químicos → QR codes do depósito**: os cartazes **QR-1 SAÍDA** e **QR-2 ENTRADA** para a porta do
+  depósito e uma **etiqueta com QR, foto e nome para cada produto**, para colar na prateleira, bem na
+  frente dele.
+
+**QR-1 Saída (separar a pulverização)**
+1. Escolhe a pulverização (cartão com o talhão e as fotos dos produtos) e toca na própria foto.
+2. Vê a lista de produtos. Em cada um: foto grande, as embalagens desenhadas e o botão **📷 Conferir**.
+3. Aponta a câmera para a etiqueta do produto: **tela verde e bip** se for o certo (a saída é lançada e
+   o estoque baixa); **tela vermelha**, vibração e "Você pegou X, pegue Y" se for o errado.
+4. Produto sem etiqueta: "O produto não tem QR code" → confirma pela foto. A saída fica marcada "SEM
+   conferir pelo QR code".
+5. Todos separados → a ordem fica "Separada".
+
+**QR-2 Entrada**
+- **Produto novo**: lê o QR do produto (ou toca na foto), escolhe quantas embalagens com os botões
+  − e +, tira foto do produto ou da nota. Chega no sistema **sem preço e marcada "Falta conferir"**;
+  o Painel e a aba Estoque avisam. O escritório completa valor e nota e desmarca.
+  O custo médio só conta as entradas com preço.
+- **Sobrou da pulverização**: escolhe a pulverização e o produto e digita quanto voltou (não deixa
+  voltar mais do que saiu). Vira uma aplicação negativa: o estoque sobe e o custo do talhão fica só com
+  o que foi usado. Ao terminar, a ordem fica "Concluída".
+
+O leitor de QR usa o leitor do próprio celular (Android) ou um leitor embutido (iPhone). A câmera só
+funciona no endereço https do site (no Vercel já é).
+
 ### Próximas etapas
-- **Depósito de químicos pelo QR code**: foto dos produtos, ordens de pulverização criadas pelo gerente,
-  separação conferida pelo QR code colado na frente de cada produto, entrada de compra e de sobra.
 - **Emissão de NF-e** (por enquanto a venda guarda só o número da nota).
 - Perfis de acesso (o que cada funcionário pode ver e lançar).
 - Venda de laranja de terceiros, cotação de produtos.

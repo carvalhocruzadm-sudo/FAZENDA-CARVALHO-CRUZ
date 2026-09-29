@@ -171,9 +171,13 @@ create table if not exists public.insumos (
   atualizado_em timestamptz
 );
 alter table public.insumos add column if not exists nome text;
+alter table public.insumos add column if not exists foto text;
 alter table public.insumos add column if not exists tipo text;
 alter table public.insumos add column if not exists principio_ativo text;
 alter table public.insumos add column if not exists unidade text;
+alter table public.insumos add column if not exists embalagem_tipo text;
+alter table public.insumos add column if not exists embalagem numeric;
+alter table public.insumos add column if not exists codigo_barras text;
 alter table public.insumos add column if not exists estoque_minimo numeric;
 alter table public.insumos add column if not exists ativo boolean;
 alter table public.insumos add column if not exists observacao text;
@@ -184,6 +188,8 @@ create policy "equipe acessa insumos" on public.insumos
 drop policy if exists "campo le insumos" on public.insumos;
 drop policy if exists "campo lanca insumos" on public.insumos;
 drop policy if exists "campo corrige insumos" on public.insumos;
+create policy "campo le insumos" on public.insumos
+  for select to authenticated using (public.eh_campo());
 
 -- Horímetro / operações
 create table if not exists public.operacoes (
@@ -308,6 +314,9 @@ alter table public.insumo_entradas add column if not exists data date;
 alter table public.insumo_entradas add column if not exists insumo_id uuid;
 alter table public.insumo_entradas add column if not exists quantidade numeric;
 alter table public.insumo_entradas add column if not exists valor numeric;
+alter table public.insumo_entradas add column if not exists a_conferir boolean;
+alter table public.insumo_entradas add column if not exists foto text;
+alter table public.insumo_entradas add column if not exists responsavel_id uuid;
 alter table public.insumo_entradas add column if not exists cultura_id uuid;
 alter table public.insumo_entradas add column if not exists fornecedor text;
 alter table public.insumo_entradas add column if not exists nota text;
@@ -320,6 +329,12 @@ create policy "equipe acessa insumo_entradas" on public.insumo_entradas
 drop policy if exists "campo le insumo_entradas" on public.insumo_entradas;
 drop policy if exists "campo lanca insumo_entradas" on public.insumo_entradas;
 drop policy if exists "campo corrige insumo_entradas" on public.insumo_entradas;
+create policy "campo le insumo_entradas" on public.insumo_entradas
+  for select to authenticated using (public.eh_campo() and a_conferir = true);
+create policy "campo lanca insumo_entradas" on public.insumo_entradas
+  for insert to authenticated with check (public.eh_campo() and a_conferir = true);
+create policy "campo corrige insumo_entradas" on public.insumo_entradas
+  for update to authenticated using (public.eh_campo() and a_conferir = true) with check (public.eh_campo() and a_conferir = true);
 
 -- Aplicações / saídas
 create table if not exists public.aplicacoes (
@@ -330,6 +345,7 @@ create table if not exists public.aplicacoes (
 alter table public.aplicacoes add column if not exists data date;
 alter table public.aplicacoes add column if not exists insumo_id uuid;
 alter table public.aplicacoes add column if not exists quantidade numeric;
+alter table public.aplicacoes add column if not exists pulverizacao_id uuid;
 alter table public.aplicacoes add column if not exists talhao_id uuid;
 alter table public.aplicacoes add column if not exists cultura_id uuid;
 alter table public.aplicacoes add column if not exists dose_ha numeric;
@@ -345,6 +361,61 @@ create policy "equipe acessa aplicacoes" on public.aplicacoes
 drop policy if exists "campo le aplicacoes" on public.aplicacoes;
 drop policy if exists "campo lanca aplicacoes" on public.aplicacoes;
 drop policy if exists "campo corrige aplicacoes" on public.aplicacoes;
+create policy "campo le aplicacoes" on public.aplicacoes
+  for select to authenticated using (public.eh_campo());
+create policy "campo lanca aplicacoes" on public.aplicacoes
+  for insert to authenticated with check (public.eh_campo());
+create policy "campo corrige aplicacoes" on public.aplicacoes
+  for update to authenticated using (public.eh_campo()) with check (public.eh_campo());
+
+-- Ordens de pulverização
+create table if not exists public.pulverizacoes (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.pulverizacoes add column if not exists data date;
+alter table public.pulverizacoes add column if not exists talhao_id uuid;
+alter table public.pulverizacoes add column if not exists cultura_id uuid;
+alter table public.pulverizacoes add column if not exists area_ha numeric;
+alter table public.pulverizacoes add column if not exists maquina_id uuid;
+alter table public.pulverizacoes add column if not exists operador_id uuid;
+alter table public.pulverizacoes add column if not exists situacao text;
+alter table public.pulverizacoes add column if not exists observacao text;
+create index if not exists pulverizacoes_data_idx on public.pulverizacoes (data);
+alter table public.pulverizacoes enable row level security;
+drop policy if exists "equipe acessa pulverizacoes" on public.pulverizacoes;
+create policy "equipe acessa pulverizacoes" on public.pulverizacoes
+  for all to authenticated using (not public.eh_campo()) with check (not public.eh_campo());
+drop policy if exists "campo le pulverizacoes" on public.pulverizacoes;
+drop policy if exists "campo lanca pulverizacoes" on public.pulverizacoes;
+drop policy if exists "campo corrige pulverizacoes" on public.pulverizacoes;
+create policy "campo le pulverizacoes" on public.pulverizacoes
+  for select to authenticated using (public.eh_campo());
+create policy "campo lanca pulverizacoes" on public.pulverizacoes
+  for insert to authenticated with check (public.eh_campo());
+create policy "campo corrige pulverizacoes" on public.pulverizacoes
+  for update to authenticated using (public.eh_campo()) with check (public.eh_campo());
+
+-- Produtos da ordem de pulverização
+create table if not exists public.pulverizacao_itens (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.pulverizacao_itens add column if not exists pulverizacao_id uuid;
+alter table public.pulverizacao_itens add column if not exists insumo_id uuid;
+alter table public.pulverizacao_itens add column if not exists dose_ha numeric;
+alter table public.pulverizacao_itens add column if not exists quantidade numeric;
+alter table public.pulverizacao_itens enable row level security;
+drop policy if exists "equipe acessa pulverizacao_itens" on public.pulverizacao_itens;
+create policy "equipe acessa pulverizacao_itens" on public.pulverizacao_itens
+  for all to authenticated using (not public.eh_campo()) with check (not public.eh_campo());
+drop policy if exists "campo le pulverizacao_itens" on public.pulverizacao_itens;
+drop policy if exists "campo lanca pulverizacao_itens" on public.pulverizacao_itens;
+drop policy if exists "campo corrige pulverizacao_itens" on public.pulverizacao_itens;
+create policy "campo le pulverizacao_itens" on public.pulverizacao_itens
+  for select to authenticated using (public.eh_campo());
 
 -- Despesas
 create table if not exists public.despesas (
