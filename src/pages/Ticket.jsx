@@ -12,8 +12,6 @@ import { brl, data, nomeRef, numero } from "../lib/formato";
 
 export const LINK_TICKET = "/ticket";
 
-const ehLaranja = (cultura) => /laranja/i.test(cultura?.nome ?? "");
-
 const vazio = () => ({ data: hoje(), cultura_id: null, peso: "", talhao_id: null, turma: "", custo_ton: "", observacao: "" });
 
 export default function Ticket({ dados, salvar }) {
@@ -30,7 +28,8 @@ export default function Ticket({ dados, salvar }) {
     [dados.culturas],
   );
   const cultura = dados.culturas.find((c) => c.id === f.cultura_id);
-  const laranja = ehLaranja(cultura);
+  // Turma e valor por tonelada só aparecem se o cadastro da cultura disser que a colheita é por turma.
+  const porTurma = Boolean(cultura?.turma_colheita);
 
   // Os talhões da cultura escolhida; se nenhum estiver marcado com ela, todos.
   const talhoes = useMemo(() => {
@@ -44,18 +43,30 @@ export default function Ticket({ dados, salvar }) {
     [dados.vendas],
   );
 
-  const escolherCultura = (id) => {
-    set("cultura_id", id);
-    setF((a) => ({ ...a, talhao_id: dados.talhoes.some((t) => t.id === a.talhao_id && t.cultura_id === id) ? a.talhao_id : null }));
+  const padraoDaCultura = (id) => {
+    const v = dados.culturas.find((c) => c.id === id)?.custo_turma_ton;
+    return v == null ? "" : String(v);
   };
 
-  // A turma já usada antes traz o último valor por tonelada que ela cobrou.
+  const escolherCultura = (id) => {
+    setSalvo(null); setErro(null);
+    setF((a) => (a.cultura_id === id ? a : {
+      ...a,
+      cultura_id: id,
+      talhao_id: dados.talhoes.some((t) => t.id === a.talhao_id && t.cultura_id === id) ? a.talhao_id : null,
+      custo_ton: padraoDaCultura(id),
+    }));
+  };
+
+  // A turma já usada antes traz o último valor por tonelada que ela cobrou;
+  // turma nova fica com o valor padrão do cadastro da cultura.
   const escolherTurma = (nome) => {
     set("turma", nome);
     const ultima = dados.vendas
       .filter((v) => v.turma === nome && v.custo_ton != null)
       .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];
     if (ultima) setF((a) => ({ ...a, custo_ton: String(ultima.custo_ton) }));
+    else if (!f.custo_ton) setF((a) => ({ ...a, custo_ton: padraoDaCultura(a.cultura_id) }));
   };
 
   const toneladas = (Number(f.peso) || 0) / 1000;
@@ -65,7 +76,7 @@ export default function Ticket({ dados, salvar }) {
     if (!cultura) { setErro("Escolha a venda de quê."); return; }
     if (!(Number(f.peso) > 0)) { setErro("Preencha o peso do ticket."); return; }
     if (talhoes.length && !f.talhao_id) { setErro("Escolha o talhão."); return; }
-    if (laranja && !f.turma.trim()) { setErro("Preencha a turma de colheita."); return; }
+    if (porTurma && !f.turma.trim()) { setErro("Preencha a turma de colheita."); return; }
 
     const { reg, erro: e2 } = prepararRegistro("vendas", {
       ...registroNovo("vendas"),
@@ -74,10 +85,10 @@ export default function Ticket({ dados, salvar }) {
       unidade: cultura.unidade || "t",
       talhao_id: f.talhao_id,
       peso_liquido: f.peso,
-      turma: laranja ? f.turma : null,
-      custo_ton: laranja ? f.custo_ton : null,
+      turma: porTurma ? f.turma : null,
+      custo_ton: porTurma ? f.custo_ton : null,
       observacao: f.observacao,
-    });
+    }, dados);
     if (e2) { setErro(e2); return; }
 
     setSalvando(true);
@@ -149,7 +160,7 @@ export default function Ticket({ dados, salvar }) {
             </select>
           </label>
 
-          {laranja && (
+          {porTurma && (
             <>
               <label className="campo"><span>Turma de colheita <em>*</em></span>
                 <input list="ticket-turmas" value={f.turma} onChange={(e) => escolherTurma(e.target.value)} autoComplete="off" />
