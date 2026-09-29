@@ -59,8 +59,8 @@ Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas gu
 ## 📥 Histórico das planilhas
 
 [`supabase/importacao-historico.sql`](supabase/importacao-historico.sql) traz o histórico das planilhas
-(vendas de milho, silagem e laranja de 2025 e 2026 com os recebimentos, despesas de janeiro/2026 e os
-fretes do caminhão). Cole no **SQL Editor** e clique em **Run**. Pode rodar de novo sem duplicar.
+(vendas de milho, silagem e laranja de 2025 e 2026 com os recebimentos, despesas das planilhas
+FINANCEIRO 2025 e 2026, aditivos dos sócios e os fretes do caminhão). Cole no **SQL Editor** e clique em **Run**. Pode rodar de novo sem duplicar.
 Para desfazer: `delete from public.<tabela> where importado is not null;`.
 
 Para gerar de novo a partir das planilhas atualizadas:
@@ -72,6 +72,11 @@ python3 scripts/importar-planilhas.py <pasta com os .xlsx>
 
 O script confere se o valor líquido de cada venda bate com a conta do sistema e lista as datas que
 estavam digitadas erradas (e como ficaram).
+
+[`supabase/importacao-comprovantes.sql`](supabase/importacao-comprovantes.sql) traz as despesas do grupo
+de WhatsApp *COMPROVANTES - CARVALHO CRUZ* (dez/2025 a set/2026), lidas dos comprovantes e cruzadas com as
+planilhas FINANCEIRO — o que já estava nelas não entra de novo. Para desfazer:
+`delete from public.despesas where importado = 'WHATSAPP';`.
 
 ## ☁️ Publicar no Vercel
 

@@ -14,6 +14,8 @@ para desfazer com `delete from <tabela> where importado is not null`.
 Precisa do openpyxl (pip install openpyxl).
 """
 import datetime as dt
+import json
+import os
 import re
 import sys
 import uuid
@@ -271,12 +273,18 @@ CATEGORIA = {
 FORMA = {"PIX": "PIX", "BOLETO": "Boleto", "BOELTO": "Boleto", "CARTAO": "Cartão", "DINHEIRO": "Dinheiro"}
 
 
-def financeiro():
-    wb = openpyxl.load_workbook(arquivo("FINANCEIRO_2026"), data_only=True)
+MESES = ["JANEIRO", "FEVEREIRO", "MARCO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"]
+
+
+def financeiro(ano):
+    wb = openpyxl.load_workbook(arquivo(f"FINANCEIRO_{ano}"), data_only=True)
     for aba in wb.sheetnames:
-        if aba in ("MODELO",) or aba.upper().startswith("PÁGINA"):
+        mes = aba.strip().upper().replace("Ç", "C")
+        if mes not in MESES:  # MODELO, RESUMO, Página…
             continue
         ws = wb[aba]
+        n = MESES.index(mes) + 1
+        fim_mes = (dt.date(ano + (n == 12), n % 12 + 1, 1) - dt.timedelta(days=1)).isoformat()
         cats = {c.column: str(c.value).strip() for c in ws[3] if c.value}
         cab = {c.column: str(c.value).strip() for c in ws[5] if isinstance(c.value, str)}
         colunas = sorted(cats)
@@ -286,20 +294,26 @@ def financeiro():
             cat = cats[c0]
             for r in range(6, ws.max_row + 1):
                 g = lambda nome: ws.cell(r, campos[nome]).value if nome in campos else None  # noqa: E731
-                onde = f"FINANCEIRO_2026 › {aba} › {cat} linha {r}"
+                onde = f"FINANCEIRO_{ano} › {aba} › {cat} linha {r}"
                 valores = [(None, g("VALOR"))] if cat != "ARRENDAMENTOS" else [("milho", g("MILHO")), ("laranja", g("LARANJA"))]
                 for cultura, valor in valores:
                     if not isinstance(valor, (int, float)) or not valor:
                         continue
-                    d, obs = data(g("DATA"), onde, 2026)
+                    d, obs = data(g("DATA"), onde, ano)
+                    d = d or fim_mes
                     if cat == "ENTRADAS":
-                        inserir("entradas", f"FINANCEIRO_2026/{aba}/{cat}#{r}", {
-                            "data": d, "tipo": txt(g("TIPO")) or "Outros", "origem": txt(g("PAGANTE")),
+                        # Recebimento de venda (tipo MILHO/LARANJA) já entra pelas
+                        # planilhas de venda: aqui só aditivo de sócio e outras entradas.
+                        if str(g("TIPO") or "").strip().upper() in ("MILHO", "LARANJA", "SILAGEM", "VENDA", "VENDAS"):
+                            continue
+                        inserir("entradas", f"FINANCEIRO_{ano}/{aba}/{cat}#{r}", {
+                            "data": d, "tipo": "Aditivo de sócio" if str(g("TIPO") or "").strip().upper() == "ADITIVO" else (txt(g("TIPO")) or "Outros"),
+                            "origem": txt(g("DESCRICAO")) if str(g("TIPO") or "").strip().upper() == "ADITIVO" else txt(g("PAGANTE")),
                             "descricao": txt(g("DESCRICAO")), "valor": num(valor),
                         })
                         continue
                     tipo, desc = txt(g("TIPO")), txt(g("DESCRICAO"))
-                    inserir("despesas", f"FINANCEIRO_2026/{aba}/{cat}/{cultura or ''}#{r}", {
+                    inserir("despesas", f"FINANCEIRO_{ano}/{aba}/{cat}/{cultura or ''}#{r}", {
                         "data": d, "categoria": CATEGORIA.get(cat, "Outros"), "tipo": tipo,
                         "descricao": desc or tipo or CATEGORIA.get(cat, cat),
                         "valor": num(valor),
@@ -307,7 +321,7 @@ def financeiro():
                         "favorecido": txt(g("FAVORECIDO")) or txt(g("PAGANTE")),
                         "centro": "cultura" if cultura else "geral", "cultura_id": CULT.get(cultura),
                         "litros": num(g("LITROS")) or None, "pago": True,
-                        "nota": juntar_obs(f"Planilha FINANCEIRO 2026, aba {aba}", obs),
+                        "nota": juntar_obs(f"Planilha FINANCEIRO {ano}, aba {aba.strip()}", obs),
                     })
 
 
@@ -373,7 +387,8 @@ silagem(2025)
 silagem(2026)
 laranja(2025)
 laranja(2026)
-financeiro()
+financeiro(2025)
+financeiro(2026)
 fretes()
 
 schema = (RAIZ / "supabase/schema.sql").read_text()
@@ -427,3 +442,7 @@ for (t, o), (n, v) in sorted(resumo.items()):
 print(f"\n{len(avisos)} avisos:")
 for a in avisos:
     print(" -", a)
+
+# Para conferências fora do app (ex.: cruzar com comprovantes): grava tudo em JSON.
+if os.environ.get("IMPORTACAO_JSON"):
+    Path(os.environ["IMPORTACAO_JSON"]).write_text(json.dumps([{"tabela": t, **r} for t, r in registros], ensure_ascii=False))
