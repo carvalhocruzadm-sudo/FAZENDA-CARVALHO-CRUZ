@@ -9,7 +9,7 @@ export default defineConfig({
       // "prompt": quem está lançando um abastecimento decide a hora de atualizar.
       registerType: "prompt",
       injectRegister: null,
-      includeAssets: ["favicon.svg", "apple-touch-icon.png", "logo-simbolo.png", "logo-carvalho-cruz.png", "logo-fazenda.png"],
+      includeAssets: ["fazenda-favicon.svg", "fazenda-apple-touch.png", "logo-simbolo.png", "logo-carvalho-cruz.png", "logo-fazenda.png"],
       manifest: {
         id: "/",
         name: "Fazenda Carvalho Cruz — Gestão",
@@ -22,9 +22,9 @@ export default defineConfig({
         background_color: "#FAFAF7",
         theme_color: "#2D6A4F",
         icons: [
-          { src: "pwa-192x192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-          { src: "pwa-512x512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-          { src: "pwa-maskable-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: "fazenda-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "fazenda-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "fazenda-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
       workbox: {

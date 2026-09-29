@@ -102,7 +102,7 @@ function Sistema({ sair, email, abrirCampo }) {
       {menuAberto && <div className="veu" onClick={() => setMenuAberto(false)} />}
       <aside className={`lateral ${menuAberto ? "aberta" : ""}`}>
         <div className="marca">
-          <img src="/pwa-192x192.png" alt="" />
+          <img src="/fazenda-192.png" alt="" />
           <div><b>Fazenda</b><small>Carvalho Cruz</small></div>
         </div>
         <nav>
