@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { Icone, SeletorPeriodo, Stat } from "../components/ui";
-import { PERIODOS, aReceber, diesel, entradasDoPeriodo, estoqueInsumos, noPeriodo, saidasDoPeriodo, situacaoRevisao, soma } from "../lib/calculos";
+import { PERIODOS, aConferir, aReceber, diesel, entradasDoPeriodo, estoqueInsumos, noPeriodo, saidasDoPeriodo, situacaoRevisao, soma } from "../lib/calculos";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 
 /** Data ISO daqui a `dias` (fora do componente: o painel se refaz quando os dados mudam). */
@@ -56,6 +56,10 @@ export default function Painel({ dados, irPara }) {
       if (d.vencimento < hojeIso) alertas.push({ tipo: "ruim", texto: `Conta vencida ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
       else if (d.vencimento <= em7) alertas.push({ tipo: "atencao", texto: `Vence ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
     }
+
+    const conferir = aConferir(dados);
+    if (conferir.viagens.length) alertas.push({ tipo: "atencao", texto: `${conferir.viagens.length} viagem(ns) do motorista esperando o valor do frete`, ir: "fretes" });
+    if (conferir.abastecimentos.length) alertas.push({ tipo: "atencao", texto: `${conferir.abastecimentos.length} abastecimento(s) do motorista para conferir pela foto do ticket`, ir: "fretes" });
 
     const porCultura = {};
     for (const v of vendas) {

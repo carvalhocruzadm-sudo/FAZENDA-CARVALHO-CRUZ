@@ -6,6 +6,7 @@ import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Login from "./pages/Login";
+import Motorista from "./pages/Motorista";
 import Painel from "./pages/Painel";
 import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
@@ -19,6 +20,7 @@ const MENU = [
   ["diesel", "Diesel", "combustivel", Diesel],
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],
   ["fretes", "Caminhões e fretes", "caminhao", Fretes],
+  ["motorista", "Modo motorista", "volante", null],
   ["equipe", "Funcionários", "pessoas", Equipe],
   ["sync", "Sincronização", "nuvem", Sincronizacao],
 ];
@@ -62,6 +64,11 @@ function Sistema({ sair, email }) {
   };
 
   const [, rotulo, , Pagina] = MENU.find(([id]) => id === tela) ?? MENU[0];
+
+  // Modo motorista: tela cheia, sem menu — o celular do motorista abre direto nela.
+  if (tela === "motorista" && pronto) {
+    return <Motorista dados={dados} salvar={salvar} sairDoModo={() => irPara("painel")} />;
+  }
 
   return (
     <div className="app">

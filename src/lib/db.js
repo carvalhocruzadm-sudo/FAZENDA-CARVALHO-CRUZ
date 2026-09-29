@@ -4,18 +4,19 @@
  *
  * Stores:
  *   uma por coleção do esquema (culturas, talhoes, maquinas, …) → cópia local
+ *     (a de fotos guarda só as fotos tiradas ou já abertas neste aparelho)
  *   fila  → operações pendentes de envio para o Supabase, em ordem
  *   meta  → chaves de controle (última sincronização)
  */
 
-import { COLECOES } from "./esquema";
+import { COLECOES, COLECOES_LEVES } from "./esquema";
 
-export { COLECOES };
+export { COLECOES, COLECOES_LEVES };
 
 const DB_NOME = "fazenda-carvalho-cruz";
 // Suba a versão sempre que uma coleção nova entrar no esquema: é no upgrade
 // que a store dela é criada.
-const DB_VERSAO = 1;
+const DB_VERSAO = 2;
 
 const STORES = [...COLECOES, "fila", "meta"];
 
@@ -94,9 +95,10 @@ export async function lerColecao(store) {
   return pedido(tx.objectStore(store).getAll());
 }
 
+/** Todas as coleções leves (as fotos ficam de fora: são lidas uma a uma). */
 export async function lerTodasColecoes() {
   const entradas = await Promise.all(
-    COLECOES.map(async (nome) => [nome, await lerColecao(nome)])
+    COLECOES_LEVES.map(async (nome) => [nome, await lerColecao(nome)])
   );
   return Object.fromEntries(entradas);
 }
@@ -218,6 +220,19 @@ export async function gravarItem(store, item) {
   const { tx, concluida } = transacao(db, [store], "readwrite");
   tx.objectStore(store).put(item);
   await concluida;
+}
+
+export async function lerItem(store, id) {
+  const db = await abrirDB();
+  const { tx } = transacao(db, [store], "readonly");
+  return pedido(tx.objectStore(store).get(id));
+}
+
+export function novoId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  // Navegadores antigos (e http fora de localhost) não têm randomUUID.
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
 }
 
 export async function apagarItem(store, id) {

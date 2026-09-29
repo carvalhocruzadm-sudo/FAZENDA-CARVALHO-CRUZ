@@ -192,3 +192,91 @@ table { border-collapse: collapse; }
 .sync i.erro { background: var(--vermelho); }
 .girando { animation: girar 1s linear infinite; }
 @keyframes girar { to { transform: rotate(360deg); } }
+
+/* ─── Fotos ─────────────────────────────────────────────────────────────── */
+.miniatura { padding: 0; border: 1px solid var(--linha); border-radius: 10px; overflow: hidden; background: var(--fundo); cursor: zoom-in; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.miniatura img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.visor-foto { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, 0.9); display: flex; align-items: center; justify-content: center; padding: 12px; color: #fff; }
+.visor-foto img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.visor-foto .btn { position: absolute; top: 12px; right: 12px; }
+
+/* ─── Modo motorista (telas para quem não lê: grande, figura, pouco texto) ─ */
+.motorista { min-height: 100vh; background: var(--fundo); display: flex; flex-direction: column; font-size: 18px; }
+.mot-topo { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--verde-escuro); color: #fff; position: sticky; top: 0; z-index: 5; }
+.mot-topo img { width: 40px; height: 40px; border-radius: 10px; background: #fff; padding: 3px; }
+.mot-topo .espaco { flex: 1; }
+.mot-status { font-size: 22px; font-weight: 700; }
+.mot-corpo { flex: 1; padding: 16px; max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.mot-rodape { padding: 24px 16px 32px; text-align: center; }
+.mot-rodape .btn { font-size: 13px; color: var(--texto-2); }
+
+.mot-redondo { width: 52px; height: 52px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, 0.06); font-size: 26px; cursor: pointer; flex-shrink: 0; }
+.mot-topo .mot-redondo { background: rgba(255, 255, 255, 0.15); }
+
+.mot-grande {
+  display: flex; align-items: center; justify-content: center; gap: 14px; width: 100%; min-height: 96px; border: 0; border-radius: 20px;
+  font-size: 26px; font-weight: 800; color: #fff; background: var(--verde); cursor: pointer; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.18);
+}
+.mot-grande span { font-size: 44px; }
+.mot-grande:active { transform: translateY(2px); box-shadow: none; }
+.mot-grande:disabled { opacity: 0.4; }
+.mot-grande.laranja { background: var(--laranja); }
+.mot-grande.azul { background: #2a6fb0; }
+.mot-grande.cinza { background: #e9e9e0; color: var(--texto); }
+
+.mot-quem { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 0; border-radius: 16px; background: var(--cartao); box-shadow: var(--sombra); text-align: left; font-size: 20px; cursor: pointer; }
+.mot-quem span:last-child { color: var(--texto-2); font-size: 16px; }
+
+.mot-passo { display: flex; flex-direction: column; gap: 14px; }
+.mot-pergunta { display: flex; align-items: center; gap: 10px; }
+.mot-pergunta h2 { flex: 1; font-size: 24px; text-align: center; }
+
+.blocos { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.bloco {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 150px; padding: 12px 8px;
+  border: 3px solid transparent; border-radius: 18px; background: var(--cartao); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08); cursor: pointer; overflow: hidden;
+}
+.bloco:active { border-color: var(--verde-claro); }
+.bloco.marcado { border-color: var(--verde); }
+.bloco.cinza { background: #efefe8; }
+.bloco-emoji { font-size: 64px; line-height: 1; }
+.bloco img { width: 100%; height: 96px; object-fit: cover; border-radius: 12px; }
+.bloco b { font-size: 18px; text-align: center; line-height: 1.2; }
+.bloco small { color: var(--texto-2); font-size: 14px; }
+.bloco-selo { position: absolute; top: 6px; left: 6px; right: 6px; background: var(--verde); color: #fff; border-radius: 10px; font-size: 13px; font-weight: 700; padding: 3px 6px; z-index: 1; }
+
+.contador { background: var(--cartao); border-radius: 20px; padding: 16px; box-shadow: var(--sombra); display: flex; flex-direction: column; gap: 14px; }
+.contador-numero { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.contador-numero span { font-size: 52px; }
+.contador-numero input { width: 170px; font-size: 48px; font-weight: 800; text-align: center; border: 2px solid var(--linha); border-radius: 14px; padding: 6px; }
+.contador-numero small { font-size: 20px; color: var(--texto-2); }
+.contador-botoes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.contador-botoes button { min-height: 68px; border: 0; border-radius: 14px; font-size: 24px; font-weight: 800; cursor: pointer; }
+.contador-botoes .menos { background: var(--vermelho-pale); color: var(--vermelho); }
+.contador-botoes .mais { background: var(--verde-pale); color: var(--verde); }
+
+.mot-numero { display: flex; align-items: center; gap: 10px; background: var(--cartao); border-radius: 16px; padding: 12px 16px; box-shadow: var(--sombra); }
+.mot-numero span { font-size: 40px; }
+.mot-numero input { flex: 1; min-width: 0; font-size: 34px; font-weight: 800; border: 2px solid var(--linha); border-radius: 12px; padding: 8px 10px; }
+
+.mot-foto { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.mot-foto .miniatura { max-width: 100%; }
+.mot-fotos { display: flex; gap: 10px; justify-content: center; }
+
+.mot-resumo { background: var(--cartao); border-radius: 20px; padding: 18px; box-shadow: var(--sombra); display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.mot-rota { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 44px; flex-wrap: wrap; }
+.mot-rota > span:not(.seta) { display: flex; flex-direction: column; align-items: center; }
+.mot-rota b { font-size: 18px; }
+.mot-rota .seta { font-size: 34px; }
+.mot-carga { font-size: 26px; }
+
+.mot-hoje { background: var(--cartao); border-radius: 16px; padding: 14px 16px; box-shadow: var(--sombra); }
+.mot-hoje h3 { font-size: 18px; margin-bottom: 8px; }
+.mot-linha { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f0f0ea; font-size: 16px; flex-wrap: wrap; }
+.mot-linha:last-child { border: 0; }
+.mot-linha-carga { margin-left: auto; font-weight: 700; }
+
+.mot-salvo { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 60vh; text-align: center; cursor: pointer; }
+.mot-salvo span { font-size: 120px; }
+.mot-salvo b { font-size: 36px; color: var(--verde); }
+.mot-salvo small { font-size: 18px; color: var(--texto-2); max-width: 320px; }

@@ -11,6 +11,7 @@ import { SEED } from "../src/lib/seed.js";
 const TIPO_SQL = {
   texto: "text", textoLongo: "text", sugestao: "text", opcoes: "text",
   numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid",
+  foto: "uuid", local: "text",
 };
 
 const lit = (v) => (v == null ? "null" : typeof v === "number" || typeof v === "boolean" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);

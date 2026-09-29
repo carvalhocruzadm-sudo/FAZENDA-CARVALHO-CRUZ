@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { COLECOES, apagarItem, enfileirar, gravarItem, lerFila, lerTodasColecoes, limparLocal } from "../lib/db";
+import { COLECOES_LEVES, apagarItem, enfileirar, gravarItem, lerFila, lerTodasColecoes, limparLocal, novoId } from "../lib/db";
 import { SEED } from "../lib/seed";
 import { supabaseConfigurado } from "../lib/supabase";
 import { atualizarContadores, iniciarAutoSync, sincronizar } from "../lib/sync";
 
-const vazio = () => Object.fromEntries(COLECOES.map((c) => [c, []]));
-
-function novoId() {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  // Navegadores antigos (e http fora de localhost) não têm randomUUID.
-  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
-    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
-}
+const vazio = () => Object.fromEntries(COLECOES_LEVES.map((c) => [c, []]));
 
 /**
  * O que veio da nuvem ainda não tem o que está na fila (feito no aparelho e
@@ -23,6 +16,7 @@ async function comFilaPorCima(dados) {
   const fila = await lerFila();
   const d = { ...dados };
   for (const op of fila) {
+    if (!(op.tabela in d)) continue; // fotos: não ficam na memória
     const lista = d[op.tabela] ?? [];
     const semEste = lista.filter((x) => x.id !== op.payload.id);
     d[op.tabela] = op.acao === "delete" ? semEste : [...semEste, op.payload];

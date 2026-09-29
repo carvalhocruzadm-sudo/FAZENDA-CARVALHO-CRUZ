@@ -124,6 +124,41 @@ drop policy if exists "equipe acessa insumos" on public.insumos;
 create policy "equipe acessa insumos" on public.insumos
   for all to authenticated using (true) with check (true);
 
+-- Locais das rotas
+create table if not exists public.locais (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.locais add column if not exists nome text;
+alter table public.locais add column if not exists tipo text;
+alter table public.locais add column if not exists localizacao text;
+alter table public.locais add column if not exists endereco text;
+alter table public.locais add column if not exists foto_id uuid;
+alter table public.locais add column if not exists ativo boolean;
+alter table public.locais add column if not exists observacao text;
+alter table public.locais enable row level security;
+drop policy if exists "equipe acessa locais" on public.locais;
+create policy "equipe acessa locais" on public.locais
+  for all to authenticated using (true) with check (true);
+
+-- Cargas
+create table if not exists public.cargas (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.cargas add column if not exists nome text;
+alter table public.cargas add column if not exists emoji text;
+alter table public.cargas add column if not exists unidade text;
+alter table public.cargas add column if not exists foto_id uuid;
+alter table public.cargas add column if not exists ativo boolean;
+alter table public.cargas add column if not exists observacao text;
+alter table public.cargas enable row level security;
+drop policy if exists "equipe acessa cargas" on public.cargas;
+create policy "equipe acessa cargas" on public.cargas
+  for all to authenticated using (true) with check (true);
+
 -- Horímetro / operações
 create table if not exists public.operacoes (
   id uuid primary key default gen_random_uuid(),
@@ -202,6 +237,9 @@ alter table public.abastecimentos add column if not exists cultura_id uuid;
 alter table public.abastecimentos add column if not exists posto text;
 alter table public.abastecimentos add column if not exists preco_litro numeric;
 alter table public.abastecimentos add column if not exists valor numeric;
+alter table public.abastecimentos add column if not exists foto_ticket_id uuid;
+alter table public.abastecimentos add column if not exists foto_painel_id uuid;
+alter table public.abastecimentos add column if not exists conferido boolean;
 alter table public.abastecimentos add column if not exists observacao text;
 create index if not exists abastecimentos_data_idx on public.abastecimentos (data);
 alter table public.abastecimentos enable row level security;
@@ -375,7 +413,7 @@ drop policy if exists "equipe acessa recebimentos" on public.recebimentos;
 create policy "equipe acessa recebimentos" on public.recebimentos
   for all to authenticated using (true) with check (true);
 
--- Fretes do caminhão
+-- Viagens e fretes
 create table if not exists public.fretes (
   id uuid primary key default gen_random_uuid(),
   criado_em timestamptz not null default now(),
@@ -384,14 +422,24 @@ create table if not exists public.fretes (
 alter table public.fretes add column if not exists data date;
 alter table public.fretes add column if not exists caminhao_id uuid;
 alter table public.fretes add column if not exists motorista_id uuid;
-alter table public.fretes add column if not exists contratante text;
-alter table public.fretes add column if not exists produto text;
+alter table public.fretes add column if not exists origem_id uuid;
+alter table public.fretes add column if not exists destino_id uuid;
 alter table public.fretes add column if not exists origem text;
 alter table public.fretes add column if not exists destino text;
+alter table public.fretes add column if not exists carga_id uuid;
+alter table public.fretes add column if not exists produto text;
+alter table public.fretes add column if not exists quantidade numeric;
+alter table public.fretes add column if not exists unidade text;
 alter table public.fretes add column if not exists peso_kg numeric;
-alter table public.fretes add column if not exists preco_ton numeric;
-alter table public.fretes add column if not exists valor numeric;
 alter table public.fretes add column if not exists km numeric;
+alter table public.fretes add column if not exists para_quem text;
+alter table public.fretes add column if not exists contratante text;
+alter table public.fretes add column if not exists cobranca text;
+alter table public.fretes add column if not exists preco_ton numeric;
+alter table public.fretes add column if not exists preco_unidade numeric;
+alter table public.fretes add column if not exists valor numeric;
+alter table public.fretes add column if not exists foto_id uuid;
+alter table public.fretes add column if not exists conferido boolean;
 alter table public.fretes add column if not exists observacao text;
 create index if not exists fretes_data_idx on public.fretes (data);
 alter table public.fretes enable row level security;
@@ -418,6 +466,19 @@ alter table public.planejamento add column if not exists total numeric;
 alter table public.planejamento enable row level security;
 drop policy if exists "equipe acessa planejamento" on public.planejamento;
 create policy "equipe acessa planejamento" on public.planejamento
+  for all to authenticated using (true) with check (true);
+
+-- Fotos
+create table if not exists public.fotos (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.fotos add column if not exists origem text;
+alter table public.fotos add column if not exists dados text;
+alter table public.fotos enable row level security;
+drop policy if exists "equipe acessa fotos" on public.fotos;
+create policy "equipe acessa fotos" on public.fotos
   for all to authenticated using (true) with check (true);
 
 -- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────
@@ -447,3 +508,15 @@ insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, vari
 insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000013', 'Gameleira', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
 insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000014', 'Juerana', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
 insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000015', 'Águas Claras', '00000000-0000-4000-8100-000000000004', 25, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
+insert into public.locais (id, nome, tipo, localizacao, endereco, foto_id, ativo, observacao) values ('00000000-0000-4000-8300-000000000001', 'Fazenda São Raimundo', 'fazenda', null, null, null, true, null) on conflict (id) do nothing;
+insert into public.locais (id, nome, tipo, localizacao, endereco, foto_id, ativo, observacao) values ('00000000-0000-4000-8300-000000000002', 'Fazenda Murtinha', 'fazenda', null, null, null, true, null) on conflict (id) do nothing;
+insert into public.locais (id, nome, tipo, localizacao, endereco, foto_id, ativo, observacao) values ('00000000-0000-4000-8300-000000000003', 'Fazenda Triunfo / Juerana', 'fazenda', null, null, null, true, null) on conflict (id) do nothing;
+insert into public.locais (id, nome, tipo, localizacao, endereco, foto_id, ativo, observacao) values ('00000000-0000-4000-8300-000000000004', 'Fazenda Águas Claras', 'fazenda', null, null, null, true, null) on conflict (id) do nothing;
+insert into public.locais (id, nome, tipo, localizacao, endereco, foto_id, ativo, observacao) values ('00000000-0000-4000-8300-000000000005', 'Distribuidora Carvalho Cruz', 'distribuidora', null, null, null, true, null) on conflict (id) do nothing;
+insert into public.locais (id, nome, tipo, localizacao, endereco, foto_id, ativo, observacao) values ('00000000-0000-4000-8300-000000000006', 'Mix Mateus', 'cliente', null, null, null, true, null) on conflict (id) do nothing;
+insert into public.locais (id, nome, tipo, localizacao, endereco, foto_id, ativo, observacao) values ('00000000-0000-4000-8300-000000000007', 'Balança', 'balanca', null, null, null, true, null) on conflict (id) do nothing;
+insert into public.cargas (id, nome, emoji, unidade, foto_id, ativo, observacao) values ('00000000-0000-4000-8400-000000000001', 'Laranja', '🍊', 'caixa', null, true, null) on conflict (id) do nothing;
+insert into public.cargas (id, nome, emoji, unidade, foto_id, ativo, observacao) values ('00000000-0000-4000-8400-000000000002', 'Milho', '🌽', 'saco', null, true, null) on conflict (id) do nothing;
+insert into public.cargas (id, nome, emoji, unidade, foto_id, ativo, observacao) values ('00000000-0000-4000-8400-000000000003', 'Abóbora', '🎃', 'kg', null, true, null) on conflict (id) do nothing;
+insert into public.cargas (id, nome, emoji, unidade, foto_id, ativo, observacao) values ('00000000-0000-4000-8400-000000000004', 'Silagem', '🌾', 'saco', null, true, null) on conflict (id) do nothing;
+insert into public.cargas (id, nome, emoji, unidade, foto_id, ativo, observacao) values ('00000000-0000-4000-8400-000000000005', 'Mercadoria da distribuidora', '📦', 'caixa', null, true, null) on conflict (id) do nothing;

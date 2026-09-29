@@ -11,7 +11,7 @@
  */
 
 import { supabase, supabaseConfigurado } from "./supabase";
-import { COLECOES, MAX_TENTATIVAS, apagarOp, atualizarOp, gravarMeta, gravarTodasColecoes, lerFila, lerMeta, lerTodasColecoes } from "./db";
+import { COLECOES_LEVES, MAX_TENTATIVAS, apagarOp, atualizarOp, gravarMeta, gravarTodasColecoes, lerFila, lerMeta, lerTodasColecoes } from "./db";
 
 const INTERVALO_AUTO_SYNC = 60_000;
 
@@ -109,7 +109,9 @@ export async function puxar() {
   const buscados = {};
   const falhas = [];
 
-  for (const colecao of COLECOES) {
+  // As fotos não descem aqui (seriam megabytes a cada minuto): cada uma é
+  // baixada quando alguém abre (ver lib/fotos.js).
+  for (const colecao of COLECOES_LEVES) {
     const { data, error } = await supabase.from(colecao).select("*");
     if (error) {
       falhas.push(`${colecao}: ${error.message ?? error}`);

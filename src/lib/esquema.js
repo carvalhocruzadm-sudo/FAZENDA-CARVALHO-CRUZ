@@ -11,6 +11,12 @@
  *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
  *   sugestao → texto livre com sugestões (dá para criar uma categoria nova)
  *   ref      → aponta para outra coleção (`colecao`, `filtro` opcional)
+ *   foto     → foto tirada no celular; guarda o id do registro em `fotos`
+ *   local    → coordenadas de GPS ("lat, lng"), com botão "pegar minha localização"
+ *
+ * `pesado: true` numa coleção (as fotos) = não entra na sincronização geral:
+ * cada foto é baixada só quando alguém abre, para não gastar internet.
+ * `celula(reg, dados)` num campo muda o que aparece na lista.
  *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
@@ -61,6 +67,25 @@ export const OPERACOES = [
   "Roçagem", "Colheita", "Ensilagem", "Transporte", "Distribuição de ração",
   "Terraplanagem", "Serviço geral",
 ];
+
+/** Tipos de local das rotas do caminhão, com a figura que o motorista vê. */
+export const TIPOS_LOCAL = [
+  ["fazenda", "Fazenda", "🏡"], ["distribuidora", "Distribuidora", "🏭"], ["cliente", "Cliente / mercado", "🛒"],
+  ["balanca", "Balança", "⚖️"], ["posto", "Posto de combustível", "⛽"], ["outro", "Outro", "📍"],
+];
+export const EMOJI_LOCAL = Object.fromEntries(TIPOS_LOCAL.map(([v, , e]) => [v, e]));
+
+export const UNIDADES_CARGA = ["caixa", "saco", "kg", "tonelada", "unidade", "engradado", "fardo", "cabeça"];
+export const EMOJIS_CARGA = ["🍊", "🌽", "🎃", "🥜", "🌾", "🍅", "🥬", "🥕", "🥔", "🧅", "🍌", "🍉", "🥭", "🍍", "📦", "🐄", "🧂", "🪵", "🧱", "💧"];
+
+/** Como o frete é cobrado. Frete antigo sem a escolha: por tonelada se tiver preço, senão fechado. */
+export const modoCobranca = (r) => r.cobranca || (r.preco_ton ? "tonelada" : "fechado");
+
+/** Nome de um local para a lista: o cadastrado ou, nos fretes antigos, o texto digitado. */
+const nomeLocal = (id, texto) => (reg, dados) => {
+  const l = reg[id] && dados.locais?.find((x) => x.id === reg[id]);
+  return l ? `${EMOJI_LOCAL[l.tipo] ?? "📍"} ${l.nome}` : reg[texto] || "—";
+};
 
 const refTalhao = { tipo: "ref", colecao: "talhoes", rotulo: "Talhão" };
 const refCultura = { tipo: "ref", colecao: "culturas", rotulo: "Cultura" };
@@ -195,6 +220,39 @@ export const ESQUEMA = {
     resumo: (r) => `${r.nome} (${r.unidade})`,
   },
 
+  locais: {
+    titulo: "Locais das rotas", singular: "local", icone: "mapa",
+    descricao: "Os lugares por onde o caminhão passa: fazenda, distribuidora, Mix Mateus, balança, posto… A figura e a foto ajudam o motorista a achar o lugar na tela dele sem precisar ler. Estando no lugar, aperte “Pegar minha localização”.",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true, dica: "Ex.: Mix Mateus Teixeira" },
+      tipo: { tipo: "opcoes", rotulo: "Tipo", padrao: "cliente", opcoes: TIPOS_LOCAL.map(([v, r, e]) => [v, `${e} ${r}`]) },
+      localizacao: { tipo: "local", rotulo: "Localização (GPS)", dica: "Aperte o botão estando no lugar, ou cole as coordenadas / o link do Google Maps" },
+      endereco: { tipo: "texto", rotulo: "Endereço / cidade" },
+      foto_id: { tipo: "foto", rotulo: "Foto do lugar (fachada, portão)" },
+      ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["nome", "tipo", "endereco", "localizacao"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => `${EMOJI_LOCAL[r.tipo] ?? "📍"} ${r.nome}`,
+  },
+
+  cargas: {
+    titulo: "Cargas", singular: "carga", icone: "caixa",
+    descricao: "O que o caminhão leva (laranja, milho, mercadoria da distribuidora…). A figura é o que o motorista vê para escolher.",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
+      emoji: { tipo: "sugestao", rotulo: "Figura", sugestoes: EMOJIS_CARGA, padrao: "📦", dica: "Escolha uma figura da lista" },
+      unidade: { tipo: "sugestao", rotulo: "Conta em", sugestoes: UNIDADES_CARGA, padrao: "caixa", obrigatorio: true },
+      foto_id: { tipo: "foto", rotulo: "Foto da carga (opcional)" },
+      ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["emoji", "nome", "unidade", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => `${r.emoji ?? ""} ${r.nome}`.trim(),
+  },
+
   // ─── Lançamentos ──────────────────────────────────────────────────────────
   operacoes: {
     titulo: "Horímetro / operações", singular: "operação", icone: "relogio", lancamento: true,
@@ -268,11 +326,14 @@ export const ESQUEMA = {
       posto: { tipo: "texto", rotulo: "Posto", mostrarSe: (r) => r.origem === "posto" },
       preco_litro: { tipo: "dinheiro", rotulo: "Preço por litro", casas: 3, mostrarSe: (r) => r.origem === "posto" },
       valor: { tipo: "dinheiro", rotulo: "Valor", somenteLeitura: true, mostrarSe: (r) => r.origem === "posto" },
+      foto_ticket_id: { tipo: "foto", rotulo: "Foto do ticket / cupom" },
+      foto_painel_id: { tipo: "foto", rotulo: "Foto do painel (km / horímetro)" },
+      conferido: { tipo: "booleano", rotulo: "Conferido", padrao: true, dica: "O que o motorista lança chega sem conferir" },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
     aoMudar: culturaDoTalhao,
     calcular: (r) => ({ valor: r.origem === "posto" ? +(num(r.litros) * num(r.preco_litro)).toFixed(2) : null }),
-    colunas: ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "talhao_id", "valor"],
+    colunas: ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "talhao_id", "valor", "conferido"],
   },
 
   insumo_entradas: {
@@ -453,24 +514,48 @@ export const ESQUEMA = {
   },
 
   fretes: {
-    titulo: "Fretes do caminhão", singular: "frete", icone: "caminhao", lancamento: true,
-    descricao: "Fretes próprios: contratante, produto, origem, destino, peso e km rodado.",
+    titulo: "Viagens e fretes", singular: "viagem", icone: "caminhao", lancamento: true,
+    descricao: "Cada viagem do caminhão: de onde para onde, a carga e o valor do frete. O caminhão funciona como empresa à parte: presta serviço para a Carvalho Cruz ou para terceiros. As viagens lançadas pelo motorista chegam aqui sem conferir — preencha o valor do frete e marque Conferido.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       caminhao_id: { tipo: "ref", colecao: "maquinas", rotulo: "Caminhão", filtro: (m) => m.categoria === "caminhao" },
       motorista_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Motorista" },
-      contratante: { tipo: "sugestao", rotulo: "Contratante", sugestoes: ["CC", "FB"], sugestoesDe: ["fretes", "contratante"], obrigatorio: true },
-      produto: { tipo: "sugestao", rotulo: "Produto", sugestoesDe: ["fretes", "produto"] },
-      origem: { tipo: "sugestao", rotulo: "Origem", sugestoesDe: ["fretes", "origem"] },
-      destino: { tipo: "sugestao", rotulo: "Destino", sugestoesDe: ["fretes", "destino"] },
+      origem_id: { tipo: "ref", colecao: "locais", rotulo: "Saiu de", celula: nomeLocal("origem_id", "origem") },
+      destino_id: { tipo: "ref", colecao: "locais", rotulo: "Foi para", celula: nomeLocal("destino_id", "destino") },
+      origem: { tipo: "sugestao", rotulo: "Origem (texto antigo)", sugestoesDe: ["fretes", "origem"], mostrarSe: (r) => !r.origem_id && Boolean(r.origem) },
+      destino: { tipo: "sugestao", rotulo: "Destino (texto antigo)", sugestoesDe: ["fretes", "destino"], mostrarSe: (r) => !r.destino_id && Boolean(r.destino) },
+      carga_id: { tipo: "ref", colecao: "cargas", rotulo: "Carga", celula: (r, d) => {
+        const c = r.carga_id && d.cargas?.find((x) => x.id === r.carga_id);
+        return c ? `${c.emoji ?? ""} ${c.nome}`.trim() : r.produto || "—";
+      } },
+      produto: { tipo: "sugestao", rotulo: "Produto (texto)", sugestoesDe: ["fretes", "produto"], mostrarSe: (r) => !r.carga_id },
+      quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2 },
+      unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: UNIDADES_CARGA },
       peso_kg: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1 },
-      preco_ton: { tipo: "dinheiro", rotulo: "R$ por tonelada" },
-      valor: { tipo: "dinheiro", rotulo: "Valor do frete", somenteLeitura: true },
       km: { tipo: "numero", rotulo: "Km rodado", casas: 1 },
+      para_quem: { tipo: "opcoes", rotulo: "Serviço para", padrao: "casa", opcoes: [["casa", "Carvalho Cruz (fazenda / distribuidora)"], ["terceiro", "Terceiro (cliente de fora)"]] },
+      contratante: { tipo: "sugestao", rotulo: "Contratante / cliente", sugestoes: ["Fazenda", "Distribuidora", "CC", "FB"], sugestoesDe: ["fretes", "contratante"], obrigatorio: (r) => r.para_quem === "terceiro" },
+      cobranca: { tipo: "opcoes", rotulo: "Como cobra o frete", padrao: "fechado", opcoes: [["fechado", "Valor fechado da viagem"], ["tonelada", "Por tonelada"], ["unidade", "Por unidade da carga"]] },
+      preco_ton: { tipo: "dinheiro", rotulo: "R$ por tonelada", mostrarSe: (r) => modoCobranca(r) === "tonelada" },
+      preco_unidade: { tipo: "dinheiro", rotulo: "R$ por unidade (caixa, saco…)", mostrarSe: (r) => modoCobranca(r) === "unidade" },
+      valor: { tipo: "dinheiro", rotulo: "Valor do frete", somenteLeitura: (r) => modoCobranca(r) !== "fechado" },
+      foto_id: { tipo: "foto", rotulo: "Foto da nota / ticket da balança" },
+      conferido: { tipo: "booleano", rotulo: "Conferido", padrao: true, dica: "Viagem lançada pelo motorista chega sem conferir" },
       observacao: { tipo: "texto", rotulo: "Observação" },
     },
-    calcular: (r) => ({ valor: +((num(r.peso_kg) / 1000) * num(r.preco_ton)).toFixed(2) }),
-    colunas: ["data", "caminhao_id", "contratante", "produto", "origem", "destino", "peso_kg", "preco_ton", "valor", "km"],
+    aoMudar: {
+      carga_id: (reg, dados) => {
+        const c = dados.cargas?.find((x) => x.id === reg.carga_id);
+        return c?.unidade ? { unidade: c.unidade } : {};
+      },
+    },
+    calcular: (r) => {
+      const modo = modoCobranca(r);
+      if (modo === "tonelada") return { valor: +((num(r.peso_kg) / 1000) * num(r.preco_ton)).toFixed(2) };
+      if (modo === "unidade") return { valor: +(num(r.quantidade) * num(r.preco_unidade)).toFixed(2) };
+      return {};
+    },
+    colunas: ["data", "caminhao_id", "origem_id", "destino_id", "carga_id", "quantidade", "unidade", "para_quem", "contratante", "valor", "conferido"],
   },
 
   planejamento: {
@@ -495,9 +580,23 @@ export const ESQUEMA = {
     colunas: ["safra", "fazenda_id", "fase", "insumo_id", "dose_ha", "hectares", "quantidade_total", "preco_unitario", "total"],
     ordem: (a, b) => (a.safra || "").localeCompare(b.safra || "") || FASES.indexOf(a.fase) - FASES.indexOf(b.fase),
   },
+
+  // ─── Arquivos ─────────────────────────────────────────────────────────────
+  fotos: {
+    titulo: "Fotos", singular: "foto", pesado: true,
+    descricao: "Fotos tiradas no celular (ticket de abastecimento, painel, nota). Não tem tela própria: aparecem nos lançamentos.",
+    campos: {
+      origem: { tipo: "texto", rotulo: "De onde veio" },
+      dados: { tipo: "textoLongo", rotulo: "Imagem" },
+    },
+    colunas: ["origem"],
+  },
 };
 
 export const COLECOES = Object.keys(ESQUEMA);
+
+/** As coleções que sobem e descem inteiras na sincronização (todas menos as fotos). */
+export const COLECOES_LEVES = COLECOES.filter((c) => !ESQUEMA[c].pesado);
 
 /** Registro novo com os valores padrão do esquema. */
 export function registroNovo(colecao) {

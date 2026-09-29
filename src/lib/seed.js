@@ -50,4 +50,27 @@ export const TALHOES = [
   variedade: null, safra: null, data_plantio: null, previsao_colheita: null, ativo: true, observacao: null,
 }));
 
-export const SEED = { culturas: CULTURAS, fazendas: FAZENDAS, talhoes: TALHOES };
+/** Locais das rotas do caminhão, sem GPS: marque a localização estando em cada um. */
+export const LOCAIS = [
+  ["Fazenda São Raimundo", "fazenda"],
+  ["Fazenda Murtinha", "fazenda"],
+  ["Fazenda Triunfo / Juerana", "fazenda"],
+  ["Fazenda Águas Claras", "fazenda"],
+  ["Distribuidora Carvalho Cruz", "distribuidora"],
+  ["Mix Mateus", "cliente"],
+  ["Balança", "balanca"],
+].map(([nome, tipo], i) => ({
+  id: id("8300", i + 1), nome, tipo, localizacao: null, endereco: null, foto_id: null, ativo: true, observacao: null,
+}));
+
+export const CARGAS = [
+  ["Laranja", "🍊", "caixa"],
+  ["Milho", "🌽", "saco"],
+  ["Abóbora", "🎃", "kg"],
+  ["Silagem", "🌾", "saco"],
+  ["Mercadoria da distribuidora", "📦", "caixa"],
+].map(([nome, emoji, unidade], i) => ({
+  id: id("8400", i + 1), nome, emoji, unidade, foto_id: null, ativo: true, observacao: null,
+}));
+
+export const SEED = { culturas: CULTURAS, fazendas: FAZENDAS, talhoes: TALHOES, locais: LOCAIS, cargas: CARGAS };

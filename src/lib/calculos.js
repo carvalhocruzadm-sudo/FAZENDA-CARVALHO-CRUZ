@@ -237,21 +237,75 @@ export function aReceber(dados) {
   return [...mapa.values()].map((x) => ({ ...x, saldo: x.vendido - x.recebido })).sort((a, b) => b.saldo - a.saldo);
 }
 
-/** Fretes do caminhão: faturamento, diesel e custos por caminhão. */
+/** Frete feito para a própria Carvalho Cruz? (os antigos, sem a escolha, pelo contratante "CC"). */
+export const freteDaCasa = (f) => (f.para_quem ? f.para_quem === "casa" : /^\s*(cc|carvalho)/i.test(f.contratante ?? ""));
+
+/**
+ * Consumo do caminhão pelos abastecimentos com km do painel: o diesel posto
+ * num abastecimento foi o que se gastou desde o anterior (tanque cheio), então
+ * km/L = (km agora − km no abastecimento anterior) ÷ litros deste.
+ * Devolve uma linha por abastecimento (o primeiro não tem com o que comparar).
+ */
+export function consumoCaminhao(dados, caminhaoId, periodo = "tudo") {
+  const todos = dados.abastecimentos
+    .filter((a) => a.maquina_id === caminhaoId)
+    .sort((a, b) => String(a.data).localeCompare(String(b.data)) || n(a.leitura) - n(b.leitura));
+  let anterior = null;
+  let semKm = 0; // litros de abastecimentos sem km no meio do caminho: entram na conta do próximo
+  const linhas = todos.map((a) => {
+    const temKm = a.leitura != null && a.leitura !== "";
+    if (!temKm) {
+      if (anterior != null) semKm += n(a.litros);
+      return { abast: a, km: null, litros: n(a.litros), kmL: null };
+    }
+    const km = anterior != null && n(a.leitura) > anterior ? n(a.leitura) - anterior : null;
+    const litros = n(a.litros) + semKm;
+    semKm = 0;
+    anterior = Math.max(anterior ?? 0, n(a.leitura));
+    return { abast: a, km, litros: n(a.litros), litrosConta: litros, kmL: km && litros ? km / litros : null };
+  });
+  const noPer = new Set(noPeriodo(todos, periodo).map((a) => a.id));
+  const doPeriodo = linhas.filter((l) => noPer.has(l.abast.id)).reverse();
+  const comConta = doPeriodo.filter((l) => l.kmL != null);
+  const km = soma(comConta, (l) => l.km);
+  const litros = soma(comConta, (l) => l.litrosConta);
+  return { linhas: doPeriodo, km, litros, media: litros ? km / litros : null };
+}
+
+/**
+ * O caminhão como empresa à parte: fatura com os fretes (para a Carvalho Cruz
+ * ou para terceiros) e paga diesel, despesas e revisões. O que sobra é o lucro.
+ */
 export function resumoFretes(dados, periodo) {
   const { precoMedio } = diesel(dados);
   const caminhoes = dados.maquinas.filter((m) => m.categoria === "caminhao");
   return caminhoes.map((c) => {
     const fretes = noPeriodo(dados.fretes, periodo).filter((f) => f.caminhao_id === c.id);
     const faturamento = soma(fretes, (f) => f.valor);
+    const daCasa = soma(fretes.filter(freteDaCasa), (f) => f.valor);
     const km = soma(fretes, (f) => f.km);
     const abast = noPeriodo(dados.abastecimentos, periodo).filter((a) => a.maquina_id === c.id);
     const litros = soma(abast, (a) => a.litros);
     const combustivel = soma(abast, (a) => custoAbastecimento(a, precoMedio));
     const outros = soma(noPeriodo(dados.despesas, periodo).filter((d) => d.maquina_id === c.id), (d) => d.valor)
       + soma(noPeriodo(dados.revisoes, periodo).filter((r) => r.maquina_id === c.id), (r) => r.valor);
-    return { caminhao: c, viagens: fretes.length, faturamento, km, litros, combustivel, outros, resultado: faturamento - combustivel - outros, porKm: km ? faturamento / km : null };
+    const consumo = consumoCaminhao(dados, c.id, periodo);
+    const kmRodado = consumo.km || km;
+    return {
+      caminhao: c, viagens: fretes.length, faturamento, daCasa, terceiros: faturamento - daCasa,
+      km: kmRodado, litros, combustivel, outros, resultado: faturamento - combustivel - outros,
+      porKm: kmRodado ? faturamento / kmRodado : null, kmL: consumo.media,
+      semValor: fretes.filter((f) => !n(f.valor)).length,
+    };
   });
+}
+
+/** O que o motorista lançou e ainda falta o escritório conferir. */
+export function aConferir(dados) {
+  return {
+    viagens: dados.fretes.filter((f) => f.conferido === false),
+    abastecimentos: dados.abastecimentos.filter((a) => a.conferido === false),
+  };
 }
 
 /** Planejado × realizado por safra: o planejamento soma dose × ha × preço. */

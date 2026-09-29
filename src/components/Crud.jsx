@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from "react";
 import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
 import { exibir, numero } from "../lib/formato";
+import { BotaoFoto } from "./Foto";
 import Formulario from "./Formulario";
 import { Icone, Modal, SeletorPeriodo } from "./ui";
 
@@ -11,6 +12,9 @@ const SOMAVEIS = new Set([
   "valor", "valor_bruto", "valor_desconto", "total", "litros", "quantidade", "trabalhado",
   "peso_liquido", "peso_kg", "km", "quantidade_total", "area_ha", "pes", "frete", "comissao",
 ]);
+
+/** O que aparece numa célula da lista (o campo pode ter um jeito próprio). */
+const celula = (campo, linha, chave, dados) => campo.celula?.(linha, dados) ?? exibir(campo, linha[chave], dados);
 
 /** Quem aponta para este registro (para não apagar um talhão que tem lançamentos). */
 function referencias(dados, colecao, id) {
@@ -32,7 +36,7 @@ function exportarCSV(nome, colunas, def, linhas, dados) {
     const campo = def.campos[c];
     const v = l[c];
     if (["numero", "dinheiro"].includes(campo.tipo)) return v == null ? "" : String(v).replace(".", ",");
-    return esc(exibir(campo, v, dados));
+    return esc(celula(campo, l, c, dados));
   }).join(";"));
   const blob = new Blob(["﻿" + [cab, ...corpo].join("\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
@@ -65,7 +69,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
     if (def.lancamento) lista = noPeriodo(lista, periodo);
     const termo = busca.trim().toLowerCase();
     if (termo) {
-      lista = lista.filter((l) => colunas.some((c) => String(exibir(def.campos[c], l[c], dados)).toLowerCase().includes(termo)));
+      lista = lista.filter((l) => colunas.some((c) => String(celula(def.campos[c], l, c, dados)).toLowerCase().includes(termo)));
     }
     const ordem = def.ordem ?? ((a, b) => String(b.data ?? "").localeCompare(String(a.data ?? "")) || String(b.atualizado_em ?? "").localeCompare(String(a.atualizado_em ?? "")));
     return [...lista].sort(ordem);
@@ -146,7 +150,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
                     const campo = def.campos[c];
                     return (
                       <td key={c} data-rotulo={campo.rotulo} className={["numero", "dinheiro"].includes(campo.tipo) ? "num" : ""}>
-                        {exibir(campo, l[c], dados)}
+                        {campo.tipo === "foto" ? <BotaoFoto id={l[c]} /> : celula(campo, l, c, dados)}
                       </td>
                     );
                   })}

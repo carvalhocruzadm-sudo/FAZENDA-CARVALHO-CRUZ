@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
+import { BotaoFoto } from "../components/Foto";
 import { Abas, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
-  PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
+  PERIODOS, aConferir, aReceber, consumoCaminhao, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
   noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
 } from "../lib/calculos";
 import { ESQUEMA } from "../lib/esquema";
@@ -264,38 +265,122 @@ export function Vendas(props) {
 function ResumoFretes({ dados }) {
   const [periodo, setPeriodo] = useState("ano");
   const lista = resumoFretes(dados, periodo);
+  const total = (f) => soma(lista, f);
+  const lucro = total((x) => x.resultado);
   return (
-    <div className="cartao">
-      <p className="descricao">Como a planilha FRETES: faturamento dos fretes, diesel (posto ou tanque) e demais custos do caminhão (despesas e revisões lançadas com ele).</p>
+    <>
       <div className="barra"><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
-      <TabelaSimples
-        vazio="Cadastre os caminhões no Inventário de máquinas (categoria Caminhão)."
-        linhas={lista.map((x) => ({ ...x, id: x.caminhao.id }))}
-        colunas={[
-          { rotulo: "Caminhão", valor: (x) => x.caminhao.nome },
-          { rotulo: "Viagens", num: true, valor: (x) => x.viagens },
-          { rotulo: "Km", num: true, valor: (x) => numero(x.km, 0) },
-          { rotulo: "Faturamento", num: true, valor: (x) => brl(x.faturamento) },
-          { rotulo: "R$/km", num: true, valor: (x) => (x.porKm ? brl(x.porKm) : "—") },
-          { rotulo: "Diesel", num: true, valor: (x) => `${brl(x.combustivel)} (${numero(x.litros, 0)} L)` },
-          { rotulo: "Outros custos", num: true, valor: (x) => brl(x.outros) },
-          { rotulo: "Resultado", num: true, valor: (x) => <b className={x.resultado < 0 ? "negativo" : "positivo"}>{brl(x.resultado)}</b> },
-        ]}
-      />
-    </div>
+      <p className="descricao">
+        O caminhão como empresa à parte: fatura com os fretes (para a Carvalho Cruz ou para terceiros) e paga o diesel
+        (posto ou tanque), as despesas e as revisões lançadas com ele. O que sobra é o lucro. O km vem do painel nos
+        abastecimentos (ou dos fretes, se não tiver).
+      </p>
+      <div className="grade">
+        <Stat rotulo="Faturamento" valor={brl(total((x) => x.faturamento))} sub={`Carvalho Cruz ${brl(total((x) => x.daCasa))} · terceiros ${brl(total((x) => x.terceiros))}`} />
+        <Stat rotulo="Despesas" valor={brl(total((x) => x.combustivel + x.outros))} sub={`diesel ${brl(total((x) => x.combustivel))} · outros ${brl(total((x) => x.outros))}`} cor="vermelho" />
+        <Stat rotulo="Lucro" valor={brl(lucro)} cor={lucro < 0 ? "vermelho" : ""} />
+        <Stat rotulo="Viagens" valor={total((x) => x.viagens)} sub={total((x) => x.semValor) ? `${total((x) => x.semValor)} sem valor do frete` : "todas com valor"} cor={total((x) => x.semValor) ? "laranja" : "cinza"} />
+      </div>
+      <div className="cartao">
+        <TabelaSimples
+          vazio="Cadastre os caminhões no Inventário de máquinas (categoria Caminhão)."
+          linhas={lista.map((x) => ({ ...x, id: x.caminhao.id }))}
+          colunas={[
+            { rotulo: "Caminhão", valor: (x) => x.caminhao.nome },
+            { rotulo: "Viagens", num: true, valor: (x) => x.viagens },
+            { rotulo: "Km", num: true, valor: (x) => numero(x.km, 0) },
+            { rotulo: "Fretes Carvalho Cruz", num: true, valor: (x) => brl(x.daCasa) },
+            { rotulo: "Fretes terceiros", num: true, valor: (x) => brl(x.terceiros) },
+            { rotulo: "R$/km", num: true, valor: (x) => (x.porKm ? brl(x.porKm) : "—") },
+            { rotulo: "Diesel", num: true, valor: (x) => `${brl(x.combustivel)} (${numero(x.litros, 0)} L)` },
+            { rotulo: "km/L", num: true, valor: (x) => (x.kmL ? numero(x.kmL, 2) : "—") },
+            { rotulo: "Outros custos", num: true, valor: (x) => brl(x.outros) },
+            { rotulo: "Lucro", num: true, valor: (x) => <b className={x.resultado < 0 ? "negativo" : "positivo"}>{brl(x.resultado)}</b> },
+          ]}
+        />
+      </div>
+    </>
+  );
+}
+
+function ConsumoCaminhao({ dados }) {
+  const caminhoes = dados.maquinas.filter((m) => m.categoria === "caminhao");
+  const [periodo, setPeriodo] = useState("ano");
+  const [escolhido, setEscolhido] = useState(null);
+  const caminhao = caminhoes.find((c) => c.id === escolhido) ?? caminhoes[0];
+  if (!caminhao) return <div className="vazio">Cadastre os caminhões no Inventário de máquinas (categoria Caminhão).</div>;
+  const c = consumoCaminhao(dados, caminhao.id, periodo);
+  return (
+    <>
+      <div className="barra">
+        {caminhoes.length > 1 && (
+          <select className="entrada" style={{ width: "auto" }} value={caminhao.id} onChange={(e) => setEscolhido(e.target.value)} aria-label="Caminhão">
+            {caminhoes.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
+          </select>
+        )}
+        <SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} />
+      </div>
+      <p className="descricao">
+        Litros ÷ km rodado, abastecimento por abastecimento: o diesel posto num abastecimento é o que o caminhão gastou
+        desde o anterior. Para a conta sair, o abastecimento precisa do km do painel e dos litros — confira pela foto do
+        ticket e do painel que o motorista tirou.
+      </p>
+      <div className="grade">
+        <Stat rotulo="Km rodados" valor={`${numero(c.km, 0)} km`} />
+        <Stat rotulo="Litros (com km)" valor={`${numero(c.litros, 0)} L`} cor="cinza" />
+        <Stat rotulo="Média" valor={c.media ? `${numero(c.media, 2)} km/L` : "—"} sub={c.media ? `${numero(1 / c.media, 3)} L por km` : "falta km ou litros"} />
+      </div>
+      <div className="cartao">
+        <TabelaSimples
+          vazio="Nenhum abastecimento deste caminhão no período."
+          linhas={c.linhas.map((l) => ({ ...l, id: l.abast.id }))}
+          colunas={[
+            { rotulo: "Data", valor: (l) => data(l.abast.data) },
+            { rotulo: "Onde", valor: (l) => (l.abast.origem === "tanque" ? "Tanque da fazenda" : l.abast.posto || "Posto") },
+            { rotulo: "Km no painel", num: true, valor: (l) => (l.abast.leitura != null ? numero(l.abast.leitura, 0) : <span className="selo atencao">falta</span>) },
+            { rotulo: "Km rodados", num: true, valor: (l) => (l.km != null ? numero(l.km, 0) : "—") },
+            { rotulo: "Litros", num: true, valor: (l) => (l.litros ? numero(l.litros, 1) : <span className="selo atencao">falta</span>) },
+            { rotulo: "km/L", num: true, valor: (l) => (l.kmL ? <b>{numero(l.kmL, 2)}</b> : "—") },
+            { rotulo: "Ticket", valor: (l) => <BotaoFoto id={l.abast.foto_ticket_id} /> },
+            { rotulo: "Painel", valor: (l) => <BotaoFoto id={l.abast.foto_painel_id} /> },
+            { rotulo: "Conferido", valor: (l) => (l.abast.conferido === false ? <span className="selo atencao">Conferir</span> : <span className="selo ok">Sim</span>) },
+          ]}
+        />
+      </div>
+    </>
   );
 }
 
 export function Fretes(props) {
-  const caminhoes = useMemo(() => new Set(props.dados.maquinas.filter((m) => m.categoria === "caminhao").map((m) => m.id)), [props.dados.maquinas]);
+  const { dados, irPara } = props;
+  const caminhoes = useMemo(() => new Set(dados.maquinas.filter((m) => m.categoria === "caminhao").map((m) => m.id)), [dados.maquinas]);
   const soCaminhao = useMemo(() => (a) => caminhoes.has(a.maquina_id), [caminhoes]);
+  const pendente = aConferir(dados);
+  const nAbast = pendente.abastecimentos.filter(soCaminhao).length;
   return (
-    <Secao props={props} abas={[
-      ["resumo", "Resumo", ResumoFretes],
-      ["fretes", "Fretes"],
-      ["abast", "Abastecimentos", { colecao: "abastecimentos", filtro: soCaminhao, padrao: { origem: "posto" } }],
-      ["custos", "Custos do caminhão", { colecao: "despesas", filtro: (d) => caminhoes.has(d.maquina_id) }],
-    ]} />
+    <>
+      {(pendente.viagens.length > 0 || nAbast > 0) && (
+        <div className="aviso info">
+          O motorista lançou {pendente.viagens.length > 0 && <b>🚚 {pendente.viagens.length} viagem(ns)</b>}
+          {pendente.viagens.length > 0 && nAbast > 0 && " e "}
+          {nAbast > 0 && <b>⛽ {nAbast} abastecimento(s)</b>} que esperam conferência. Abra cada um, coloque o valor do
+          frete (ou os litros e o preço pela foto do ticket) e marque <b>Conferido</b>.
+        </div>
+      )}
+      <div className="barra">
+        <span className="espaco" />
+        <button className="btn" onClick={() => irPara("motorista")}>🚚 Abrir o modo motorista neste aparelho</button>
+      </div>
+      <Secao props={props} abas={[
+        ["resumo", "Resumo e lucro", ResumoFretes],
+        ["fretes", "Viagens / fretes"],
+        ["abast", "Abastecimentos", { colecao: "abastecimentos", filtro: soCaminhao, padrao: { origem: "posto" } }],
+        ["consumo", "Consumo km/L", ConsumoCaminhao],
+        ["custos", "Custos do caminhão", { colecao: "despesas", filtro: (d) => caminhoes.has(d.maquina_id) }],
+        ["locais", "Locais das rotas"],
+        ["cargas", "Cargas"],
+      ]} />
+    </>
   );
 }
 
