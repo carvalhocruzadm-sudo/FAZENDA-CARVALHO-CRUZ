@@ -11,6 +11,12 @@
  *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
  *   sugestao → texto livre com sugestões (dá para criar uma categoria nova)
  *   ref      → aponta para outra coleção (`colecao`, `filtro` opcional)
+ *   foto     → foto tirada no celular; guarda o caminho no Storage (`lado`:
+ *              tamanho máximo em pixels, maior para foto que precisa ser lida)
+ *
+ * `campo` diz o que a conta do Modo Campo (perfil "campo", celular dos
+ * tratoristas) pode fazer na tabela: "le" (só ver) ou "grava" (ver e lançar).
+ * Sem `campo`, essa conta não enxerga a tabela. Vale no banco (RLS).
  *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
@@ -76,7 +82,7 @@ const culturaDoTalhao = {
 export const ESQUEMA = {
   // ─── Cadastros ────────────────────────────────────────────────────────────
   culturas: {
-    titulo: "Culturas", singular: "cultura", icone: "cultura",
+    titulo: "Culturas", singular: "cultura", icone: "cultura", campo: "le",
     descricao: "Milho, laranja, abóbora, confinamento… Cadastre aqui cada cultura nova.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
@@ -91,7 +97,7 @@ export const ESQUEMA = {
   },
 
   fazendas: {
-    titulo: "Fazendas", singular: "fazenda", icone: "casa",
+    titulo: "Fazendas", singular: "fazenda", icone: "casa", campo: "le",
     descricao: "Triunfo/Juerana, São Raimundo, Murtinha, Águas Claras… próprias, arrendadas ou em sociedade.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
@@ -108,10 +114,11 @@ export const ESQUEMA = {
   },
 
   talhoes: {
-    titulo: "Talhões / sítios", singular: "talhão", icone: "mapa",
+    titulo: "Talhões / sítios", singular: "talhão", icone: "mapa", campo: "le",
     descricao: "As áreas de cada fazenda (Gameleira, Galpão, George…) e a cultura que está nelas. No confinamento, cadastre os currais/lotes aqui.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome / número", obrigatorio: true },
+      foto: { tipo: "foto", rotulo: "Foto (aparece no Modo Campo)" },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
       area_ha: { tipo: "numero", rotulo: "Área (ha)", casas: 2 },
       cultura_id: { ...refCultura, rotulo: "Cultura atual" },
@@ -129,10 +136,11 @@ export const ESQUEMA = {
   },
 
   funcionarios: {
-    titulo: "Funcionários", singular: "funcionário", icone: "pessoas",
+    titulo: "Funcionários", singular: "funcionário", icone: "pessoas", campo: "le",
     descricao: "Tratoristas, gerentes, trabalhadores de campo, motoristas, secretária…",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
+      foto: { tipo: "foto", rotulo: "Foto do rosto (o tratorista se acha por ela)" },
       funcao: { tipo: "sugestao", rotulo: "Função", sugestoes: FUNCOES, obrigatorio: true },
       telefone: { tipo: "texto", rotulo: "Telefone" },
       cpf: { tipo: "texto", rotulo: "CPF" },
@@ -148,10 +156,11 @@ export const ESQUEMA = {
   },
 
   maquinas: {
-    titulo: "Máquinas e veículos", singular: "máquina", icone: "trator",
+    titulo: "Máquinas e veículos", singular: "máquina", icone: "trator", campo: "le",
     descricao: "Inventário de tratores, implementos, caminhões e veículos. Tratores e colheitadeiras marcam horímetro; caminhões marcam km.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome / identificação", obrigatorio: true, dica: "Ex.: Trator MF 4292" },
+      foto: { tipo: "foto", rotulo: "Foto (vai na etiqueta QR do PA)" },
       categoria: { tipo: "opcoes", rotulo: "Categoria", padrao: "trator", opcoes: [
         ["trator", "Trator"], ["colheitadeira", "Colheitadeira"], ["pulverizador", "Pulverizador autopropelido"],
         ["implemento", "Implemento"], ["caminhao", "Caminhão"], ["veiculo", "Carro / moto"], ["outro", "Outro"],
@@ -197,7 +206,7 @@ export const ESQUEMA = {
 
   // ─── Lançamentos ──────────────────────────────────────────────────────────
   operacoes: {
-    titulo: "Horímetro / operações", singular: "operação", icone: "relogio", lancamento: true,
+    titulo: "Horímetro / operações", singular: "operação", icone: "relogio", lancamento: true, campo: "grava",
     descricao: "Cada serviço de máquina: horímetro (ou km) no início e no fim, quem operou e em qual talhão.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
@@ -224,7 +233,7 @@ export const ESQUEMA = {
   },
 
   revisoes: {
-    titulo: "Revisões e manutenções", singular: "revisão", icone: "chave", lancamento: true,
+    titulo: "Revisões e manutenções", singular: "revisão", icone: "chave", lancamento: true, campo: "le",
     descricao: "Revisões, trocas de óleo e consertos, com o horímetro/km em que foram feitas.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
@@ -254,8 +263,8 @@ export const ESQUEMA = {
   },
 
   abastecimentos: {
-    titulo: "Abastecimentos", singular: "abastecimento", icone: "combustivel", lancamento: true,
-    descricao: "Saída do tanque da fazenda ou abastecimento em posto.",
+    titulo: "Abastecimentos", singular: "abastecimento", icone: "combustivel", lancamento: true, campo: "grava",
+    descricao: "Saída do tanque da fazenda ou abastecimento em posto. Os lançados pelo QR code do PA vêm com a foto do horímetro e da bomba.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       origem: { tipo: "opcoes", rotulo: "Onde abasteceu", padrao: "tanque", opcoes: [["tanque", "Tanque da fazenda"], ["posto", "Posto"]] },
@@ -268,6 +277,8 @@ export const ESQUEMA = {
       posto: { tipo: "texto", rotulo: "Posto", mostrarSe: (r) => r.origem === "posto" },
       preco_litro: { tipo: "dinheiro", rotulo: "Preço por litro", casas: 3, mostrarSe: (r) => r.origem === "posto" },
       valor: { tipo: "dinheiro", rotulo: "Valor", somenteLeitura: true, mostrarSe: (r) => r.origem === "posto" },
+      foto_leitura: { tipo: "foto", rotulo: "Foto do horímetro / painel", lado: 1280 },
+      foto_bomba: { tipo: "foto", rotulo: "Foto da bomba (litros)", lado: 1280 },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
     aoMudar: culturaDoTalhao,

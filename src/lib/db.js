@@ -6,6 +6,8 @@
  *   uma por coleção do esquema (culturas, talhoes, maquinas, …) → cópia local
  *   fila  → operações pendentes de envio para o Supabase, em ordem
  *   meta  → chaves de controle (última sincronização)
+ *   fotos → as fotos (chave = caminho no Storage): as tiradas aqui esperando
+ *           envio e as já baixadas, para aparecerem sem internet
  */
 
 import { COLECOES } from "./esquema";
@@ -15,9 +17,9 @@ export { COLECOES };
 const DB_NOME = "fazenda-carvalho-cruz";
 // Suba a versão sempre que uma coleção nova entrar no esquema: é no upgrade
 // que a store dela é criada.
-const DB_VERSAO = 1;
+const DB_VERSAO = 2;
 
-const STORES = [...COLECOES, "fila", "meta"];
+const STORES = [...COLECOES, "fila", "meta", "fotos"];
 
 let promessaDB = null;
 
@@ -45,6 +47,9 @@ export function abrirDB() {
       }
       if (!db.objectStoreNames.contains("meta")) {
         db.createObjectStore("meta");
+      }
+      if (!db.objectStoreNames.contains("fotos")) {
+        db.createObjectStore("fotos");
       }
     };
 
@@ -224,5 +229,21 @@ export async function apagarItem(store, id) {
   const db = await abrirDB();
   const { tx, concluida } = transacao(db, [store], "readwrite");
   tx.objectStore(store).delete(id);
+  await concluida;
+}
+
+// ─── Fotos ──────────────────────────────────────────────────────────────────
+
+/** @returns {Promise<{ blob: Blob, pendente: boolean } | undefined>} */
+export async function lerFoto(caminho) {
+  const db = await abrirDB();
+  const { tx } = transacao(db, ["fotos"], "readonly");
+  return pedido(tx.objectStore("fotos").get(caminho));
+}
+
+export async function gravarFoto(caminho, foto) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["fotos"], "readwrite");
+  tx.objectStore("fotos").put(foto, caminho);
   await concluida;
 }

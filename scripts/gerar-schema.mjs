@@ -10,7 +10,7 @@ import { SEED } from "../src/lib/seed.js";
 
 const TIPO_SQL = {
   texto: "text", textoLongo: "text", sugestao: "text", opcoes: "text",
-  numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid",
+  numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid", foto: "text",
 };
 
 const lit = (v) => (v == null ? "null" : typeof v === "number" || typeof v === "boolean" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
@@ -24,6 +24,15 @@ let sql = `-- ══════════════════════
 -- falta, acrescenta colunas novas e não apaga nada.
 -- ════════════════════════════════════════════════════════════════════════
 
+-- Conta do Modo Campo: um usuário com perfil "campo" (o celular dos
+-- tratoristas) só vê os cadastros e só lança abastecimento/horímetro.
+-- Para marcar um usuário como campo (troque o e-mail):
+--   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
+--   where email = 'campo@fazenda.com';
+create or replace function public.eh_campo() returns boolean
+  language sql stable
+  as $$ select coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '') = 'campo' $$;
+
 `;
 
 for (const [tabela, def] of Object.entries(ESQUEMA)) {
@@ -36,8 +45,40 @@ for (const [tabela, def] of Object.entries(ESQUEMA)) {
   sql += `alter table public.${tabela} enable row level security;
 drop policy if exists "equipe acessa ${tabela}" on public.${tabela};
 create policy "equipe acessa ${tabela}" on public.${tabela}
-  for all to authenticated using (true) with check (true);\n\n`;
+  for all to authenticated using (not public.eh_campo()) with check (not public.eh_campo());
+drop policy if exists "campo le ${tabela}" on public.${tabela};
+drop policy if exists "campo lanca ${tabela}" on public.${tabela};
+drop policy if exists "campo corrige ${tabela}" on public.${tabela};\n`;
+  if (def.campo) {
+    sql += `create policy "campo le ${tabela}" on public.${tabela}
+  for select to authenticated using (public.eh_campo());\n`;
+  }
+  if (def.campo === "grava") {
+    sql += `create policy "campo lanca ${tabela}" on public.${tabela}
+  for insert to authenticated with check (public.eh_campo());
+create policy "campo corrige ${tabela}" on public.${tabela}
+  for update to authenticated using (public.eh_campo()) with check (public.eh_campo());\n`;
+  }
+  sql += "\n";
 }
+
+sql += `-- ─── Fotos (Storage) ──────────────────────────────────────────────────────
+-- Bucket privado: só quem tem login vê. O Modo Campo tira e vê fotos, mas não apaga.
+insert into storage.buckets (id, name, public) values ('fotos', 'fotos', false) on conflict (id) do nothing;
+drop policy if exists "equipe ve fotos" on storage.objects;
+create policy "equipe ve fotos" on storage.objects
+  for select to authenticated using (bucket_id = 'fotos');
+drop policy if exists "equipe envia fotos" on storage.objects;
+create policy "equipe envia fotos" on storage.objects
+  for insert to authenticated with check (bucket_id = 'fotos');
+drop policy if exists "equipe troca fotos" on storage.objects;
+create policy "equipe troca fotos" on storage.objects
+  for update to authenticated using (bucket_id = 'fotos') with check (bucket_id = 'fotos');
+drop policy if exists "escritorio apaga fotos" on storage.objects;
+create policy "escritorio apaga fotos" on storage.objects
+  for delete to authenticated using (bucket_id = 'fotos' and not public.eh_campo());
+
+`;
 
 sql += `-- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────\n`;
 for (const [tabela, itens] of Object.entries(SEED)) {

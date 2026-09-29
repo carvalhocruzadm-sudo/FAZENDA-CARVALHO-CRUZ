@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
+import EtiquetasQR from "../components/EtiquetasQR";
 import { Abas, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
@@ -104,6 +105,7 @@ export function Maquinas(props) {
       ["operacoes", "Horímetro / operações"],
       ["revisoes", "Revisões feitas"],
       ["maquinas", "Inventário"],
+      ["qr", "QR codes do PA", EtiquetasQR],
     ]} />
   );
 }

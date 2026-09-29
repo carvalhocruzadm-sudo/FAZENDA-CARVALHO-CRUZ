@@ -1,10 +1,11 @@
-import { Component, useEffect, useState } from "react";
+import { Component, useCallback, useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 import { Icone } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
+import ModoCampo from "./pages/Campo";
 import Login from "./pages/Login";
 import Painel from "./pages/Painel";
 import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
@@ -47,7 +48,39 @@ function AvisoAtualizacao() {
   );
 }
 
-function Sistema({ sair, email }) {
+/** Endereço atual (/campo/…) sem biblioteca de rotas: pushState + voltar do navegador. */
+function useCaminho() {
+  const [caminho, setCaminho] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const aoVoltar = () => setCaminho(window.location.pathname);
+    window.addEventListener("popstate", aoVoltar);
+    return () => window.removeEventListener("popstate", aoVoltar);
+  }, []);
+  const irPara = useCallback((novo) => {
+    if (novo !== window.location.pathname) window.history.pushState(null, "", novo);
+    setCaminho(novo);
+    window.scrollTo(0, 0);
+  }, []);
+  return [caminho, irPara];
+}
+
+/**
+ * O QR code abre /campo/…: as telas simples dos tratoristas. A conta com
+ * perfil "campo" só enxerga essas telas; as outras contas também podem abrir
+ * (para testar) e voltar ao sistema completo.
+ */
+function Rotas({ sair, email, perfilCampo }) {
+  const [caminho, irPara] = useCaminho();
+  if (perfilCampo || caminho.startsWith("/campo")) {
+    return (
+      <ModoCampo caminho={caminho.startsWith("/campo") ? caminho : "/campo"} irPara={irPara} sair={sair}
+        voltarAoSistema={perfilCampo ? null : () => irPara("/")} />
+    );
+  }
+  return <Sistema sair={sair} email={email} abrirCampo={() => irPara("/campo")} />;
+}
+
+function Sistema({ sair, email, abrirCampo }) {
   const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
   const [tela, setTela] = useState(() => {
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
@@ -79,6 +112,7 @@ function Sistema({ sair, email }) {
           ))}
         </nav>
         <div className="rodape">
+          <button className="btn" style={{ marginBottom: 10 }} onClick={abrirCampo}><Icone nome="trator" /> Modo Campo</button>
           {email && <div style={{ marginBottom: 8, wordBreak: "break-all" }}>{email}</div>}
           {sair && <button className="btn" onClick={sair}><Icone nome="sair" /> Sair</button>}
         </div>
@@ -112,10 +146,13 @@ function Portao() {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  if (!supabaseConfigurado) return <Sistema />;
+  if (!supabaseConfigurado) return <Rotas />;
   if (sessao === undefined) return <div className="vazio">Verificando acesso…</div>;
   if (!sessao) return <Login />;
-  return <Sistema email={sessao.user.email} sair={() => supabase.auth.signOut()} />;
+  return (
+    <Rotas email={sessao.user.email} sair={() => supabase.auth.signOut()}
+      perfilCampo={sessao.user.app_metadata?.perfil === "campo"} />
+  );
 }
 
 class ProtecaoErro extends Component {

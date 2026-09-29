@@ -29,7 +29,47 @@ Excel) e **repetir lançamento** (o botão `+` da linha), bom para lançar vári
 O cadastro inicial já vem com as culturas, as fazendas e os sítios da laranja com área e nº de pés
 (tirados da aba CADASTROS da planilha VENDAS_LARANJA).
 
+### 🚜 Modo Campo (tratoristas, pelo QR code)
+
+Telas feitas para quem não lê: uma pergunta por tela, fotos e figuras grandes, teclado de números
+gigante e o botão 🔊 que lê a pergunta em voz alta.
+
+**Abastecimento no PA**: cada trator tem um QR code (menu **Máquinas e horímetro → QR codes do PA**,
+botão **Imprimir**). O tratorista lê o QR com a câmera do celular e responde:
+1. **Quem é você?** (toca na própria foto)
+2. **Qual serviço?** (figuras)
+3. **Qual talhão?** (pode marcar mais de um)
+4. **Horímetro agora** + foto do painel
+5. **Litros de diesel** + foto da bomba
+6. **Está certo?** → Salvar
+
+O sistema pega o último horímetro do trator e calcula as horas trabalhadas e os litros por hora. Com
+mais de um talhão, **as horas e o diesel são divididos pela área (ha)** de cada um. Os lançamentos
+aparecem sozinhos em **Diesel → Abastecimentos** (baixa o tanque) e em **Máquinas → Horímetro /
+operações**. Horímetro menor que o anterior, ou mais de 24 h desde o último, sai marcado com
+"CONFERIR" na observação.
+
+**Fotos**: funcionários, máquinas e talhões ganharam o campo **Foto** no cadastro. Cadastre a foto do
+rosto de cada tratorista e a de cada trator: é por ela que eles se acham na tela.
+
+**Para ligar** (uma vez):
+1. Rode de novo o [`supabase/schema.sql`](supabase/schema.sql) no **SQL Editor** (cria o lugar das fotos
+   e as regras da conta de campo).
+2. Em **Authentication → Users → Add user**, crie um usuário para os celulares dos tratoristas, por
+   exemplo `campo@fazendacarvalhocruz.com`, e rode no SQL Editor (trocando o e-mail):
+   ```sql
+   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
+   where email = 'campo@fazendacarvalhocruz.com';
+   ```
+   Essa conta só abre o Modo Campo: não vê financeiro, vendas nem compras, e não apaga nada.
+3. No celular de cada tratorista, abra o site, entre com essa conta **uma vez** e use **Adicionar à
+   tela inicial**. Depois é só ler os QR codes.
+
+Quem tem o login do escritório também pode abrir o Modo Campo pelo botão **Modo Campo** no menu, para testar.
+
 ### Próximas etapas
+- **Depósito de químicos pelo QR code**: foto dos produtos, ordens de pulverização criadas pelo gerente,
+  separação conferida pelo QR code colado na frente de cada produto, entrada de compra e de sobra.
 - **Emissão de NF-e** (por enquanto a venda guarda só o número da nota).
 - Perfis de acesso (o que cada funcionário pode ver e lançar).
 - Venda de laranja de terceiros, cotação de produtos.
