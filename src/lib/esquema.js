@@ -30,7 +30,7 @@ export const FUNCOES = [
 export const CATEGORIAS_DESPESA = [
   "Alimentação", "Produtos químicos", "Adubos", "Sementes", "Peças", "Serviços",
   "Combustíveis", "Salários", "Taxas", "Benfeitorias", "Investimentos",
-  "Arrendamentos", "Empréstimos", "Retirada / dividendos", "Fretes", "Outros",
+  "Arrendamentos", "Empréstimos", "Retirada / dividendos", "Fretes", "Compra de laranja", "Outros",
 ];
 
 export const FORMAS_PAGAMENTO = ["PIX", "Boleto", "Cartão", "Dinheiro", "Transferência", "Cheque"];
