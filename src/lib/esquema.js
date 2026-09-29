@@ -376,10 +376,10 @@ export const ESQUEMA = {
 
   vendas: {
     titulo: "Vendas da produção", singular: "venda", icone: "venda", lancamento: true,
-    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos.",
+    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos. Os tickets da balança lançados pelo link rápido chegam aqui sem comprador e sem preço: é só abrir e completar.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
-      comprador: { tipo: "sugestao", rotulo: "Comprador", obrigatorio: true, sugestoesDe: ["vendas", "comprador"] },
+      comprador: { tipo: "sugestao", rotulo: "Comprador", sugestoesDe: ["vendas", "comprador"] },
       cultura_id: { ...refCultura, obrigatorio: true },
       safra: { tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"] },
       talhao_id: { ...refTalhao, rotulo: "Talhão / sítio" },
@@ -388,14 +388,15 @@ export const ESQUEMA = {
       tipo_carro: { tipo: "sugestao", rotulo: "Tipo de carro", sugestoes: ["Rodocaçamba", "Graneleiro", "Caçambão", "9 eixos", "Truck", "Toco"] },
       peso_entrada: { tipo: "numero", rotulo: "Peso entrada / tara (kg)", casas: 1 },
       peso_saida: { tipo: "numero", rotulo: "Peso saída / bruto (kg)", casas: 1 },
-      peso_liquido: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1, somenteLeitura: true },
+      peso_liquido: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1, dica: "Sai da entrada e saída; sem elas, digite o peso do ticket" },
       volumes: { tipo: "numero", rotulo: "Nº de sacos / volumes", casas: 1 },
       desconto_kg: { tipo: "numero", rotulo: "Desconto (kg)", casas: 1 },
       unidade: { tipo: "opcoes", rotulo: "Preço por", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 3, dica: "Calculada pelo peso quando o preço é por peso" },
-      preco_unitario: { tipo: "dinheiro", rotulo: "Preço", casas: 4, obrigatorio: true },
+      preco_unitario: { tipo: "dinheiro", rotulo: "Preço", casas: 4 },
       valor_bruto: { tipo: "dinheiro", rotulo: "Valor bruto", somenteLeitura: true },
       valor_desconto: { tipo: "dinheiro", rotulo: "Valor do desconto", somenteLeitura: true },
+      turma: { tipo: "sugestao", rotulo: "Turma de colheita", dica: "Laranja: a turma que colheu", sugestoesDe: ["vendas", "turma"] },
       custo_ton: { tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
       frete_cobrado: { tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
       frete: { tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
@@ -421,7 +422,8 @@ export const ESQUEMA = {
     },
     calcular: (r) => {
       const entrada = num(r.peso_entrada), saida = num(r.peso_saida);
-      const liquido = saida ? Math.abs(saida - entrada) : null;
+      // Sem entrada/saída vale o peso digitado (ticket da balança).
+      const liquido = saida ? Math.abs(saida - entrada) : r.peso_liquido == null || r.peso_liquido === "" ? null : num(r.peso_liquido);
       const kgUn = KG_POR_UNIDADE[r.unidade];
       const quantidade = kgUn && liquido != null ? liquido / kgUn : r.quantidade;
       const bruto = num(quantidade) * num(r.preco_unitario);
@@ -434,8 +436,8 @@ export const ESQUEMA = {
         valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2), valor: +liquidoR.toFixed(2),
       };
     },
-    validar: (r) => (r.quantidade == null ? "Informe os pesos ou a quantidade." : null),
-    colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor"],
+    validar: (r) => (r.quantidade == null && r.peso_liquido == null ? "Informe o peso ou a quantidade." : null),
+    colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "turma", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor"],
   },
 
   recebimentos: {
