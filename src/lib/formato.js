@@ -31,6 +31,7 @@ export function exibir(campo, valor, dados) {
     case "booleano": return valor ? "Sim" : "Não";
     case "opcoes": return campo.opcoes.find(([v]) => v === valor)?.[1] ?? valor;
     case "ref": return nomeRef(dados, campo.colecao, valor);
+    case "arquivo": return "📎 Anexado";
     default: return String(valor);
   }
 }

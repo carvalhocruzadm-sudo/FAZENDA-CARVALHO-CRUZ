@@ -10,7 +10,7 @@ import { SEED } from "../src/lib/seed.js";
 
 const TIPO_SQL = {
   texto: "text", textoLongo: "text", sugestao: "text", opcoes: "text",
-  numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid",
+  numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid", arquivo: "text",
 };
 
 const lit = (v) => (v == null ? "null" : typeof v === "number" || typeof v === "boolean" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
@@ -38,6 +38,15 @@ drop policy if exists "equipe acessa ${tabela}" on public.${tabela};
 create policy "equipe acessa ${tabela}" on public.${tabela}
   for all to authenticated using (true) with check (true);\n\n`;
 }
+
+sql += `-- ─── Comprovantes (fotos e PDFs anexados às despesas) ──────────────────────
+-- Pasta privada no Storage: só quem tem login no app vê e envia.
+insert into storage.buckets (id, name, public) values ('comprovantes', 'comprovantes', false) on conflict (id) do nothing;
+drop policy if exists "equipe acessa comprovantes" on storage.objects;
+create policy "equipe acessa comprovantes" on storage.objects
+  for all to authenticated using (bucket_id = 'comprovantes') with check (bucket_id = 'comprovantes');
+
+`;
 
 sql += `-- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────\n`;
 for (const [tabela, itens] of Object.entries(SEED)) {
