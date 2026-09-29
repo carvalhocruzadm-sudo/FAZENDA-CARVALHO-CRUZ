@@ -11,6 +11,7 @@
  */
 
 import { supabase, supabaseConfigurado } from "./supabase";
+import { enviarFoto } from "./fotos";
 import { COLECOES, MAX_TENTATIVAS, apagarOp, atualizarOp, gravarMeta, gravarTodasColecoes, lerFila, lerMeta, lerTodasColecoes } from "./db";
 
 const INTERVALO_AUTO_SYNC = 60_000;
@@ -54,6 +55,10 @@ export async function atualizarContadores() {
 // ─── Envio ──────────────────────────────────────────────────────────────────
 
 async function executarOp(op) {
+  if (op.acao === "foto") {
+    await enviarFoto(op.payload.id);
+    return;
+  }
   if (op.acao === "delete") {
     const { error } = await supabase.from(op.tabela).delete().eq("id", op.payload.id);
     if (error) throw error;

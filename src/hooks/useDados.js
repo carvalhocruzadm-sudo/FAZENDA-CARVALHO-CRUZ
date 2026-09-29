@@ -23,6 +23,7 @@ async function comFilaPorCima(dados) {
   const fila = await lerFila();
   const d = { ...dados };
   for (const op of fila) {
+    if (op.acao === "foto") continue; // a foto não é um registro de tabela
     const lista = d[op.tabela] ?? [];
     const semEste = lista.filter((x) => x.id !== op.payload.id);
     d[op.tabela] = op.acao === "delete" ? semEste : [...semEste, op.payload];

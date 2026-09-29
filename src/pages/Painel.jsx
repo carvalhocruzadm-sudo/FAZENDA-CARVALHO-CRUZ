@@ -51,6 +51,11 @@ export default function Painel({ dados, irPara }) {
       if (x.negativo) alertas.push({ tipo: "ruim", texto: `${x.insumo.nome}: estoque negativo (${numero(x.saldo)} ${x.insumo.unidade}) — falta lançar entrada`, ir: "quimicos" });
       else if (x.baixo) alertas.push({ tipo: "atencao", texto: `${x.insumo.nome}: estoque baixo (${numero(x.saldo)} ${x.insumo.unidade})`, ir: "quimicos" });
     }
+    const aConferir = dados.insumo_entradas.filter((e) => e.a_conferir).length;
+    if (aConferir) alertas.push({ tipo: "atencao", texto: `${aConferir} entrada(s) de produto lançada(s) no depósito sem preço — falta conferir`, ir: "quimicos" });
+    for (const o of dados.pulverizacoes.filter((x) => x.situacao === "aberta")) {
+      alertas.push({ tipo: "atencao", texto: `Pulverização em ${nomeRef(dados, "talhoes", o.talhao_id)} (${data(o.data)}) esperando separar no depósito`, ir: "quimicos" });
+    }
     if (tanque.litrosEntrada && tanque.saldo < 0) alertas.push({ tipo: "ruim", texto: `Tanque de diesel negativo (${numero(tanque.saldo, 0)} L) — falta lançar compra`, ir: "diesel" });
     for (const d of dados.despesas.filter((x) => !x.pago && x.vencimento)) {
       if (d.vencimento < hojeIso) alertas.push({ tipo: "ruim", texto: `Conta vencida ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
