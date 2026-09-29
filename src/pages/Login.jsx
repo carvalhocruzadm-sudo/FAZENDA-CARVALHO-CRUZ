@@ -20,7 +20,7 @@ export default function Login() {
   return (
     <div className="login">
       <form className="cartao" onSubmit={entrar}>
-        <img src="/logo-carvalho-cruz.png" alt="Carvalho Cruz" />
+        <img src="/logo-fazenda.png" alt="Fazenda Carvalho Cruz" />
         <h2 style={{ textAlign: "center", marginBottom: 18 }}>Fazenda Carvalho Cruz</h2>
         {erro && <div className="aviso">{erro}</div>}
         <div style={{ display: "grid", gap: 12 }}>

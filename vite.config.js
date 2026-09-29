@@ -9,7 +9,7 @@ export default defineConfig({
       // "prompt": quem está lançando um abastecimento decide a hora de atualizar.
       registerType: "prompt",
       injectRegister: null,
-      includeAssets: ["favicon.svg", "apple-touch-icon.png", "logo-simbolo.png", "logo-carvalho-cruz.png"],
+      includeAssets: ["favicon.svg", "apple-touch-icon.png", "logo-simbolo.png", "logo-carvalho-cruz.png", "logo-fazenda.png"],
       manifest: {
         id: "/",
         name: "Fazenda Carvalho Cruz — Gestão",
