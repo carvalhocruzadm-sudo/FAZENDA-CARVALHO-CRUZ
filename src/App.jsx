@@ -1,9 +1,11 @@
 import { Component, useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
+import LancarComprovante from "./components/LancarComprovante";
 import { Icone } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
+import { lerCompartilhado } from "./lib/arquivos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Login from "./pages/Login";
 import Painel from "./pages/Painel";
@@ -53,6 +55,16 @@ function Sistema({ sair, email }) {
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
   });
   const [menuAberto, setMenuAberto] = useState(false);
+  const [compartilhado, setCompartilhado] = useState(null);
+
+  // Veio do "Compartilhar" do celular (comprovante do banco): abre o lançamento.
+  useEffect(() => {
+    if (!new URLSearchParams(location.search).has("compartilhado")) return;
+    history.replaceState(null, "", "/");
+    lerCompartilhado()
+      .then((c) => setCompartilhado(c ?? { arquivo: null, texto: "" }))
+      .catch(() => setCompartilhado({ arquivo: null, texto: "" }));
+  }, []);
 
   const irPara = (id) => {
     setTela(id);
@@ -97,6 +109,11 @@ function Sistema({ sair, email }) {
           )}
         </div>
       </main>
+      {pronto && compartilhado && (
+        <LancarComprovante compartilhado={compartilhado} dados={dados} salvar={salvar}
+          aoFechar={() => setCompartilhado(null)}
+          aoSalvar={() => { setCompartilhado(null); irPara("financeiro"); }} />
+      )}
     </div>
   );
 }

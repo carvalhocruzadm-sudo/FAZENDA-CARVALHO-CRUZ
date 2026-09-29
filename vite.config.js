@@ -9,7 +9,7 @@ export default defineConfig({
       // "prompt": quem está lançando um abastecimento decide a hora de atualizar.
       registerType: "prompt",
       injectRegister: null,
-      includeAssets: ["fazenda-favicon.svg", "fazenda-apple-touch.png", "logo-simbolo.png", "logo-carvalho-cruz.png", "logo-fazenda.png"],
+      includeAssets: ["compartilhar-sw.js", "fazenda-favicon.svg", "fazenda-apple-touch.png", "logo-simbolo.png", "logo-carvalho-cruz.png", "logo-fazenda.png"],
       manifest: {
         id: "/",
         name: "Fazenda Carvalho Cruz — Gestão",
@@ -26,8 +26,22 @@ export default defineConfig({
           { src: "fazenda-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
           { src: "fazenda-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
+        // Faz o app aparecer no "Compartilhar" do Android: o comprovante que o
+        // banco gera chega em /compartilhar (tratado em public/compartilhar-sw.js).
+        share_target: {
+          action: "/compartilhar",
+          method: "POST",
+          enctype: "multipart/form-data",
+          params: {
+            title: "titulo",
+            text: "texto",
+            url: "link",
+            files: [{ name: "comprovante", accept: ["application/pdf", "image/*", ".pdf", ".jpg", ".jpeg", ".png"] }],
+          },
+        },
       },
       workbox: {
+        importScripts: ["compartilhar-sw.js"],
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],

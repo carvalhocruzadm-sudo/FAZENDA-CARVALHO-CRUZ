@@ -6,6 +6,8 @@
  *   uma por coleção do esquema (culturas, talhoes, maquinas, …) → cópia local
  *   fila  → operações pendentes de envio para o Supabase, em ordem
  *   meta  → chaves de controle (última sincronização)
+ *   arquivos → comprovantes salvos no aparelho esperando subir para a nuvem
+ *              (chave = caminho do arquivo; ver lib/arquivos.js)
  */
 
 import { COLECOES } from "./esquema";
@@ -15,9 +17,9 @@ export { COLECOES };
 const DB_NOME = "fazenda-carvalho-cruz";
 // Suba a versão sempre que uma coleção nova entrar no esquema: é no upgrade
 // que a store dela é criada.
-const DB_VERSAO = 1;
+const DB_VERSAO = 2;
 
-const STORES = [...COLECOES, "fila", "meta"];
+const STORES = [...COLECOES, "fila", "meta", "arquivos"];
 
 let promessaDB = null;
 
@@ -45,6 +47,9 @@ export function abrirDB() {
       }
       if (!db.objectStoreNames.contains("meta")) {
         db.createObjectStore("meta");
+      }
+      if (!db.objectStoreNames.contains("arquivos")) {
+        db.createObjectStore("arquivos");
       }
     };
 
@@ -224,5 +229,28 @@ export async function apagarItem(store, id) {
   const db = await abrirDB();
   const { tx, concluida } = transacao(db, [store], "readwrite");
   tx.objectStore(store).delete(id);
+  await concluida;
+}
+
+// ─── Arquivos (comprovantes) ────────────────────────────────────────────────
+
+/** @param {{ arquivo: Blob, tipo: string }} valor */
+export async function gravarArquivo(caminho, valor) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["arquivos"], "readwrite");
+  tx.objectStore("arquivos").put(valor, caminho);
+  await concluida;
+}
+
+export async function lerArquivo(caminho) {
+  const db = await abrirDB();
+  const { tx } = transacao(db, ["arquivos"], "readonly");
+  return pedido(tx.objectStore("arquivos").get(caminho));
+}
+
+export async function apagarArquivo(caminho) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["arquivos"], "readwrite");
+  tx.objectStore("arquivos").delete(caminho);
   await concluida;
 }

@@ -274,6 +274,7 @@ alter table public.despesas add column if not exists litros numeric;
 alter table public.despesas add column if not exists vencimento date;
 alter table public.despesas add column if not exists pago boolean;
 alter table public.despesas add column if not exists nota text;
+alter table public.despesas add column if not exists comprovante text;
 create index if not exists despesas_data_idx on public.despesas (data);
 alter table public.despesas enable row level security;
 drop policy if exists "equipe acessa despesas" on public.despesas;
@@ -419,6 +420,13 @@ alter table public.planejamento enable row level security;
 drop policy if exists "equipe acessa planejamento" on public.planejamento;
 create policy "equipe acessa planejamento" on public.planejamento
   for all to authenticated using (true) with check (true);
+
+-- ─── Comprovantes (fotos e PDFs anexados às despesas) ──────────────────────
+-- Pasta privada no Storage: só quem tem login no app vê e envia.
+insert into storage.buckets (id, name, public) values ('comprovantes', 'comprovantes', false) on conflict (id) do nothing;
+drop policy if exists "equipe acessa comprovantes" on storage.objects;
+create policy "equipe acessa comprovantes" on storage.objects
+  for all to authenticated using (bucket_id = 'comprovantes') with check (bucket_id = 'comprovantes');
 
 -- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────
 insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000001', 'Milho', 'agricola', 'sc60', true, null) on conflict (id) do nothing;
