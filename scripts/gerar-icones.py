@@ -3,8 +3,11 @@ Gera os ícones do app da Fazenda a partir do símbolo da Carvalho Cruz, com a
 faixa verde "FAZENDA" embaixo — para não confundir com o app da Distribuidora.
 
   entrada: brand/logo-simbolo.png, public/logo-carvalho-cruz.png
-  saída:   public/pwa-192x192.png, pwa-512x512.png, pwa-maskable-512x512.png,
-           apple-touch-icon.png, favicon.svg, logo-fazenda.png
+  saída:   public/fazenda-192.png, fazenda-512.png, fazenda-maskable-512.png,
+           fazenda-apple-touch.png, fazenda-favicon.svg, logo-fazenda.png
+
+Os nomes são diferentes dos da Distribuidora (pwa-*.png) de propósito: quem
+instalou o app guarda o ícone pelo endereço, e só percebe a troca se o nome mudar.
 
 Rode com: python3 scripts/gerar-icones.py   (precisa do Pillow)
 """
@@ -57,14 +60,14 @@ def salvar(im, nome, lado=None):
 
 
 grande = icone(512)
-salvar(grande, "pwa-512x512.png")
-salvar(grande, "pwa-192x192.png", 192)
-salvar(icone(512, escala=0.78), "pwa-maskable-512x512.png")
-salvar(grande.convert("RGB"), "apple-touch-icon.png", 180)
+salvar(grande, "fazenda-512.png")
+salvar(grande, "fazenda-192.png", 192)
+salvar(icone(512, escala=0.78), "fazenda-maskable-512.png")
+salvar(grande.convert("RGB"), "fazenda-apple-touch.png", 180)
 
 buf = io.BytesIO()
 grande.resize((128, 128), Image.LANCZOS).save(buf, format="PNG", optimize=True)
-(PUBLIC / "favicon.svg").write_text(
+(PUBLIC / "fazenda-favicon.svg").write_text(
     '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 128 128" role="img" aria-label="Fazenda Carvalho Cruz">\n'
     f'  <image width="128" height="128" href="data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"/>\n</svg>\n'
 )
