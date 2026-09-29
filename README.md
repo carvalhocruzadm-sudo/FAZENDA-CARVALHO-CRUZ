@@ -1,0 +1,77 @@
+# 🌾 Fazenda Carvalho Cruz — Sistema de Gestão
+
+Sistema de gestão da **Fazenda Carvalho Cruz**, uma fazenda de várias culturas (milho, laranja, abóbora,
+amendoim, silagem, milho verde, confinamento) espalhadas por várias fazendas e talhões.
+
+É um app **React + Vite** que se instala no celular como **PWA**. Ele **funciona sem internet**
+(os dados ficam no aparelho, em IndexedDB, e sobem para a nuvem quando o sinal volta) e guarda tudo no
+**Supabase**. É o mesmo jeito de funcionar do sistema da Distribuidora, mas é um sistema separado, com
+banco próprio.
+
+## ✅ O que já tem
+
+| Menu | O que faz |
+|---|---|
+| **Painel** | Vendas, entrou/saiu do caixa, resultado, a receber, diesel no tanque e avisos: revisão vencendo, estoque baixo ou negativo, contas vencendo. |
+| **Lavoura e talhões** | Fazendas, talhões/sítios (área, cultura, nº de pés), culturas (dá para **adicionar culturas novas**), colheitas e **planejamento da safra** por fase (dessecação, plantio, coberturas, pulverizações), com dose/ha × hectares × preço, como na aba PLANEJAMENTO. |
+| **Vendas** | Uma linha por **carga**, como nas planilhas de milho, laranja e silagem: tara, peso bruto e líquido, placa, sítio, tipo (BOA/SUKITA/CASQUINOL), desconto em kg, preço por t, saca, arroba ou saco, custo/ton, frete, comissão e juros. **Recebimentos** separados e o **saldo a receber de cada comprador**. |
+| **Financeiro** | Despesas nas categorias da planilha FINANCEIRO (Alimentação, Produtos químicos, Adubos, Peças, Serviços, Combustíveis, Salários, Taxas, Benfeitorias, Investimentos, Arrendamentos, Empréstimos, Retiradas…), com forma de pagamento, favorecido e **centro de custo** (geral, cultura ou talhão). Outras entradas (aditivo dos sócios, empréstimos). **Custo por cultura e por talhão** (R$/ha). |
+| **Máquinas e horímetro** | Inventário de tratores, implementos, caminhões e veículos. Lançamento de **horímetro por operação** (máquina, operador, talhão, horas). Revisões feitas e **aviso de revisão** pelo intervalo em horas ou km. Consumo em L/h ou km/L. |
+| **Diesel** | O **tanque da fazenda**: compras (entrada) e abastecimentos (saída), com saldo em litros e preço médio. Abastecimentos em **posto** também. |
+| **Químicos e insumos** | Produtos, entradas (compras) e aplicações por talhão. **Estoque** = entradas − aplicações, com custo médio, estoque mínimo e valor em estoque. |
+| **Caminhões e fretes** | Fretes próprios (contratante, produto, origem, destino, peso, R$/ton, km), abastecimentos e custos do caminhão; resultado e **R$/km**, como na planilha FRETES. |
+| **Funcionários** | Gerentes, tratoristas, trabalhadores de campo, motoristas, secretária… |
+| **Sincronização** | O que ainda falta enviar para a nuvem, erros e "recarregar tudo da nuvem". |
+
+Toda lista tem busca, filtro de período, total no rodapé, botão **Planilha** (baixa CSV que abre no
+Excel) e **repetir lançamento** (o botão `+` da linha), bom para lançar várias cargas parecidas.
+
+O cadastro inicial já vem com as culturas, as fazendas e os sítios da laranja com área e nº de pés
+(tirados da aba CADASTROS da planilha VENDAS_LARANJA).
+
+### Próximas etapas
+- **Emissão de NF-e** (por enquanto a venda guarda só o número da nota).
+- Importar o histórico das planilhas (2025/2026).
+- Perfis de acesso (o que cada funcionário pode ver e lançar).
+- Venda de laranja de terceiros, cotação de produtos.
+
+## 🚀 Como rodar
+
+```bash
+npm install
+npm run dev        # abre em http://localhost:5173
+npm run build      # gera a versão de produção em dist/
+npm run lint
+```
+
+Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas guarda tudo só no navegador.
+
+## 🗄️ Ligar ao Supabase (banco na nuvem)
+
+1. Crie um projeto novo em [supabase.com](https://supabase.com) — **um projeto só da fazenda**, separado do
+   da Distribuidora.
+2. No projeto, abra **SQL Editor**, cole todo o arquivo [`supabase/schema.sql`](supabase/schema.sql) e clique
+   em **Run**. Ele cria as tabelas, as regras de acesso e o cadastro inicial. Pode rodar de novo sempre que o
+   sistema ganhar campos novos: ele só acrescenta, nunca apaga.
+3. Em **Authentication → Users → Add user**, crie o login (e-mail e senha) de cada pessoa que vai usar.
+4. Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
+   (**Project Settings → Data API / API Keys**).
+
+## ☁️ Publicar no Vercel
+
+1. Em [vercel.com](https://vercel.com), **Add New → Project** e escolha este repositório.
+2. Em **Environment Variables**, cadastre `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
+3. **Deploy**. O `vercel.json` já está pronto.
+
+No celular, abra o endereço do site e use **Adicionar à tela inicial** para instalar como app.
+
+## 🛠️ Para quem for mexer no código
+
+- **Tudo nasce do esquema**: [`src/lib/esquema.js`](src/lib/esquema.js) descreve cada tabela: campos,
+  rótulos, contas automáticas e o que se preenche sozinho. A tela de cadastro, o formulário e o banco saem daí.
+- Mudou o esquema? Rode `npm run schema` para regerar `supabase/schema.sql` e rode o SQL no Supabase.
+  Coleção nova também exige subir `DB_VERSAO` em [`src/lib/db.js`](src/lib/db.js).
+- As contas (estoque, diesel, custos, a receber, revisões) ficam em
+  [`src/lib/calculos.js`](src/lib/calculos.js) e são sempre refeitas a partir dos lançamentos.
+- Offline: [`src/lib/db.js`](src/lib/db.js) (IndexedDB + fila) e [`src/lib/sync.js`](src/lib/sync.js)
+  (envia a fila em ordem e depois puxa tudo da nuvem).
