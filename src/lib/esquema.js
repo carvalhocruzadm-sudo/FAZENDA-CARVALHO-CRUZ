@@ -184,6 +184,7 @@ export const ESQUEMA = {
     descricao: "Defensivos, adubos, sementes, ração… O estoque é a conta: entradas − aplicações.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome comercial", obrigatorio: true },
+      fabricante: { tipo: "texto", rotulo: "Fabricante" },
       tipo: { tipo: "opcoes", rotulo: "Tipo", opcoes: TIPOS_INSUMO, padrao: "herbicida" },
       principio_ativo: { tipo: "texto", rotulo: "Princípio ativo" },
       unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: ["L", "kg", "saco", "t", "unidade", "dose"], padrao: "L", obrigatorio: true },
@@ -192,7 +193,7 @@ export const ESQUEMA = {
       fotos_rotulo: { tipo: "fotos", rotulo: "Fotos do rótulo", dica: "Tire foto da frente, do verso e da bula, se tiver." },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "tipo", "principio_ativo", "unidade", "estoque_minimo"],
+    colunas: ["nome", "fabricante", "tipo", "principio_ativo", "unidade", "estoque_minimo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => `${r.nome} (${r.unidade})`,
   },

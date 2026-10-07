@@ -161,7 +161,7 @@ function EstoqueQuimicos({ dados }) {
     setExportando(true);
     try {
       const linhas = [...lista].sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({
-        produto: x.insumo.nome, tipo: tipos[x.insumo.tipo] ?? "", principio: x.insumo.principio_ativo ?? "",
+        produto: x.insumo.nome, fabricante: x.insumo.fabricante ?? "", tipo: tipos[x.insumo.tipo] ?? "", principio: x.insumo.principio_ativo ?? "",
         unidade: x.insumo.unidade, entrou: x.entrada, aplicado: x.saida, saldo: x.saldo,
         minimo: x.insumo.estoque_minimo ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
         custo: Number(x.custoMedio.toFixed(2)), valor: Number(x.valorEstoque.toFixed(2)),
@@ -186,6 +186,7 @@ function EstoqueQuimicos({ dados }) {
         linhas={lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({ ...x, id: x.insumo.id }))}
         colunas={[
           { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "Tipo", valor: (x) => tipos[x.insumo.tipo] ?? "—" },
           { rotulo: "Entrou", num: true, valor: (x) => numero(x.entrada) },
           { rotulo: "Aplicado", num: true, valor: (x) => numero(x.saida) },
@@ -194,7 +195,7 @@ function EstoqueQuimicos({ dados }) {
           { rotulo: "Custo médio", num: true, valor: (x) => (x.custoMedio ? `${brl(x.custoMedio)}/${x.insumo.unidade}` : "—") },
           { rotulo: "Valor em estoque", num: true, valor: (x) => brl(x.valorEstoque) },
         ]}
-        rodape={["Total", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
+        rodape={["Total", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
       />
     </div>
   );

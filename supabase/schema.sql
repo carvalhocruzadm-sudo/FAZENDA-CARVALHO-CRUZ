@@ -113,6 +113,7 @@ create table if not exists public.insumos (
   atualizado_em timestamptz
 );
 alter table public.insumos add column if not exists nome text;
+alter table public.insumos add column if not exists fabricante text;
 alter table public.insumos add column if not exists tipo text;
 alter table public.insumos add column if not exists principio_ativo text;
 alter table public.insumos add column if not exists unidade text;
