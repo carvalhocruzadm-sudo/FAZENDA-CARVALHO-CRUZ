@@ -58,7 +58,14 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
     if (def.lancamento) lista = noPeriodo(lista, periodo);
     const termo = busca.trim().toLowerCase();
     if (termo) {
-      lista = lista.filter((l) => colunas.some((c) => String(exibir(def.campos[c], l[c], dados)).toLowerCase().includes(termo)));
+      // Linhas que apontam para um produto também são achadas pelo fabricante e pelo princípio ativo dele.
+      const insumos = new Map((dados.insumos ?? []).map((i) => [i.id, i]));
+      const extra = (l) => colunas
+        .filter((c) => def.campos[c].tipo === "ref" && def.campos[c].colecao === "insumos")
+        .map((c) => insumos.get(l[c])).filter(Boolean)
+        .map((i) => `${i.fabricante ?? ""} ${i.principio_ativo ?? ""}`).join(" ");
+      lista = lista.filter((l) => extra(l).toLowerCase().includes(termo)
+        || colunas.some((c) => String(exibir(def.campos[c], l[c], dados)).toLowerCase().includes(termo)));
     }
     const ordem = def.ordem ?? ((a, b) => String(b.data ?? "").localeCompare(String(a.data ?? "")) || String(b.atualizado_em ?? "").localeCompare(String(a.atualizado_em ?? "")));
     return [...lista].sort(ordem);
