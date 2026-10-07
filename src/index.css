@@ -492,3 +492,9 @@ span.figura.mini, .mini .figura { font-size: 30px; }
 .linha-talhao .com-unidade { margin-top: 0; }
 .item-link { padding: 14px 0; border-bottom: 1px solid var(--linha); }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* Filtros de caixinha nas listas (fazenda, cultura…) */
+.entrada.filtro { width: auto; max-width: 220px; }
+.entrada.filtro.ativo { border-color: var(--verde-claro); background: var(--verde-pale); }
+td.acoes { white-space: nowrap; text-align: right; }
+td.acoes .btn + .btn { margin-left: 4px; }
