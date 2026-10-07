@@ -175,7 +175,7 @@ function EstoqueQuimicos({ dados }) {
   return (
     <div className="cartao">
       <div className="barra">
-        <p className="descricao" style={{ margin: 0 }}>Saldo = entradas − aplicações. O custo médio vem das entradas.</p>
+        <p className="descricao" style={{ margin: 0 }}>Saldo = quantidade inicial + entradas − aplicações. O custo médio vem das entradas.</p>
         <span className="espaco" />
         <button className="btn" onClick={exportar} disabled={!lista.length || exportando} title="Baixar planilha do estoque para o agrônomo">
           <Icone nome="exportar" /> {exportando ? "Gerando…" : "Planilha para o agrônomo"}
@@ -189,7 +189,7 @@ function EstoqueQuimicos({ dados }) {
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "Tipo", valor: (x) => tipos[x.insumo.tipo] ?? "—" },
           { rotulo: "Entrou", num: true, valor: (x) => numero(x.entrada) },
-          { rotulo: "Balanço", num: true, valor: (x) => (x.ajuste ? numero(x.ajuste) : "—") },
+          { rotulo: "Inicial / balanço", num: true, valor: (x) => (x.ajuste ? numero(x.ajuste) : "—") },
           { rotulo: "Aplicado", num: true, valor: (x) => numero(x.saida) },
           { rotulo: "Saldo", num: true, valor: (x) => <b className={x.saldo < 0 ? "negativo" : ""}>{numero(x.saldo)} {x.insumo.unidade}</b> },
           { rotulo: "Situação", valor: (x) => (x.negativo ? <span className="selo ruim">Negativo</span> : x.baixo ? <span className="selo atencao">Baixo</span> : <span className="selo ok">OK</span>) },
@@ -249,7 +249,7 @@ function BalancoEstoque({ dados, salvar }) {
     <div className="cartao">
       <p className="descricao">
         Digite em “Contagem” quanto você tem hoje de cada produto. Deixe em branco o que não quiser mexer.
-        O sistema grava só a diferença — isso não conta como compra nem como despesa.
+        Use esta aba para conferir o estoque depois (a quantidade inicial já se informa ao cadastrar o produto). O sistema grava só a diferença — isso não conta como compra nem como despesa.
         As próximas compras entram pela aba “Entradas / compras”.
       </p>
       <div className="barra">

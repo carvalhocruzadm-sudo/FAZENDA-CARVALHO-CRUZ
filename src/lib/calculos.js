@@ -109,6 +109,15 @@ export function estoqueInsumos(dados) {
     const x = mapa.get(e.insumo_id);
     if (x) { x.entrada += n(e.quantidade); x.valorEntrada += n(e.valor); }
   }
+  // Quantidade que já existia quando o produto foi cadastrado (não é compra).
+  for (const x of mapa.values()) {
+    const q = n(x.insumo.estoque_inicial);
+    x.ajuste += q;
+    if (q > 0 && n(x.insumo.custo_inicial) > 0) {
+      x.qtdComCusto += q;
+      x.valorAjuste += q * n(x.insumo.custo_inicial);
+    }
+  }
   // Balanço: ajusta o saldo, mas não é compra (não entra nas despesas).
   for (const a of dados.insumo_ajustes ?? []) {
     const x = mapa.get(a.insumo_id);
