@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
-import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
+import useEscolhaTalhoes from "../hooks/useEscolhaTalhoes";
+import { ESQUEMA, hoje, registroNovo } from "../lib/esquema";
 import { baixarCSV, exibir, numero } from "../lib/formato";
 import Formulario from "./Formulario";
 import { Icone, Modal, SeletorPeriodo } from "./ui";
@@ -94,17 +95,19 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
 
   const temFiltro = Object.values(escolhas).some(Boolean);
 
-  const abrir = useCallback((reg) => { setErro(null); setRascunho(reg); }, []);
+  const escolha = useEscolhaTalhoes(colecao, dados);
+  const { iniciar } = escolha;
+  const abrir = useCallback((reg) => { setErro(null); setRascunho(reg); iniciar(reg); }, [iniciar]);
   const novo = () => abrir({ ...registroNovo(colecao), ...(padrao ?? {}) });
   const repetir = (reg) => abrir({ ...reg, id: undefined, data: hoje() });
   const fechar = useCallback(() => setRascunho(null), []);
 
   const gravar = async () => {
-    const { reg, erro: e } = prepararRegistro(colecao, rascunho, dados);
+    const { regs, erro: e } = escolha.montar(rascunho);
     if (e) { setErro(e); return; }
     setSalvando(true);
     try {
-      await salvar(colecao, reg);
+      for (const reg of regs) await salvar(colecao, reg);
       setRascunho(null);
     } catch (err) {
       setErro(String(err?.message ?? err));
@@ -222,7 +225,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
           }
         >
           {erro && <div className="aviso">{erro}</div>}
-          <Formulario colecao={colecao} reg={rascunho} setReg={setRascunho} dados={dados} contexto={contexto} />
+          <Formulario colecao={colecao} reg={rascunho} setReg={setRascunho} dados={dados} contexto={contexto} escolha={escolha} />
         </Modal>
       )}
     </div>

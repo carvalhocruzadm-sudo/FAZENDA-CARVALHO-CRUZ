@@ -3,7 +3,9 @@ import { useCallback, useMemo, useState } from "react";
 import { emEmbalagens, itensDaOrdem } from "../lib/deposito";
 import { ESQUEMA, prepararRegistro, registroNovo } from "../lib/esquema";
 import { data as dataBR, nomeRef, numero } from "../lib/formato";
+import { SEM_CULTURA, chaveCultura, fazendaDoTalhao, nomesTalhoesDaOrdem, talhoesDaOrdem } from "../lib/talhoes";
 import { FotoProduto } from "./CampoUI";
+import EscolhaTalhoes from "./EscolhaTalhoes";
 import Formulario from "./Formulario";
 import { Icone, Modal } from "./ui";
 
@@ -11,15 +13,18 @@ const n = (v) => Number(v) || 0;
 const SELO = { aberta: ["atencao", "Esperando separar"], separada: ["ok", "Separada"], concluida: ["neutro", "Concluída"], cancelada: ["ruim", "Cancelada"] };
 
 /**
- * Ordens de pulverização (escritório): o gerente escolhe talhão, trator e os
- * produtos com a dose por ha. O total de cada produto é dose × área. O
- * tratorista vê a ordem no depósito (Modo Campo → Tirar do depósito) e
- * separa produto por produto, conferindo pela foto.
+ * Ordens de pulverização (escritório): o gerente escolhe a cultura, marca as
+ * fazendas e os talhões (marcar a fazenda marca todos os talhões dela), o
+ * trator e os produtos com a dose por ha. O total de cada produto é dose ×
+ * soma das áreas. O tratorista vê a ordem no depósito (Modo Campo → Tirar do
+ * depósito) e separa produto por produto, conferindo pela foto.
  */
 export default function OrdensPulverizacao({ dados, salvar, remover }) {
   const [filtro, setFiltro] = useState("ativas");
   const [ordem, setOrdem] = useState(null); // rascunho do cabeçalho
   const [itens, setItens] = useState([]); // rascunho dos produtos
+  const [cultura, setCultura] = useState(""); // cultura escolhida (ou SEM_CULTURA)
+  const [areas, setAreas] = useState({}); // talhão marcado → área a pulverizar nele (ha)
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -30,6 +35,9 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
   const abrir = (o) => {
     setErro(null);
     setOrdem(o ? { ...o } : registroNovo("pulverizacoes"));
+    const doTalhao = o && talhoesDaOrdem(dados, o);
+    setCultura(o ? (o.cultura_id || (doTalhao.length ? chaveCultura(doTalhao[0].talhao) : "")) : "");
+    setAreas(o ? Object.fromEntries(doTalhao.map((x) => [x.talhao.id, x.area_ha || x.talhao.area_ha || ""])) : {});
     setItens(o ? dados.pulverizacao_itens.filter((i) => i.pulverizacao_id === o.id).map((i) => ({ ...i })) : [{ insumo_id: null, dose_ha: null, quantidade: null }]);
   };
   const fechar = useCallback(() => setOrdem(null), []);
@@ -42,6 +50,22 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
     }
     return novo;
   });
+
+  // Talhões que dá para marcar: os ativos e os que já estão na ordem.
+  const talhoesAtivos = useMemo(() => dados.talhoes.filter((t) => t.ativo !== false || t.id in areas), [dados.talhoes, areas]);
+  const marcados = (a) => talhoesAtivos.filter((t) => t.id in a && chaveCultura(t) === cultura);
+
+  // Marcou/desmarcou talhão ou mudou a área: a área da ordem é a soma.
+  const mudarAreas = (f) => {
+    const novo = typeof f === "function" ? f(areas) : f;
+    setAreas(novo);
+    const total = marcados(novo).reduce((s, t) => s + n(novo[t.id]), 0);
+    setOrdemComArea((o) => ({ ...o, area_ha: +total.toFixed(2) }));
+  };
+  const mudarCultura = (c) => {
+    setCultura(c);
+    setOrdem((o) => ({ ...o, cultura_id: c && c !== SEM_CULTURA ? c : null }));
+  };
 
   const mudarItem = (k, patch) => setItens((its) => its.map((i, j) => {
     if (j !== k) return i;
@@ -71,7 +95,14 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
   };
 
   const gravar = async () => {
-    const { reg, erro: e } = prepararRegistro("pulverizacoes", ordem);
+    if (!cultura) { setErro("Escolha a cultura."); return; }
+    const ts = marcados(areas);
+    if (!ts.length) { setErro("Marque pelo menos um talhão."); return; }
+    const semArea = ts.find((t) => !(n(areas[t.id]) > 0));
+    if (semArea) { setErro(`Informe a área a pulverizar no talhão ${semArea.nome} (ha).`); return; }
+    const { reg, erro: e } = prepararRegistro("pulverizacoes", {
+      ...ordem, talhao_id: ts[0].id, talhoes: ts.map((t) => ({ talhao_id: t.id, area_ha: n(areas[t.id]) })),
+    });
     if (e) { setErro(e); return; }
     const validos = itens.filter((i) => i.insumo_id);
     if (!validos.length) { setErro("Coloque pelo menos um produto."); return; }
@@ -123,7 +154,7 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
       {!lista.length ? <div className="vazio">Nenhuma ordem de pulverização.</div> : (
         <div className="tabela cartoes">
           <table>
-            <thead><tr><th>Data</th><th>Talhão</th><th className="num">Área</th><th>Trator</th><th>Produtos</th><th>Separados</th><th>Situação</th></tr></thead>
+            <thead><tr><th>Data</th><th>Talhões</th><th className="num">Área</th><th>Trator</th><th>Produtos</th><th>Separados</th><th>Situação</th></tr></thead>
             <tbody>
               {lista.map((o) => {
                 const its = itensDaOrdem(dados, o.id);
@@ -131,7 +162,7 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
                 return (
                   <tr key={o.id} className="clicavel" onClick={() => abrir(o)}>
                     <td data-rotulo="Data">{dataBR(o.data)}</td>
-                    <td data-rotulo="Talhão">{nomeRef(dados, "talhoes", o.talhao_id)}</td>
+                    <td data-rotulo="Talhão" style={{ whiteSpace: "normal" }}>{nomesTalhoesDaOrdem(dados, o)}</td>
                     <td data-rotulo="Área" className="num">{numero(o.area_ha)} ha</td>
                     <td data-rotulo="Trator">{nomeRef(dados, "maquinas", o.maquina_id)}</td>
                     <td data-rotulo="Produtos" style={{ whiteSpace: "normal" }}>{its.map((x) => x.insumo.nome).join(", ")}</td>
@@ -156,7 +187,15 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
             </>
           )}>
           {erro && <div className="aviso">{erro}</div>}
-          <Formulario colecao="pulverizacoes" reg={ordem} setReg={setOrdemComArea} dados={dados} />
+          <Formulario colecao="pulverizacoes" reg={ordem} setReg={setOrdemComArea} dados={dados} somente={["data"]} />
+          <div className="form" style={{ marginTop: 12 }}>
+            <EscolhaTalhoes culturas={dados.culturas} talhoes={talhoesAtivos} nomeFazenda={fazendaDoTalhao(dados)}
+              cultura={cultura} aoMudarCultura={mudarCultura} areas={areas} setAreas={mudarAreas} />
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Formulario colecao="pulverizacoes" reg={ordem} setReg={setOrdemComArea} dados={dados}
+              somente={["maquina_id", "operador_id", "situacao", "observacao"]} />
+          </div>
 
           <h3 style={{ fontSize: 15, margin: "20px 0 10px" }}>Produtos</h3>
           {doPlanejamento.length > 0 && (

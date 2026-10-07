@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Icone, SeletorPeriodo, Stat } from "../components/ui";
 import { PERIODOS, aReceber, diesel, entradasDoPeriodo, estoqueInsumos, noPeriodo, saidasDoPeriodo, situacaoRevisao, soma } from "../lib/calculos";
 import { brl, data, nomeRef, numero } from "../lib/formato";
+import { nomesTalhoesDaOrdem } from "../lib/talhoes";
 
 /** Data ISO daqui a `dias` (fora do componente: o painel se refaz quando os dados mudam). */
 function diaISO(dias) {
@@ -56,7 +57,7 @@ export default function Painel({ dados, irPara }) {
     const ticketsCampo = dados.vendas.filter((v) => v.a_conferir).length;
     if (ticketsCampo) alertas.push({ tipo: "atencao", texto: `${ticketsCampo} ticket(s) da balança lançado(s) no celular — falta completar comprador e preço`, ir: "vendas" });
     for (const o of dados.pulverizacoes.filter((x) => x.situacao === "aberta")) {
-      alertas.push({ tipo: "atencao", texto: `Pulverização em ${nomeRef(dados, "talhoes", o.talhao_id)} (${data(o.data)}) esperando separar no depósito`, ir: "quimicos" });
+      alertas.push({ tipo: "atencao", texto: `Pulverização em ${nomesTalhoesDaOrdem(dados, o)} (${data(o.data)}) esperando separar no depósito`, ir: "quimicos" });
     }
     if (tanque.litrosEntrada && tanque.saldo < 0) alertas.push({ tipo: "ruim", texto: `Tanque de diesel negativo (${numero(tanque.saldo, 0)} L) — falta lançar compra`, ir: "diesel" });
     for (const d of dados.despesas.filter((x) => !x.pago && x.vencimento)) {
