@@ -2,7 +2,9 @@ import { useId, useMemo, useState } from "react";
 
 import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
 import { formatarCoordenadas, lerCoordenadas, linkMapa, minhaPosicao } from "../lib/mapa";
-import { CampoFoto } from "./Foto";
+import { CampoArquivo } from "./Comprovante";
+import ConsultaProduto from "./ConsultaProduto";
+import { Icone } from "./ui";
 
 /** Sugestões de um campo: a lista fixa + o que já foi digitado antes. */
 function sugestoesDoCampo(campo, dados) {
@@ -47,11 +49,70 @@ function CampoLocal({ id, valor, set }) {
   );
 }
 
-function Campo({ chave, campo, reg, dados, aoMudar, colecao }) {
+/** Reduz a foto (lado maior 800 px, JPEG) para caber no registro e sincronizar rápido. */
+function reduzirFoto(arquivo) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(arquivo);
+    const img = new Image();
+    img.onload = () => {
+      const escala = Math.min(1, 800 / Math.max(img.width, img.height));
+      const tela = document.createElement("canvas");
+      tela.width = Math.round(img.width * escala);
+      tela.height = Math.round(img.height * escala);
+      tela.getContext("2d").drawImage(img, 0, 0, tela.width, tela.height);
+      URL.revokeObjectURL(url);
+      resolve(tela.toDataURL("image/jpeg", 0.6));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não consegui abrir essa foto.")); };
+    img.src = url;
+  });
+}
+
+const MAX_FOTOS = 6;
+
+function Fotos({ valor, aoMudar }) {
+  const fotos = valor ?? [];
+  const [erro, setErro] = useState(null);
+
+  const adicionar = async (e) => {
+    const arquivos = [...e.target.files].slice(0, MAX_FOTOS - fotos.length);
+    e.target.value = "";
+    try {
+      const novas = await Promise.all(arquivos.map(reduzirFoto));
+      setErro(null);
+      aoMudar([...fotos, ...novas]);
+    } catch (err) {
+      setErro(err.message);
+    }
+  };
+
+  return (
+    <div className="fotos">
+      {fotos.map((f, i) => (
+        <div key={i} className="foto">
+          <a href={f} target="_blank" rel="noreferrer"><img src={f} alt={`Foto ${i + 1} do rótulo`} /></a>
+          <button type="button" className="btn icone perigo" aria-label="Remover foto" onClick={() => aoMudar(fotos.filter((_, j) => j !== i))}>
+            <Icone nome="lixo" tamanho={14} />
+          </button>
+        </div>
+      ))}
+      {fotos.length < MAX_FOTOS && (
+        <label className="btn foto-nova">
+          <Icone nome="mais" /> Tirar / escolher foto
+          <input type="file" accept="image/*" multiple hidden onChange={adicionar} />
+        </label>
+      )}
+      {erro && <small className="negativo">{erro}</small>}
+    </div>
+  );
+}
+
+function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
   const id = useId();
+  const [achar, setAchar] = useState("");
   const valor = reg[chave];
   const obrig = campoObrigatorio(campo, reg);
-  const largo = ["textoLongo", "local"].includes(campo.tipo);
+  const largo = ["textoLongo", "fotos", "arquivo", "local"].includes(campo.tipo);
   const somenteLeitura = typeof campo.somenteLeitura === "function" ? campo.somenteLeitura(reg) : campo.somenteLeitura;
   const set = (v) => aoMudar(chave, v);
 
@@ -68,6 +129,9 @@ function Campo({ chave, campo, reg, dados, aoMudar, colecao }) {
   switch (campo.tipo) {
     case "textoLongo":
       controle = <textarea id={id} rows={2} value={valor ?? ""} onChange={(e) => set(e.target.value)} />;
+      break;
+    case "fotos":
+      controle = <Fotos valor={valor} aoMudar={set} />;
       break;
     case "numero":
     case "dinheiro":
@@ -89,17 +153,31 @@ function Campo({ chave, campo, reg, dados, aoMudar, colecao }) {
       break;
     case "ref": {
       const def = ESQUEMA[campo.colecao];
+      const deProduto = campo.colecao === "insumos";
+      const termo = achar.trim().toLowerCase();
       const opcoes = (dados[campo.colecao] ?? [])
         .filter((x) => x.id === valor || (x.ativo !== false && (!campo.filtro || campo.filtro(x))))
+        // Produto: dá para achar pelo nome, fabricante, tipo ou princípio ativo.
+        .filter((x) => !deProduto || !termo || x.id === valor
+          || [x.nome, x.fabricante, x.tipo, x.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(termo)))
         .sort(def.ordem ?? (() => 0));
+      const rotuloOpcao = (x) => `${def.resumo?.(x) ?? x.nome}${deProduto && x.fabricante ? ` — ${x.fabricante}` : ""}`;
       controle = (
-        <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
-          <option value="">{opcoes.length ? "— escolha —" : `Nenhum ${def.singular} cadastrado`}</option>
-          {opcoes.map((x) => <option key={x.id} value={x.id}>{def.resumo?.(x) ?? x.nome}</option>)}
-        </select>
+        <>
+          {deProduto && (
+            <input type="search" placeholder="Buscar produto ou fabricante…" value={achar} onChange={(e) => setAchar(e.target.value)} aria-label="Buscar produto" autoComplete="off" />
+          )}
+          <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
+            <option value="">{opcoes.length ? "— escolha —" : termo ? "Nenhum produto encontrado" : `Nenhum ${def.singular} cadastrado`}</option>
+            {opcoes.map((x) => <option key={x.id} value={x.id}>{rotuloOpcao(x)}</option>)}
+          </select>
+        </>
       );
       break;
     }
+    case "arquivo":
+      controle = <CampoArquivo id={id} colecao={colecao} valor={valor} set={set} />;
+      break;
     case "sugestao": {
       const lista = sugestoesDoCampo(campo, dados);
       controle = (
@@ -110,9 +188,6 @@ function Campo({ chave, campo, reg, dados, aoMudar, colecao }) {
       );
       break;
     }
-    case "foto":
-      controle = <CampoFoto valor={valor} aoMudar={set} origem={`${colecao}.${chave}`} />;
-      break;
     case "local":
       controle = <CampoLocal id={id} valor={valor} set={set} />;
       break;
@@ -132,9 +207,10 @@ function Campo({ chave, campo, reg, dados, aoMudar, colecao }) {
 /**
  * Formulário gerado do esquema. `reg` é o rascunho; cada mudança passa pelos
  * `aoMudar` do esquema (que completam outros campos) e os campos calculados
- * são refeitos para aparecer já preenchidos.
+ * são refeitos para aparecer já preenchidos. `somente` mostra só esses campos,
+ * nessa ordem.
  */
-export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
+export default function Formulario({ colecao, reg, setReg, dados, contexto, somente }) {
   const def = ESQUEMA[colecao];
 
   const aoMudar = (chave, v) => {
@@ -146,13 +222,17 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
     });
   };
 
-  const campos = useMemo(() => Object.entries(def.campos), [def]);
+  const campos = useMemo(
+    () => (somente ? somente.map((c) => [c, def.campos[c]]) : Object.entries(def.campos)),
+    [def, somente]
+  );
 
   return (
     <div className="form">
       {campos.filter(([, c]) => campoVisivel(c, reg)).map(([chave, campo]) => (
-        <Campo key={chave} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} colecao={colecao} />
+        <Campo key={chave} colecao={colecao} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />
       ))}
+      {colecao === "insumos" && <div className="largo"><ConsultaProduto reg={reg} setReg={setReg} /></div>}
     </div>
   );
 }

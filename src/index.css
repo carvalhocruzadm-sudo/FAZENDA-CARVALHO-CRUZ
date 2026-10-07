@@ -193,12 +193,60 @@ table { border-collapse: collapse; }
 .girando { animation: girar 1s linear infinite; }
 @keyframes girar { to { transform: rotate(360deg); } }
 
+/* Comprovantes */
+.previa-comprovante { display: block; max-width: 100%; max-height: 360px; border-radius: 10px; border: 1px solid var(--linha); margin-top: 8px; }
+.fichas { display: flex; flex-wrap: wrap; gap: 6px; }
+.ficha { border: 1px solid var(--linha); background: var(--cartao); color: var(--texto); border-radius: 20px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.ficha.ativa { background: var(--verde); border-color: var(--verde); color: #fff; font-weight: 600; }
+/* Fotos do rótulo */
+.fotos { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+.foto { position: relative; }
+.foto img { display: block; width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid #e3e3d8; }
+.foto .btn { position: absolute; top: 4px; right: 4px; background: #fff; }
+.foto-nova { cursor: pointer; align-self: center; }
+
+/* Consulta de produto (IA) */
+.consulta { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.consulta .barra { width: 100%; }
+.consulta-texto { margin: 0; width: 100%; box-sizing: border-box; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 13px; line-height: 1.5; background: var(--fundo); border: 1px solid #e3e3d8; border-radius: 8px; padding: 12px; max-height: 320px; overflow: auto; }
+
+/* ─── Página do agrônomo (link sem login) ───────────────────────────────── */
+.agro { max-width: 1180px; margin: 0 auto; padding: 16px 16px 96px; }
+.agro-topo { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.agro-topo img { width: 44px; height: 44px; border-radius: 10px; }
+.agro-topo h1 { font-size: 19px; }
+.agro-topo small { color: var(--texto-2); }
+.agro-topo .espaco { flex: 1; }
+.grupo { margin-bottom: 18px; }
+.grupo h3 { font-size: 14px; margin-bottom: 6px; color: var(--verde); }
+.grupo h3 small { color: var(--texto-2); font-weight: 400; margin-left: 6px; }
+.marcar { display: inline-flex; align-items: center; gap: 6px; }
+.barra-selecao {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; background: #fff; border-top: 1px solid var(--linha); box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.08);
+}
+.barra-selecao .espaco { flex: 1; }
+.fotos-rotulo img { width: 100%; border-radius: 10px; margin-bottom: 10px; border: 1px solid var(--linha); }
+.item-dose {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--linha);
+}
+.item-dose small, .item-dose label, .total-item { display: block; color: var(--texto-2); font-size: 12px; }
+.item-dose b { display: block; color: var(--texto); font-size: 14px; }
+.total-item b { font-size: 14px; }
+.com-unidade { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.com-unidade input { width: 96px; }
+.com-unidade i { font-style: normal; color: var(--texto-2); }
+@media (max-width: 640px) { .item-dose { grid-template-columns: 1fr; gap: 6px; } }
+.item-link { padding: 14px 0; border-bottom: 1px solid var(--linha); }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+
 /* ─── Fotos ─────────────────────────────────────────────────────────────── */
 .miniatura { padding: 0; border: 1px solid var(--linha); border-radius: 10px; overflow: hidden; background: var(--fundo); cursor: zoom-in; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .miniatura img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .visor-foto { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, 0.9); display: flex; align-items: center; justify-content: center; padding: 12px; color: #fff; }
 .visor-foto img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.visor-foto .btn { position: absolute; top: 12px; right: 12px; }
+.visor-foto .btn { position: absolute; top: 12px; right: 12px; color: var(--texto); }
 
 /* ─── Modo motorista (telas para quem não lê: grande, figura, pouco texto) ─ */
 .motorista { min-height: 100vh; background: var(--fundo); display: flex; flex-direction: column; font-size: 18px; }

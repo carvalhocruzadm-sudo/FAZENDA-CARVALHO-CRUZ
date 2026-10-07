@@ -4,21 +4,22 @@
  *
  * Stores:
  *   uma por coleção do esquema (culturas, talhoes, maquinas, …) → cópia local
- *     (a de fotos guarda só as fotos tiradas ou já abertas neste aparelho)
  *   fila  → operações pendentes de envio para o Supabase, em ordem
  *   meta  → chaves de controle (última sincronização)
+ *   arquivos → comprovantes salvos no aparelho esperando subir para a nuvem
+ *              (chave = caminho do arquivo; ver lib/arquivos.js)
  */
 
-import { COLECOES, COLECOES_LEVES } from "./esquema";
+import { COLECOES } from "./esquema";
 
-export { COLECOES, COLECOES_LEVES };
+export { COLECOES };
 
 const DB_NOME = "fazenda-carvalho-cruz";
 // Suba a versão sempre que uma coleção nova entrar no esquema: é no upgrade
 // que a store dela é criada.
-const DB_VERSAO = 2;
+const DB_VERSAO = 5;
 
-const STORES = [...COLECOES, "fila", "meta"];
+const STORES = [...COLECOES, "fila", "meta", "arquivos"];
 
 let promessaDB = null;
 
@@ -46,6 +47,9 @@ export function abrirDB() {
       }
       if (!db.objectStoreNames.contains("meta")) {
         db.createObjectStore("meta");
+      }
+      if (!db.objectStoreNames.contains("arquivos")) {
+        db.createObjectStore("arquivos");
       }
     };
 
@@ -95,10 +99,9 @@ export async function lerColecao(store) {
   return pedido(tx.objectStore(store).getAll());
 }
 
-/** Todas as coleções leves (as fotos ficam de fora: são lidas uma a uma). */
 export async function lerTodasColecoes() {
   const entradas = await Promise.all(
-    COLECOES_LEVES.map(async (nome) => [nome, await lerColecao(nome)])
+    COLECOES.map(async (nome) => [nome, await lerColecao(nome)])
   );
   return Object.fromEntries(entradas);
 }
@@ -222,22 +225,32 @@ export async function gravarItem(store, item) {
   await concluida;
 }
 
-export async function lerItem(store, id) {
-  const db = await abrirDB();
-  const { tx } = transacao(db, [store], "readonly");
-  return pedido(tx.objectStore(store).get(id));
-}
-
-export function novoId() {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  // Navegadores antigos (e http fora de localhost) não têm randomUUID.
-  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
-    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
-}
-
 export async function apagarItem(store, id) {
   const db = await abrirDB();
   const { tx, concluida } = transacao(db, [store], "readwrite");
   tx.objectStore(store).delete(id);
+  await concluida;
+}
+
+// ─── Arquivos (comprovantes) ────────────────────────────────────────────────
+
+/** @param {{ arquivo: Blob, tipo: string }} valor */
+export async function gravarArquivo(caminho, valor) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["arquivos"], "readwrite");
+  tx.objectStore("arquivos").put(valor, caminho);
+  await concluida;
+}
+
+export async function lerArquivo(caminho) {
+  const db = await abrirDB();
+  const { tx } = transacao(db, ["arquivos"], "readonly");
+  return pedido(tx.objectStore("arquivos").get(caminho));
+}
+
+export async function apagarArquivo(caminho) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["arquivos"], "readwrite");
+  tx.objectStore("arquivos").delete(caminho);
   await concluida;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useFoto } from "../hooks/useFoto";
-import { guardarFoto } from "../lib/fotos";
+import { anexar } from "../lib/arquivos";
 import { Icone } from "./ui";
 
 /** A foto em tela cheia; toque em qualquer lugar para fechar. */
@@ -48,11 +48,31 @@ export function BotaoFoto({ id }) {
   );
 }
 
+/** Diminui a foto da câmera (lado maior 1280 px, JPEG): ainda dá para ler o ticket. */
+function reduzir(arquivo) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(arquivo);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const escala = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.naturalWidth * escala);
+      canvas.height = Math.round(img.naturalHeight * escala);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((b) => (b ? resolve(new File([b], "foto.jpg", { type: "image/jpeg" })) : reject(new Error("Não foi possível guardar a foto."))), "image/jpeg", 0.72);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não foi possível abrir a foto.")); };
+    img.src = url;
+  });
+}
+
 /**
- * Botão que abre a câmera (no celular) ou a galeria, diminui a foto, guarda e
- * devolve o id em `aoTirar`. `children` é o conteúdo do botão.
+ * Botão que abre a câmera (no celular) ou a galeria. A foto, diminuída, fica
+ * anexada esperando o "Salvar" do lançamento (ver lib/arquivos.js) e
+ * `aoTirar` recebe o caminho dela.
  */
-export function BotaoCamera({ aoTirar, origem, className = "btn", children }) {
+export function BotaoCamera({ aoTirar, colecao, className = "btn", children }) {
   const entrada = useRef(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState(null);
@@ -64,7 +84,7 @@ export function BotaoCamera({ aoTirar, origem, className = "btn", children }) {
     setOcupado(true);
     setErro(null);
     try {
-      aoTirar(await guardarFoto(arquivo, origem));
+      aoTirar(anexar(colecao, await reduzir(arquivo)));
     } catch (err) {
       setErro(String(err?.message ?? err));
     } finally {
@@ -80,16 +100,5 @@ export function BotaoCamera({ aoTirar, origem, className = "btn", children }) {
       <input ref={entrada} type="file" accept="image/*" capture="environment" hidden onChange={escolheu} />
       {erro && <small className="negativo">{erro}</small>}
     </>
-  );
-}
-
-/** Campo de foto do formulário padrão. */
-export function CampoFoto({ valor, aoMudar, origem }) {
-  return (
-    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-      <Miniatura id={valor} />
-      <BotaoCamera aoTirar={aoMudar} origem={origem}>📷 {valor ? "Trocar foto" : "Tirar / escolher foto"}</BotaoCamera>
-      {valor && <button type="button" className="btn perigo" onClick={() => aoMudar(null)}>Tirar</button>}
-    </div>
   );
 }

@@ -101,11 +101,11 @@ function Contador({ valor, setValor, unidade, emoji }) {
 }
 
 /** Tira a foto e mostra grande, com "tirar de novo". */
-function PassoFoto({ fotoId, setFotoId, origem, texto }) {
+function PassoFoto({ fotoId, setFotoId, colecao, texto }) {
   return (
     <div className="mot-foto">
       {fotoId && <Miniatura id={fotoId} tamanho={220} />}
-      <BotaoCamera className={`mot-grande ${fotoId ? "cinza" : "azul"}`} origem={origem} aoTirar={(id) => { setFotoId(id); falar("Foto guardada"); }}>
+      <BotaoCamera className={`mot-grande ${fotoId ? "cinza" : "azul"}`} colecao={colecao} aoTirar={(id) => { setFotoId(id); falar("Foto guardada"); }}>
         <span>📷</span> {fotoId ? "Tirar de novo" : texto}
       </BotaoCamera>
     </div>
@@ -176,7 +176,7 @@ function EscolherPerfil({ dados, aoEscolher, aoCancelar }) {
 
 function NovaViagem({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
   const { passo, ir, voltar } = usePassos("origem", aoCancelar);
-  const [v, setV] = useState({ origem_id: null, destino_id: null, carga_id: null, vazio: false, quantidade: "", foto_id: null });
+  const [v, setV] = useState({ origem_id: null, destino_id: null, carga_id: null, vazio: false, quantidade: "", foto: null });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
   const pos = usePosicao();
@@ -201,7 +201,7 @@ function NovaViagem({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
         carga_id: v.vazio ? null : v.carga_id,
         quantidade: v.vazio ? null : numeroOuNulo(v.quantidade),
         unidade: v.vazio ? null : carga?.unidade ?? null,
-        foto_id: v.foto_id, conferido: false,
+        foto: v.foto, conferido: false,
         observacao: v.vazio ? "Viagem vazia (sem carga)" : null,
       });
       await salvar("fretes", reg);
@@ -218,7 +218,7 @@ function NovaViagem({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
     return (
       <div className="blocos">
         {lista.map((l) => (
-          <Bloco key={l.id} emoji={emojiLocal(l)} fotoId={l.foto_id} titulo={l.nome} selo={l.id === aqui?.id ? "📍 Você está aqui" : null}
+          <Bloco key={l.id} emoji={emojiLocal(l)} fotoId={l.foto} titulo={l.nome} selo={l.id === aqui?.id ? "📍 Você está aqui" : null}
             aoTocar={() => aoTocar(l)} />
         ))}
       </div>
@@ -243,7 +243,7 @@ function NovaViagem({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
         <Pergunta texto="O que está levando?" voltar={voltar}>
           <div className="blocos">
             {cargas.map((c) => (
-              <Bloco key={c.id} emoji={c.emoji || "📦"} fotoId={c.foto_id} titulo={c.nome}
+              <Bloco key={c.id} emoji={c.emoji || "📦"} fotoId={c.foto} titulo={c.nome}
                 aoTocar={() => escolher({ carga_id: c.id, vazio: false }, "quantidade", c.nome)} />
             ))}
             <Bloco emoji="🚫" titulo="Vazio" sub="sem carga" cor="cinza" aoTocar={() => escolher({ carga_id: null, vazio: true, quantidade: "" }, "confirmar", "Vazio")} />
@@ -261,8 +261,8 @@ function NovaViagem({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
     case "foto":
       return (
         <Pergunta texto="Tem nota ou ticket da balança? Tire uma foto." voltar={voltar}>
-          <PassoFoto fotoId={v.foto_id} setFotoId={(id) => setV((x) => ({ ...x, foto_id: id }))} origem="fretes.foto_id" texto="Tirar foto" />
-          <BotaoGrande emoji={v.foto_id ? "✅" : "➡️"} texto={v.foto_id ? "Continuar" : "Não tenho"} cor={v.foto_id ? "verde" : "cinza"} aoTocar={() => ir("confirmar")} />
+          <PassoFoto fotoId={v.foto} setFotoId={(id) => setV((x) => ({ ...x, foto: id }))} colecao="fretes" texto="Tirar foto" />
+          <BotaoGrande emoji={v.foto ? "✅" : "➡️"} texto={v.foto ? "Continuar" : "Não tenho"} cor={v.foto ? "verde" : "cinza"} aoTocar={() => ir("confirmar")} />
         </Pergunta>
       );
     default: {
@@ -278,7 +278,7 @@ function NovaViagem({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
             <div className="mot-carga">
               {v.vazio ? <>🚫 <b>Vazio</b></> : <>{carga?.emoji || "📦"} <b>{numero(v.quantidade)} {carga?.unidade}</b> {carga?.nome}</>}
             </div>
-            {v.foto_id && <Miniatura id={v.foto_id} tamanho={90} />}
+            {v.foto && <Miniatura id={v.foto} tamanho={90} />}
           </div>
           {erro && <div className="aviso">{erro}</div>}
           <BotaoGrande emoji="✅" texto={salvando ? "Salvando…" : "Salvar"} aoTocar={gravar} desativado={salvando} />
@@ -293,7 +293,7 @@ function NovaViagem({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
 
 function Abasteci({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
   const { passo, ir, voltar } = usePassos("onde", aoCancelar);
-  const [a, setA] = useState({ tanque: false, posto: null, foto_ticket_id: null, foto_painel_id: null, leitura: "", litros: "" });
+  const [a, setA] = useState({ tanque: false, posto: null, foto_ticket: null, foto_painel: null, leitura: "", litros: "" });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
   const pos = usePosicao();
@@ -311,7 +311,7 @@ function Abasteci({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
         data: hoje(), origem: a.tanque ? "tanque" : "posto", posto: a.posto,
         maquina_id: perfil.caminhao_id, operador_id: perfil.motorista_id,
         litros: numeroOuNulo(a.litros), leitura: numeroOuNulo(a.leitura),
-        foto_ticket_id: a.foto_ticket_id, foto_painel_id: a.foto_painel_id, conferido: false,
+        foto_ticket: a.foto_ticket, foto_painel: a.foto_painel, conferido: false,
       });
       await salvar("abastecimentos", reg);
       aoTerminar();
@@ -327,30 +327,30 @@ function Abasteci({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
         <Pergunta texto="Onde você abasteceu?" voltar={voltar}>
           <div className="blocos">
             {[...postos].sort((x, y) => (y.id === aqui?.id) - (x.id === aqui?.id)).map((l) => (
-              <Bloco key={l.id} emoji="⛽" fotoId={l.foto_id} titulo={l.nome} selo={l.id === aqui?.id ? "📍 Você está aqui" : null}
+              <Bloco key={l.id} emoji="⛽" fotoId={l.foto} titulo={l.nome} selo={l.id === aqui?.id ? "📍 Você está aqui" : null}
                 aoTocar={() => escolher({ tanque: false, posto: l.nome }, "ticket", l.nome)} />
             ))}
             <Bloco emoji="⛽" titulo={postos.length ? "Outro posto" : "Posto"} aoTocar={() => escolher({ tanque: false, posto: null }, "ticket", "Posto")} />
-            <Bloco emoji="🏡" titulo="Tanque da fazenda" cor="cinza" aoTocar={() => escolher({ tanque: true, posto: null, foto_ticket_id: null }, "painel", "Tanque da fazenda")} />
+            <Bloco emoji="🏡" titulo="Tanque da fazenda" cor="cinza" aoTocar={() => escolher({ tanque: true, posto: null, foto_ticket: null }, "painel", "Tanque da fazenda")} />
           </div>
         </Pergunta>
       );
     case "ticket":
       return (
         <Pergunta texto="Tire uma foto do ticket do posto" voltar={voltar}>
-          <PassoFoto fotoId={a.foto_ticket_id} setFotoId={(id) => setA((x) => ({ ...x, foto_ticket_id: id }))} origem="abastecimentos.foto_ticket_id" texto="Foto do ticket" />
-          {a.foto_ticket_id && <BotaoGrande emoji="✅" texto="Continuar" aoTocar={() => ir("painel")} />}
+          <PassoFoto fotoId={a.foto_ticket} setFotoId={(id) => setA((x) => ({ ...x, foto_ticket: id }))} colecao="abastecimentos" texto="Foto do ticket" />
+          {a.foto_ticket && <BotaoGrande emoji="✅" texto="Continuar" aoTocar={() => ir("painel")} />}
         </Pergunta>
       );
     case "painel":
       return (
         <Pergunta texto="Tire uma foto do painel mostrando o quilômetro" voltar={voltar}>
-          <PassoFoto fotoId={a.foto_painel_id} setFotoId={(id) => setA((x) => ({ ...x, foto_painel_id: id }))} origem="abastecimentos.foto_painel_id" texto="Foto do painel" />
+          <PassoFoto fotoId={a.foto_painel} setFotoId={(id) => setA((x) => ({ ...x, foto_painel: id }))} colecao="abastecimentos" texto="Foto do painel" />
           <div className="mot-numero">
             <span>🛣️</span>
             <input type="number" inputMode="numeric" placeholder="km (se souber)" value={a.leitura} onChange={(e) => setA((x) => ({ ...x, leitura: e.target.value }))} aria-label="Quilômetro do painel" />
           </div>
-          {(a.foto_painel_id || a.leitura) && <BotaoGrande emoji="✅" texto="Continuar" aoTocar={() => ir("litros")} />}
+          {(a.foto_painel || a.leitura) && <BotaoGrande emoji="✅" texto="Continuar" aoTocar={() => ir("litros")} />}
         </Pergunta>
       );
     case "litros":
@@ -369,8 +369,8 @@ function Abasteci({ dados, perfil, salvar, aoTerminar, aoCancelar }) {
           <div className="mot-resumo">
             <div className="mot-carga">{a.tanque ? "🏡" : "⛽"} <b>{a.tanque ? "Tanque da fazenda" : a.posto || "Posto"}</b></div>
             <div className="mot-fotos">
-              {a.foto_ticket_id && <Miniatura id={a.foto_ticket_id} tamanho={110} />}
-              {a.foto_painel_id && <Miniatura id={a.foto_painel_id} tamanho={110} />}
+              {a.foto_ticket && <Miniatura id={a.foto_ticket} tamanho={110} />}
+              {a.foto_painel && <Miniatura id={a.foto_painel} tamanho={110} />}
             </div>
             {a.leitura && <div className="mot-carga">🛣️ <b>{numero(a.leitura, 0)} km</b></div>}
             {a.litros && <div className="mot-carga">⛽ <b>{numero(a.litros, 1)} litros</b></div>}

@@ -60,7 +60,7 @@ export const LOCAIS = [
   ["Mix Mateus", "cliente"],
   ["Balança", "balanca"],
 ].map(([nome, tipo], i) => ({
-  id: id("8300", i + 1), nome, tipo, localizacao: null, endereco: null, foto_id: null, ativo: true, observacao: null,
+  id: id("8300", i + 1), nome, tipo, localizacao: null, endereco: null, foto: null, ativo: true, observacao: null,
 }));
 
 export const CARGAS = [
@@ -70,7 +70,7 @@ export const CARGAS = [
   ["Silagem", "🌾", "saco"],
   ["Mercadoria da distribuidora", "📦", "caixa"],
 ].map(([nome, emoji, unidade], i) => ({
-  id: id("8400", i + 1), nome, emoji, unidade, foto_id: null, ativo: true, observacao: null,
+  id: id("8400", i + 1), nome, emoji, unidade, foto: null, ativo: true, observacao: null,
 }));
 
 export const SEED = { culturas: CULTURAS, fazendas: FAZENDAS, talhoes: TALHOES, locais: LOCAIS, cargas: CARGAS };

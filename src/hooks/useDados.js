@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { COLECOES_LEVES, apagarItem, enfileirar, gravarItem, lerFila, lerTodasColecoes, limparLocal, novoId } from "../lib/db";
+import { retirarEmEspera } from "../lib/arquivos";
+import { COLECOES, apagarItem, enfileirar, gravarArquivo, gravarItem, lerFila, lerTodasColecoes, limparLocal } from "../lib/db";
+import { ESQUEMA } from "../lib/esquema";
 import { SEED } from "../lib/seed";
 import { supabaseConfigurado } from "../lib/supabase";
 import { atualizarContadores, iniciarAutoSync, sincronizar } from "../lib/sync";
 
-const vazio = () => Object.fromEntries(COLECOES_LEVES.map((c) => [c, []]));
+const vazio = () => Object.fromEntries(COLECOES.map((c) => [c, []]));
+
+function novoId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  // Navegadores antigos (e http fora de localhost) não têm randomUUID.
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+}
 
 /**
  * O que veio da nuvem ainda não tem o que está na fila (feito no aparelho e
@@ -16,7 +25,7 @@ async function comFilaPorCima(dados) {
   const fila = await lerFila();
   const d = { ...dados };
   for (const op of fila) {
-    if (!(op.tabela in d)) continue; // fotos: não ficam na memória
+    if (op.acao === "upload") continue; // arquivo, não registro
     const lista = d[op.tabela] ?? [];
     const semEste = lista.filter((x) => x.id !== op.payload.id);
     d[op.tabela] = op.acao === "delete" ? semEste : [...semEste, op.payload];
@@ -72,6 +81,14 @@ export function useDados() {
 
   const salvar = useCallback(async (colecao, registro) => {
     const item = { ...registro, id: registro.id || novoId(), atualizado_em: new Date().toISOString() };
+    // Comprovante novo: guarda no aparelho e enfileira o envio antes do
+    // registro, para o arquivo já estar na nuvem quando o lançamento chegar.
+    for (const [chave, campo] of Object.entries(ESQUEMA[colecao].campos)) {
+      const arquivo = campo.tipo === "arquivo" && item[chave] ? retirarEmEspera(item[chave]) : null;
+      if (!arquivo) continue;
+      await gravarArquivo(item[chave], { arquivo, tipo: arquivo.type });
+      await enfileirar({ tabela: "comprovantes", acao: "upload", payload: { id: item[chave] } });
+    }
     setDados((d) => ({ ...d, [colecao]: [...d[colecao].filter((x) => x.id !== item.id), item] }));
     await gravarItem(colecao, item);
     await enfileirar({ tabela: colecao, acao: "upsert", payload: item });

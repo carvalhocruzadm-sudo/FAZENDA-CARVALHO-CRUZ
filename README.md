@@ -15,7 +15,7 @@ banco próprio.
 | **Painel** | Vendas, entrou/saiu do caixa, resultado, a receber, diesel no tanque e avisos: revisão vencendo, estoque baixo ou negativo, contas vencendo. |
 | **Lavoura e talhões** | Fazendas, talhões/sítios (área, cultura, nº de pés), culturas (dá para **adicionar culturas novas**), colheitas e **planejamento da safra** por fase (dessecação, plantio, coberturas, pulverizações), com dose/ha × hectares × preço, como na aba PLANEJAMENTO. |
 | **Vendas** | Uma linha por **carga**, como nas planilhas de milho, laranja e silagem: tara, peso bruto e líquido, placa, sítio, tipo (BOA/SUKITA/CASQUINOL), desconto em kg, preço por t, saca, arroba ou saco, custo/ton, frete, comissão e juros. **Recebimentos** separados e o **saldo a receber de cada comprador**. |
-| **Financeiro** | Despesas nas categorias da planilha FINANCEIRO (Alimentação, Produtos químicos, Adubos, Peças, Serviços, Combustíveis, Salários, Taxas, Benfeitorias, Investimentos, Arrendamentos, Empréstimos, Retiradas…), com forma de pagamento, favorecido e **centro de custo** (geral, cultura ou talhão). Outras entradas (aditivo dos sócios, empréstimos). **Custo por cultura e por talhão** (R$/ha). |
+| **Financeiro** | Despesas nas categorias da planilha FINANCEIRO (Alimentação, Produtos químicos, Adubos, Peças, Serviços, Combustíveis, Salários, Taxas, Benfeitorias, Investimentos, Arrendamentos, Empréstimos, Retiradas…), com forma de pagamento, favorecido e **centro de custo** (geral, cultura ou talhão). Outras entradas (aditivo dos sócios, empréstimos). **Custo por cultura e por talhão** (R$/ha). **Comprovante** anexado em cada despesa (foto ou PDF). |
 | **Máquinas e horímetro** | Inventário de tratores, implementos, caminhões e veículos. Lançamento de **horímetro por operação** (máquina, operador, talhão, horas). Revisões feitas e **aviso de revisão** pelo intervalo em horas ou km. Consumo em L/h ou km/L. |
 | **Diesel** | O **tanque da fazenda**: compras (entrada) e abastecimentos (saída), com saldo em litros e preço médio. Abastecimentos em **posto** também. |
 | **Químicos e insumos** | Produtos, entradas (compras) e aplicações por talhão. **Estoque** = entradas − aplicações, com custo médio, estoque mínimo e valor em estoque. |
@@ -28,6 +28,18 @@ Excel) e **repetir lançamento** (o botão `+` da linha), bom para lançar vári
 
 O cadastro inicial já vem com as culturas, as fazendas e os sítios da laranja com área e nº de pés
 (tirados da aba CADASTROS da planilha VENDAS_LARANJA).
+
+### 📎 Lançar despesa pelo comprovante do banco
+No **Android**, com o app instalado na tela inicial ("Adicionar à tela inicial" / "Instalar app" no
+Chrome): no app do banco, toque em **Compartilhar** no comprovante e escolha **Fazenda CC**. O app abre
+com o comprovante na tela; é só tocar na **categoria**, escrever a **descrição**, conferir o valor e
+**Salvar despesa**. Funciona sem internet: o comprovante sobe para a nuvem na próxima sincronização.
+
+No **iPhone** o sistema não deixa app de navegador aparecer no Compartilhar: lance a despesa em
+Financeiro → Despesas → Novo e use **Anexar foto ou PDF** no campo Comprovante.
+
+Os arquivos ficam no Storage do Supabase, numa pasta privada (`comprovantes`) criada pelo
+`supabase/schema.sql` — rode o SQL de novo depois de atualizar.
 
 ### Próximas etapas
 - **Emissão de NF-e** (por enquanto a venda guarda só o número da nota).
@@ -55,6 +67,35 @@ Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas gu
 3. Em **Authentication → Users → Add user**, crie o login (e-mail e senha) de cada pessoa que vai usar.
 4. Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
    (**Project Settings → Data API / API Keys**).
+
+## 👨‍🌾 Link do agrônomo
+
+Em **Químicos e insumos → Link do agrônomo**, escreva o nome do agrônomo e clique em **Criar link**. Copie o
+link (ou use **Enviar pelo WhatsApp**). Quem abre o link **não precisa de senha** e vê **só o estoque de
+químicos** (sem preços, vendas ou financeiro). Ele pode:
+
+- ver o estoque **por produto, fabricante, tipo, princípio ativo ou validade**, com busca e foto do rótulo;
+- marcar os produtos, clicar em **Criar aplicação** (talhão, área, alvo, dose por hectare) e **enviar para a
+  fazenda** e/ou **baixar o PDF**.
+
+A aplicação enviada aparece em **Químicos e insumos → Aplicações do agrônomo**, onde você baixa o PDF, aprova ou
+**dá baixa no estoque** (isso lança as saídas no talhão). Para desligar o acesso, desative ou apague o link.
+
+Para funcionar, rode de novo o `supabase/schema.sql` no SQL Editor (ele cria as funções do link).
+Para o agrônomo ver a **validade**, lance a data de validade nas **Entradas / compras**.
+
+## 🤖 Consulta de produto (uso, dose e substitutos)
+
+No cadastro de um produto, o botão **Consultar uso, dose e substitutos** pesquisa pelo nome comercial e
+fabricante. Para funcionar, uma vez só (precisa do [Supabase CLI](https://supabase.com/docs/guides/cli)):
+
+```bash
+supabase functions deploy consultar-produto
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic.com
+```
+
+A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
+tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
 
 ## 📥 Histórico das planilhas
 
