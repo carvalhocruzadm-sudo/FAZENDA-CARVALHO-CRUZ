@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from "react";
 import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
 import { baixarCSV, exibir, numero } from "../lib/formato";
+import { LinkProduto } from "./DetalheProduto";
 import Formulario from "./Formulario";
 import { Icone, Modal, SeletorPeriodo } from "./ui";
 
@@ -144,9 +145,12 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
                 <tr key={l.id} className="clicavel" onClick={() => abrir({ ...l })}>
                   {colunas.map((c) => {
                     const campo = def.campos[c];
+                    const ehProduto = (campo.tipo === "ref" && campo.colecao === "insumos" && l[c]) || (colecao === "insumos" && c === "nome");
                     return (
                       <td key={c} data-rotulo={campo.rotulo} className={["numero", "dinheiro"].includes(campo.tipo) ? "num" : ""}>
-                        {exibir(campo, l[c], dados)}
+                        {ehProduto ? (
+                          <LinkProduto id={colecao === "insumos" ? l.id : l[c]} dados={dados}>{exibir(campo, l[c], dados)}</LinkProduto>
+                        ) : exibir(campo, l[c], dados)}
                       </td>
                     );
                   })}

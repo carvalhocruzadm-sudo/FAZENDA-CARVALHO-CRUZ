@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
+import { LinkProduto } from "../components/DetalheProduto";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
@@ -207,7 +208,10 @@ function EstoqueQuimicos({ dados }) {
         vazio="Cadastre os produtos na aba Produtos e lance as entradas."
         linhas={lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({ ...x, id: x.insumo.id }))}
         colunas={[
-          { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          {
+            rotulo: "Produto",
+            valor: (x) => <LinkProduto id={x.insumo.id} dados={dados}>{x.insumo.nome}</LinkProduto>,
+          },
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "Tipo", valor: (x) => tipos[x.insumo.tipo] ?? "—" },
           { rotulo: "Entrou", num: true, valor: (x) => numero(x.entrada) },
@@ -291,7 +295,7 @@ function BalancoEstoque({ dados, salvar }) {
         vazio="Cadastre os produtos na aba Produtos primeiro."
         linhas={linhas}
         colunas={[
-          { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          { rotulo: "Produto", valor: (x) => <LinkProduto id={x.insumo.id} dados={dados}>{x.insumo.nome}</LinkProduto> },
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "No sistema", num: true, valor: (x) => `${numero(x.saldo)} ${x.insumo.unidade}` },
           { rotulo: "Contagem", valor: (x) => (

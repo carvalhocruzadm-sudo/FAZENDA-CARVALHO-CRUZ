@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { LinkProduto } from "../components/DetalheProduto";
 import { Icone, Modal, TabelaSimples } from "../components/ui";
 import { prepararRegistro, registroNovo } from "../lib/esquema";
 import { data as dataBR, nomeRef, numero } from "../lib/formato";
@@ -74,7 +75,7 @@ function Detalhe({ rec, dados, salvar, aoFechar }) {
       <TabelaSimples
         linhas={itens.map((i, n) => ({ ...i, id: n }))}
         colunas={[
-          { rotulo: "Produto", valor: (i) => <b>{i.nome}</b> },
+          { rotulo: "Produto", valor: (i) => <LinkProduto id={i.insumo_id} dados={dados}>{i.nome}</LinkProduto> },
           { rotulo: "Fabricante", valor: (i) => i.fabricante || "—" },
           { rotulo: "Dose/ha", num: true, valor: (i) => `${numero(i.dose_ha, 3)} ${i.unidade}` },
           { rotulo: "Total", num: true, valor: (i) => `${numero(i.total)} ${i.unidade}` },
