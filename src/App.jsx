@@ -76,7 +76,7 @@ function useCaminho() {
  * perfil "campo" só enxerga essas telas; as outras contas também podem abrir
  * (para testar) e voltar ao sistema completo.
  */
-function Rotas({ sair, email, perfilCampo }) {
+function Rotas({ sair, email, perfilCampo, aoDescobrirCampo }) {
   const [caminho, irPara] = useCaminho();
   if (perfilCampo || caminho.startsWith("/campo")) {
     return (
@@ -84,7 +84,7 @@ function Rotas({ sair, email, perfilCampo }) {
         voltarAoSistema={perfilCampo ? null : () => irPara("/")} />
     );
   }
-  return <Sistema sair={sair} email={email} abrirCampo={() => irPara("/campo")} />;
+  return <Sistema sair={sair} email={email} abrirCampo={() => irPara("/campo")} aoDescobrirCampo={aoDescobrirCampo} />;
 }
 
 function TrocarSenha({ email, aoFechar }) {
@@ -142,8 +142,12 @@ function TrocarSenha({ email, aoFechar }) {
   );
 }
 
-function Sistema({ sair, email, abrirCampo }) {
+function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
   const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
+
+  // Login marcado como Tratorista em Usuários: sai daqui e fica só no Modo Campo.
+  const ehCampo = pronto && emailEhCampo(dados.usuarios, email);
+  useEffect(() => { if (ehCampo) aoDescobrirCampo?.(); }, [ehCampo, aoDescobrirCampo]);
   const [tela, setTela] = useState(() => {
     // O link fixado no grupo do WhatsApp (/ticket) abre direto no lançamento do ticket.
     if (location.pathname.replace(/\/+$/, "") === LINK_TICKET) return "ticket";
@@ -222,46 +226,73 @@ function Sistema({ sair, email, abrirCampo }) {
   );
 }
 
+/** O cadastro de Usuários diz que este e-mail é de tratorista (perfil "campo")? */
+function emailEhCampo(usuarios, email) {
+  const alvo = String(email ?? "").trim().toLowerCase();
+  return Boolean(alvo) && (usuarios ?? []).some((u) => u.perfil === "campo" && u.ativo !== false
+    && String(u.email ?? "").trim().toLowerCase() === alvo);
+}
+
 /**
- * O login é de tratorista (só Modo Campo)? Vem do perfil marcado em Usuários
- * (perguntado ao banco) ou do app_metadata. Fica guardado no aparelho para
- * abrir certo também sem internet. `null` = ainda perguntando.
+ * O login é de tratorista (só Modo Campo)? Vem de três lugares, o que
+ * responder "sim" primeiro vale:
+ *   - app_metadata (comando SQL no Supabase);
+ *   - o banco (função eh_campo, que lê o cadastro de Usuários) — perguntado
+ *     ao abrir e toda vez que o app volta para a tela;
+ *   - a lista de Usuários já baixada no aparelho (`marcarCampo`, chamado
+ *     pelo Sistema), para travar mesmo se o banco ainda não respondeu.
+ * Fica guardado no aparelho para abrir certo também sem internet.
+ * Devolve [perfilCampo, marcarCampo]; `null` = ainda perguntando.
  */
 function usePerfilCampo(usuario) {
   const email = usuario?.email ?? null;
   const doMetadata = usuario?.app_metadata?.perfil === "campo";
-  const chave = `fcc-campo:${email}`;
+  const chave = `fcc-campo:${String(email ?? "").toLowerCase()}`;
   const lerGuardado = () => {
     try { const v = localStorage.getItem(chave); return v == null ? null : v === "1"; } catch { return null; }
   };
+  const guardar = useCallback((campo) => {
+    try { localStorage.setItem(chave, campo ? "1" : "0"); } catch { /* sem armazenamento */ }
+  }, [chave]);
   const [resposta, setResposta] = useState({ email: null, campo: null });
 
   useEffect(() => {
     if (!email || doMetadata) return undefined;
     let vivo = true;
-    supabase.rpc("eh_campo").then(({ data, error }) => {
+    const perguntar = () => supabase.rpc("eh_campo").then(({ data, error }) => {
       if (!vivo) return;
-      // Sem resposta (sem internet, banco sem a função): fica o que estava guardado, ou "não".
-      const campo = error ? null : Boolean(data);
-      if (campo != null) { try { localStorage.setItem(chave, campo ? "1" : "0"); } catch { /* sem armazenamento */ } }
-      setResposta({ email, campo });
+      // Sem resposta (sem internet, banco sem a função): fica o que já se sabia.
+      if (error) { setResposta((r) => (r.email === email ? r : { email, campo: null })); return; }
+      guardar(Boolean(data));
+      setResposta({ email, campo: Boolean(data) });
     });
-    return () => { vivo = false; };
-  }, [email, doMetadata, chave]);
+    perguntar();
+    const aoVoltar = () => document.visibilityState === "visible" && perguntar();
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => { vivo = false; document.removeEventListener("visibilitychange", aoVoltar); };
+  }, [email, doMetadata, guardar]);
 
-  if (!email) return false;
-  if (doMetadata) return true;
-  if (resposta.email === email && resposta.campo != null) return resposta.campo;
-  const guardado = lerGuardado();
-  if (guardado != null) return guardado;
-  return resposta.email === email || !navigator.onLine ? false : null;
+  const marcarCampo = useCallback(() => {
+    guardar(true);
+    setResposta({ email, campo: true });
+  }, [email, guardar]);
+
+  let campo;
+  if (!email) campo = false;
+  else if (doMetadata) campo = true;
+  else if (resposta.email === email && resposta.campo != null) campo = resposta.campo;
+  else {
+    const guardado = lerGuardado();
+    campo = guardado != null ? guardado : resposta.email === email || !navigator.onLine ? false : null;
+  }
+  return [campo, marcarCampo];
 }
 
 /** Com Supabase, só entra quem tem login. Sem ele, modo demonstração. */
 function Portao() {
   const [sessao, setSessao] = useState(undefined);
   const [recuperando, setRecuperando] = useState(false);
-  const perfilCampo = usePerfilCampo(sessao?.user);
+  const [perfilCampo, marcarCampo] = usePerfilCampo(sessao?.user);
 
   useEffect(() => {
     if (!supabaseConfigurado) return undefined;
@@ -278,7 +309,10 @@ function Portao() {
   if (recuperando && sessao) return <NovaSenha aoConcluir={() => setRecuperando(false)} />;
   if (!sessao) return <Login />;
   if (perfilCampo == null) return <div className="vazio">Verificando acesso…</div>;
-  return <Rotas email={sessao.user.email} sair={() => supabase.auth.signOut()} perfilCampo={perfilCampo} />;
+  return (
+    <Rotas email={sessao.user.email} sair={() => supabase.auth.signOut()}
+      perfilCampo={perfilCampo} aoDescobrirCampo={marcarCampo} />
+  );
 }
 
 class ProtecaoErro extends Component {

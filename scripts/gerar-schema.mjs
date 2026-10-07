@@ -39,7 +39,7 @@ begin
   if to_regclass('public.usuarios') is null then return false; end if;
   return exists (
     select 1 from public.usuarios u
-    where lower(u.email) = lower(auth.jwt() ->> 'email') and u.perfil = 'campo' and coalesce(u.ativo, true)
+    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil = 'campo' and coalesce(u.ativo, true)
   );
 end $$;
 
