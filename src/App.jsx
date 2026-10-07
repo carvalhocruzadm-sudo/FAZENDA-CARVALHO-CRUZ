@@ -5,6 +5,7 @@ import { Icone, Modal } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
+import Agronomo from "./pages/Agronomo";
 import Login, { NovaSenha } from "./pages/Login";
 import Painel from "./pages/Painel";
 import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
@@ -203,7 +204,12 @@ class ProtecaoErro extends Component {
   }
 }
 
+/** O link do agrônomo (/agronomo/CÓDIGO) abre direto, sem login. */
+const tokenAgronomo = () => window.location.pathname.match(/^\/agronomo\/([A-Za-z0-9]{16,})\/?$/)?.[1];
+
 export default function App() {
+  const token = tokenAgronomo();
+  if (token) return <ProtecaoErro><Agronomo token={token} /></ProtecaoErro>;
   return (
     <ProtecaoErro>
       <Portao />
