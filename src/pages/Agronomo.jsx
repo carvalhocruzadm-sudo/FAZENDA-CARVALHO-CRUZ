@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Abas, Icone, Modal, Stat, TabelaSimples } from "../components/ui";
 import { ESQUEMA, hoje } from "../lib/esquema";
@@ -92,15 +92,17 @@ function Rotulos({ token, produto, aoFechar }) {
 function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviada }) {
   const lembrado = (() => { try { return localStorage.getItem("fcc-agronomo-nome"); } catch { return null; } })();
   const [f, setF] = useState({
-    agronomo: lembrado || base.agronomo || "", data: hoje(), talhao_id: "", area_ha: "", alvo: "", calda_l_ha: "", observacao: "",
+    agronomo: lembrado || base.agronomo || "", data: hoje(), alvo: "", calda_l_ha: "", observacao: "",
   });
   // Guarda a lista na abertura: depois de enviar, a seleção da tela é limpa e o PDF ainda precisa dos produtos.
   const [ids] = useState(() => [...selecionados]);
   const [doses, setDoses] = useState(() => Object.fromEntries(ids.map((id) => [id, ""])));
   const [estado, setEstado] = useState({ enviando: false, erro: null, enviada: false });
+  // Talhões que já chegaram na fazenda: se der erro no meio, o "Enviar" de novo manda só o resto.
+  const enviados = useRef(new Set());
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
 
-  // Cultura primeiro (citros não mostra área de grão), depois a fazenda e o talhão.
+  // Cultura primeiro (citros não mostra área de grão), depois marca as fazendas e os talhões (um, vários ou todos).
   const SEM_CULTURA = "__sem";
   const chaveCultura = (t) => t.cultura_id || SEM_CULTURA;
   const nomeFazenda = (t) => t.fazenda || "Sem fazenda";
@@ -109,39 +111,64 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
     ...(base.talhoes.some((t) => !t.cultura_id) ? [{ id: SEM_CULTURA, nome: "Sem cultura definida" }] : []),
   ];
   const [culturaSel, setCulturaSel] = useState(culturasComTalhao.length === 1 ? culturasComTalhao[0].id : "");
-  const talhoesDaCultura = base.talhoes.filter((t) => culturaSel && chaveCultura(t) === culturaSel);
+  const talhoesDaCultura = base.talhoes.filter((t) => culturaSel && chaveCultura(t) === culturaSel)
+    .sort((a, b) => ordenar(nomeFazenda(a), nomeFazenda(b)) || ordenar(a.nome, b.nome));
   const fazendas = [...new Set(talhoesDaCultura.map(nomeFazenda))].sort(ordenar);
-  const [fazenda, setFazenda] = useState("");
-  const talhoesDaFazenda = talhoesDaCultura.filter((t) => nomeFazenda(t) === fazenda).sort((a, b) => ordenar(a.nome, b.nome));
-  const talhao = base.talhoes.find((t) => t.id === f.talhao_id);
-  const cultura = base.culturas.find((c) => c.id === talhao?.cultura_id);
-  const area = Number(f.area_ha) || 0;
+  // Talhão marcado → área a aplicar nele (ha). Já vem com a área do cadastro.
+  const [areas, setAreas] = useState({});
+  const marcados = talhoesDaCultura.filter((t) => t.id in areas);
+  const areaDe = (t) => Number(areas[t.id]) || 0;
+  const area = marcados.reduce((s, t) => s + areaDe(t), 0);
+  const cultura = base.culturas.find((c) => c.id === culturaSel);
 
-  const itens = ids.map((id) => {
+  const marcar = (lista, sim) => setAreas((a) => {
+    const n = { ...a };
+    for (const t of lista) {
+      if (!sim) delete n[t.id];
+      else if (!(t.id in n)) n[t.id] = t.area_ha ?? "";
+    }
+    return n;
+  });
+
+  const itensCom = (ha) => ids.map((id) => {
     const p = produtos.find((x) => x.id === id);
     const dose = Number(doses[id]) || 0;
     return {
       insumo_id: id, nome: p.nome, fabricante: p.fabricante, principio_ativo: p.principio_ativo,
-      unidade: p.unidade, dose_ha: dose, total: +(dose * area).toFixed(3), saldo: p.saldo,
+      unidade: p.unidade, dose_ha: dose, total: +(dose * ha).toFixed(3), saldo: p.saldo,
     };
   });
+  const itens = itensCom(area);
+  const semSaldo = (lista) => lista.map((i) => ({ ...i, saldo: undefined }));
 
-  const escolherTalhao = (id) => {
-    const t = base.talhoes.find((x) => x.id === id);
-    setF((x) => ({ ...x, talhao_id: id, area_ha: t?.area_ha ?? x.area_ha }));
-  };
-
-  const montar = () => ({
-    ...f, talhao: talhao?.nome, fazenda: talhao?.fazenda, cultura: cultura?.nome, cultura_id: cultura?.id ?? null,
-    area_ha: area, calda_l_ha: f.calda_l_ha === "" ? null : Number(f.calda_l_ha),
-    itens: itens.map((i) => ({ ...i, saldo: undefined })),
+  // Uma aplicação por talhão: na fazenda cada uma dá baixa no talhão certo.
+  const montarTalhao = (t) => ({
+    ...f, talhao_id: t.id, talhao: t.nome, fazenda: t.fazenda, cultura: cultura?.nome, cultura_id: cultura?.id ?? null,
+    area_ha: areaDe(t), calda_l_ha: f.calda_l_ha === "" ? null : Number(f.calda_l_ha),
+    itens: semSaldo(itensCom(areaDe(t))),
   });
+
+  // O PDF junta tudo numa receita só, com a lista de talhões.
+  const montarPdf = () => {
+    if (marcados.length === 1) return montarTalhao(marcados[0]);
+    const locais = fazendas
+      .map((n) => [n, marcados.filter((t) => nomeFazenda(t) === n)])
+      .filter(([, ts]) => ts.length)
+      .map(([n, ts]) => `${n}: ${ts.map((t) => t.nome).join(", ")}`)
+      .join("; ");
+    return {
+      ...f, talhao: locais, cultura: cultura?.nome, area_ha: area,
+      calda_l_ha: f.calda_l_ha === "" ? null : Number(f.calda_l_ha),
+      talhoes: marcados.map((t) => ({ fazenda: nomeFazenda(t), talhao: t.nome, area_ha: areaDe(t) })),
+      itens: semSaldo(itens),
+    };
+  };
 
   const validar = () => {
     if (!culturaSel) return "Escolha a cultura.";
-    if (!fazenda) return "Escolha a fazenda.";
-    if (!f.talhao_id) return "Escolha o talhão.";
-    if (area <= 0) return "Informe a área a aplicar (ha).";
+    if (!marcados.length) return "Marque pelo menos um talhão.";
+    const semArea = marcados.find((t) => areaDe(t) <= 0);
+    if (semArea) return `Informe a área a aplicar no talhão ${semArea.nome} (ha).`;
     if (itens.some((i) => i.dose_ha <= 0)) return "Informe a dose por hectare de todos os produtos.";
     return null;
   };
@@ -149,7 +176,7 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
   const pdf = async () => {
     const e = validar();
     if (e) { setEstado((s) => ({ ...s, erro: e })); return; }
-    await gerarPdfAplicacao(montar(), `aplicacao-${f.data}.pdf`);
+    await gerarPdfAplicacao(montarPdf(), `aplicacao-${f.data}.pdf`);
   };
 
   const enviar = async () => {
@@ -157,8 +184,20 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
     if (e) { setEstado((s) => ({ ...s, erro: e })); return; }
     setEstado({ enviando: true, erro: null, enviada: false });
     try { localStorage.setItem("fcc-agronomo-nome", f.agronomo); } catch { /* sem armazenamento: só não lembra o nome */ }
-    const { error } = await supabase.rpc("agronomo_enviar", { p_token: token, p_dados: montar() });
-    if (error) { setEstado({ enviando: false, erro: error.message, enviada: false }); return; }
+    for (const t of marcados) {
+      if (enviados.current.has(t.id)) continue;
+      const { error } = await supabase.rpc("agronomo_enviar", { p_token: token, p_dados: montarTalhao(t) });
+      if (error) {
+        const feitos = enviados.current.size;
+        setEstado({
+          enviando: false, enviada: false,
+          erro: `${feitos ? `Já foram ${feitos} de ${marcados.length} talhões. ` : ""}Não deu para enviar o talhão ${t.nome}: ${error.message}. Toque em "Enviar" de novo para mandar o que falta.`,
+        });
+        if (feitos) aoEnviada();
+        return;
+      }
+      enviados.current.add(t.id);
+    }
     setEstado({ enviando: false, erro: null, enviada: true });
     aoEnviada();
   };
@@ -191,28 +230,53 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
         <div className="campo"><span><label>Data</label></span><input type="date" value={f.data} onChange={(e) => set("data", e.target.value)} /></div>
         <div className="campo largo">
           <span><label>Cultura da aplicação</label><em> *</em></span>
-          <select value={culturaSel} onChange={(e) => { setCulturaSel(e.target.value); setFazenda(""); setF((x) => ({ ...x, talhao_id: "", area_ha: "" })); }}>
+          <select value={culturaSel} onChange={(e) => { setCulturaSel(e.target.value); setAreas({}); }}>
             <option value="">— escolha a cultura —</option>
             {culturasComTalhao.map((c) => <option key={c.id} value={c.id}>{c.nome} ({base.talhoes.filter((t) => chaveCultura(t) === c.id).length} talhões)</option>)}
           </select>
         </div>
         <div className="campo largo">
-          <span><label>Fazenda</label><em> *</em></span>
-          <select value={fazenda} onChange={(e) => { setFazenda(e.target.value); setF((x) => ({ ...x, talhao_id: "", area_ha: "" })); }} disabled={!culturaSel}>
-            <option value="">{culturaSel ? "— escolha a fazenda —" : "Escolha a cultura primeiro"}</option>
-            {fazendas.map((n) => <option key={n} value={n}>{n} ({talhoesDaCultura.filter((t) => nomeFazenda(t) === n).length} talhões)</option>)}
-          </select>
+          <span><label>Fazendas e talhões</label><em> *</em></span>
+          {!culturaSel ? <div className="escolha-talhoes vazio">Escolha a cultura primeiro</div> : (
+            <div className="escolha-talhoes">
+              <div className="barra">
+                <button className="btn" onClick={() => marcar(talhoesDaCultura, true)}>Marcar todos</button>
+                <button className="btn" onClick={() => marcar(talhoesDaCultura, false)} disabled={!marcados.length}>Desmarcar</button>
+                <span className="espaco" />
+                <b>{marcados.length} {marcados.length === 1 ? "talhão" : "talhões"} · {numero(area)} ha</b>
+              </div>
+              {fazendas.map((n) => {
+                const ts = talhoesDaCultura.filter((t) => nomeFazenda(t) === n);
+                const todos = ts.every((t) => t.id in areas);
+                const algum = ts.some((t) => t.id in areas);
+                return (
+                  <div key={n} className="grupo-fazenda">
+                    <label className="marca fazenda">
+                      <input type="checkbox" checked={todos} onChange={() => marcar(ts, !todos)}
+                        ref={(el) => { if (el) el.indeterminate = algum && !todos; }} />
+                      <b>{n}</b> <small>({ts.length} {ts.length === 1 ? "talhão" : "talhões"} · marcar a fazenda inteira)</small>
+                    </label>
+                    {ts.map((t) => (
+                      <div key={t.id} className="linha-talhao">
+                        <label className="marca">
+                          <input type="checkbox" checked={t.id in areas} onChange={() => marcar([t], !(t.id in areas))} />
+                          {t.nome}{t.area_ha ? <small> ({numero(t.area_ha)} ha)</small> : ""}
+                        </label>
+                        {t.id in areas && (
+                          <span className="com-unidade">
+                            <input type="number" inputMode="decimal" step="any" aria-label={`Área a aplicar em ${t.nome}`}
+                              value={areas[t.id]} onChange={(e) => setAreas((x) => ({ ...x, [t.id]: e.target.value }))} />
+                            <i>ha</i>
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-        <div className="campo largo">
-          <span><label>Talhão</label><em> *</em></span>
-          <select value={f.talhao_id} onChange={(e) => escolherTalhao(e.target.value)} disabled={!fazenda}>
-            <option value="">{fazenda ? "— escolha o talhão —" : "Escolha a fazenda primeiro"}</option>
-            {talhoesDaFazenda.map((t) => (
-              <option key={t.id} value={t.id}>{t.nome}{t.area_ha ? ` (${numero(t.area_ha)} ha)` : ""}</option>
-            ))}
-          </select>
-        </div>
-        <div className="campo"><span><label>Área a aplicar (ha)</label><em> *</em></span><input type="number" inputMode="decimal" step="any" value={f.area_ha} onChange={(e) => set("area_ha", e.target.value)} /></div>
         <div className="campo"><span><label>Calda (L/ha)</label></span><input type="number" inputMode="decimal" step="any" value={f.calda_l_ha} onChange={(e) => set("calda_l_ha", e.target.value)} /></div>
         <div className="campo largo"><span><label>Alvo (praga, doença, planta daninha)</label></span><input value={f.alvo} onChange={(e) => set("alvo", e.target.value)} /></div>
 
