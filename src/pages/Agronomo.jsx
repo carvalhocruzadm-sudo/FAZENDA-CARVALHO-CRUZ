@@ -100,6 +100,11 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
   const [estado, setEstado] = useState({ enviando: false, erro: null, enviada: false });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
 
+  // Fazenda primeiro, depois o talhão dela. Talhão sem fazenda cai em "Sem fazenda".
+  const nomeFazenda = (t) => t.fazenda || "Sem fazenda";
+  const fazendas = [...new Set(base.talhoes.map(nomeFazenda))].sort(ordenar);
+  const [fazenda, setFazenda] = useState(fazendas.length === 1 ? fazendas[0] : "");
+  const talhoesDaFazenda = base.talhoes.filter((t) => nomeFazenda(t) === fazenda).sort((a, b) => ordenar(a.nome, b.nome));
   const talhao = base.talhoes.find((t) => t.id === f.talhao_id);
   const cultura = base.culturas.find((c) => c.id === talhao?.cultura_id);
   const area = Number(f.area_ha) || 0;
@@ -125,6 +130,7 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
   });
 
   const validar = () => {
+    if (!fazenda) return "Escolha a fazenda.";
     if (!f.talhao_id) return "Escolha o talhão.";
     if (area <= 0) return "Informe a área a aplicar (ha).";
     if (itens.some((i) => i.dose_ha <= 0)) return "Informe a dose por hectare de todos os produtos.";
@@ -175,11 +181,18 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
         <div className="campo"><span><label>Agrônomo</label></span><input value={f.agronomo} onChange={(e) => set("agronomo", e.target.value)} /></div>
         <div className="campo"><span><label>Data</label></span><input type="date" value={f.data} onChange={(e) => set("data", e.target.value)} /></div>
         <div className="campo largo">
+          <span><label>Fazenda</label><em> *</em></span>
+          <select value={fazenda} onChange={(e) => { setFazenda(e.target.value); setF((x) => ({ ...x, talhao_id: "", area_ha: "" })); }}>
+            <option value="">— escolha a fazenda —</option>
+            {fazendas.map((n) => <option key={n} value={n}>{n} ({base.talhoes.filter((t) => nomeFazenda(t) === n).length} talhões)</option>)}
+          </select>
+        </div>
+        <div className="campo largo">
           <span><label>Talhão</label><em> *</em></span>
-          <select value={f.talhao_id} onChange={(e) => escolherTalhao(e.target.value)}>
-            <option value="">— escolha —</option>
-            {[...base.talhoes].sort((a, b) => ordenar(a.fazenda, b.fazenda) || ordenar(a.nome, b.nome)).map((t) => (
-              <option key={t.id} value={t.id}>{[t.fazenda, t.nome].filter(Boolean).join(" · ")}{t.area_ha ? ` (${numero(t.area_ha)} ha)` : ""}</option>
+          <select value={f.talhao_id} onChange={(e) => escolherTalhao(e.target.value)} disabled={!fazenda}>
+            <option value="">{fazenda ? "— escolha o talhão —" : "Escolha a fazenda primeiro"}</option>
+            {talhoesDaFazenda.map((t) => (
+              <option key={t.id} value={t.id}>{t.nome}{t.area_ha ? ` (${numero(t.area_ha)} ha)` : ""}</option>
             ))}
           </select>
           {cultura && <small>Cultura: {cultura.nome}</small>}
