@@ -10,7 +10,8 @@ const SITUACOES = { nova: "Nova", aprovada: "Aprovada", aplicada: "Aplicada", ca
 
 /**
  * @param {object} a  { data, agronomo, talhao, fazenda, cultura, area_ha, alvo, calda_l_ha, observacao, situacao,
- *                      itens: [{ nome, fabricante, principio_ativo, unidade, dose_ha, total }] }
+ *                      itens: [{ nome, fabricante, principio_ativo, unidade, dose_ha, total }],
+ *                      talhoes?: [{ fazenda, talhao, area_ha }] (quando a aplicação vale para vários talhões) }
  */
 export async function gerarPdfAplicacao(a, nomeArquivo) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
@@ -33,7 +34,7 @@ export async function gerarPdfAplicacao(a, nomeArquivo) {
     ["Agrônomo", a.agronomo || "-"],
     ["Fazenda / talhão", [a.fazenda, a.talhao].filter(Boolean).join(" / ") || "-"],
     ["Cultura", a.cultura || "-"],
-    ["Área a aplicar", a.area_ha ? `${numero(a.area_ha)} ha` : "-"],
+    ["Área a aplicar", a.area_ha ? `${numero(a.area_ha)} ha${a.talhoes?.length > 1 ? ` (${a.talhoes.length} talhões)` : ""}` : "-"],
     ["Alvo", a.alvo || "-"],
     ["Calda", a.calda_l_ha ? `${numero(a.calda_l_ha, 1)} L/ha` : "-"],
   ];
@@ -44,6 +45,19 @@ export async function gerarPdfAplicacao(a, nomeArquivo) {
     styles: { fontSize: 10, cellPadding: 1.4 },
     columnStyles: { 0: { fontStyle: "bold", cellWidth: 38, textColor: [119, 119, 106] } },
   });
+
+  if (a.talhoes?.length > 1) {
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 6,
+      head: [["Fazenda", "Talhão", "Área", ...a.itens.map((i) => i.nome)]],
+      body: a.talhoes.map((t) => [
+        t.fazenda || "-", t.talhao || "-", `${numero(t.area_ha)} ha`,
+        ...a.itens.map((i) => `${numero(i.dose_ha * t.area_ha, 2)} ${i.unidade}`),
+      ]),
+      headStyles: { fillColor: verde },
+      styles: { fontSize: a.itens.length > 4 ? 8 : 9.5, cellPadding: 1.6 },
+    });
+  }
 
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 6,
