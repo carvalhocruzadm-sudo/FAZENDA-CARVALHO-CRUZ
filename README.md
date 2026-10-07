@@ -56,6 +56,22 @@ Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas gu
 4. Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
    (**Project Settings → Data API / API Keys**).
 
+## 👨‍🌾 Link do agrônomo
+
+Em **Químicos e insumos → Link do agrônomo**, escreva o nome do agrônomo e clique em **Criar link**. Copie o
+link (ou use **Enviar pelo WhatsApp**). Quem abre o link **não precisa de senha** e vê **só o estoque de
+químicos** (sem preços, vendas ou financeiro). Ele pode:
+
+- ver o estoque **por produto, fabricante, tipo, princípio ativo ou validade**, com busca e foto do rótulo;
+- marcar os produtos, clicar em **Criar aplicação** (talhão, área, alvo, dose por hectare) e **enviar para a
+  fazenda** e/ou **baixar o PDF**.
+
+A aplicação enviada aparece em **Químicos e insumos → Aplicações do agrônomo**, onde você baixa o PDF, aprova ou
+**dá baixa no estoque** (isso lança as saídas no talhão). Para desligar o acesso, desative ou apague o link.
+
+Para funcionar, rode de novo o `supabase/schema.sql` no SQL Editor (ele cria as funções do link).
+Para o agrônomo ver a **validade**, lance a data de validade nas **Entradas / compras**.
+
 ## 🤖 Consulta de produto (uso, dose e substitutos)
 
 No cadastro de um produto, o botão **Consultar uso, dose e substitutos** pesquisa pelo nome comercial e

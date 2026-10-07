@@ -9,6 +9,7 @@ import {
 import { ESQUEMA, hoje } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
+import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
@@ -202,9 +203,12 @@ function EstoqueQuimicos({ dados }) {
 }
 
 export function Quimicos(props) {
+  const novas = props.dados.recomendacoes.filter((r) => r.situacao === "nova").length;
   return (
     <Secao props={props} abas={[
       ["estoque", "Estoque", EstoqueQuimicos],
+      ["agronomo", `Aplicações do agrônomo${novas ? ` (${novas} ${novas === 1 ? "nova" : "novas"})` : ""}`, AplicacoesAgronomo],
+      ["link", "Link do agrônomo", LinkAgronomo],
       ["aplicacoes", "Aplicações / saídas"],
       ["insumo_entradas", "Entradas / compras"],
       ["insumos", "Produtos"],

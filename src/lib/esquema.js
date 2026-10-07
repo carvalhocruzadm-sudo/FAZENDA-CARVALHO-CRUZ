@@ -12,6 +12,7 @@
  *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
  *   sugestao → texto livre com sugestões (dá para criar uma categoria nova)
  *   ref      → aponta para outra coleção (`colecao`, `filtro` opcional)
+ *   itens    → lista guardada como JSON (sem campo na tela padrão: tem tela própria)
  *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
@@ -73,6 +74,12 @@ const culturaDoTalhao = {
     return t?.cultura_id ? { cultura_id: t.cultura_id } : {};
   },
 };
+
+/** Código difícil de adivinhar para o link do agrônomo (192 bits). */
+function novoToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 export const ESQUEMA = {
   // ─── Cadastros ────────────────────────────────────────────────────────────
@@ -198,6 +205,44 @@ export const ESQUEMA = {
     resumo: (r) => `${r.nome} (${r.unidade})`,
   },
 
+  // ─── Agrônomo ─────────────────────────────────────────────────────────────
+  links_agronomo: {
+    titulo: "Links do agrônomo", singular: "link", icone: "pessoas",
+    descricao: "Quem tem o link vê só o estoque de químicos e pode montar uma aplicação. Não vê dinheiro, vendas nem o resto do sistema.",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome do agrônomo", obrigatorio: true },
+      token: { tipo: "texto", rotulo: "Código do link", somenteLeitura: true },
+      ativo: { tipo: "booleano", rotulo: "Link ativo", padrao: true },
+    },
+    // O código nasce uma vez e nunca muda (é ele que vai no link).
+    calcular: (r) => (r.token ? {} : { token: novoToken() }),
+    colunas: ["nome", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.nome,
+  },
+
+  recomendacoes: {
+    titulo: "Aplicações do agrônomo", singular: "aplicação do agrônomo", icone: "spray",
+    descricao: "Receitas montadas pelo agrônomo. Só viram saída de estoque quando você der baixa.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      agronomo: { tipo: "texto", rotulo: "Agrônomo" },
+      talhao_id: { ...refTalhao, obrigatorio: true },
+      cultura_id: refCultura,
+      area_ha: { tipo: "numero", rotulo: "Área a aplicar (ha)", casas: 2 },
+      alvo: { tipo: "texto", rotulo: "Alvo (praga, doença, planta daninha)" },
+      calda_l_ha: { tipo: "numero", rotulo: "Calda (L/ha)", casas: 1 },
+      itens: { tipo: "itens", rotulo: "Produtos" },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      situacao: {
+        tipo: "opcoes", rotulo: "Situação", padrao: "nova",
+        opcoes: [["nova", "Nova"], ["aprovada", "Aprovada"], ["aplicada", "Aplicada (baixa dada)"], ["cancelada", "Cancelada"]],
+      },
+      link_id: { tipo: "ref", colecao: "links_agronomo", rotulo: "Link usado" },
+    },
+    colunas: ["data", "agronomo", "talhao_id", "alvo", "situacao"],
+  },
+
   // ─── Lançamentos ──────────────────────────────────────────────────────────
   operacoes: {
     titulo: "Horímetro / operações", singular: "operação", icone: "relogio", lancamento: true,
@@ -289,9 +334,10 @@ export const ESQUEMA = {
       cultura_id: { ...refCultura, rotulo: "Comprado para a cultura" },
       fornecedor: { tipo: "texto", rotulo: "Fornecedor" },
       nota: { tipo: "texto", rotulo: "Nota fiscal" },
-      lote: { tipo: "texto", rotulo: "Lote / validade" },
+      lote: { tipo: "texto", rotulo: "Lote" },
+      validade: { tipo: "data", rotulo: "Validade", dica: "Está na embalagem. O agrônomo vê pela validade." },
     },
-    colunas: ["data", "insumo_id", "quantidade", "valor", "cultura_id", "fornecedor"],
+    colunas: ["data", "insumo_id", "quantidade", "valor", "validade", "fornecedor"],
   },
 
   aplicacoes: {
@@ -532,7 +578,7 @@ export function prepararRegistro(colecao, bruto) {
     if (!campoVisivel(campo, reg)) v = null;
     if (["numero", "dinheiro"].includes(campo.tipo)) v = v === "" || v == null ? null : Number(v);
     if (campo.tipo === "booleano") v = Boolean(v);
-    if (campo.tipo === "fotos" && !v?.length) v = null;
+    if ((campo.tipo === "fotos" || campo.tipo === "itens") && !v?.length) v = null;
     if (typeof v === "string") v = v.trim() || null;
     reg[chave] = v;
   }
