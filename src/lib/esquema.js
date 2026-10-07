@@ -152,6 +152,7 @@ export const ESQUEMA = {
     titulo: "Usuários", singular: "usuário", icone: "pessoas",
     descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users).",
     campos: {
+      funcionario_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Funcionário", dica: "Escolha para trazer o nome e o telefone do cadastro de funcionários" },
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
       email: { tipo: "texto", rotulo: "E-mail de acesso", obrigatorio: true },
       perfil: { tipo: "opcoes", rotulo: "Perfil", padrao: "operador", opcoes: [["admin", "Administrador (tudo)"], ["gerente", "Gerente"], ["operador", "Operador (lança dados)"], ["consulta", "Só consulta"]] },
@@ -159,7 +160,13 @@ export const ESQUEMA = {
       ativo: { tipo: "booleano", rotulo: "Acesso liberado", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "email", "perfil", "telefone", "ativo"],
+    aoMudar: {
+      funcionario_id: (reg, dados) => {
+        const f = dados.funcionarios.find((x) => x.id === reg.funcionario_id);
+        return f ? { nome: f.nome, telefone: f.telefone ?? reg.telefone } : {};
+      },
+    },
+    colunas: ["nome", "funcionario_id", "email", "perfil", "telefone", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => r.nome,
   },

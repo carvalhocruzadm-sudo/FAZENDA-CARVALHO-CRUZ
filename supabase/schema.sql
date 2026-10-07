@@ -89,6 +89,7 @@ create table if not exists public.usuarios (
   criado_em timestamptz not null default now(),
   atualizado_em timestamptz
 );
+alter table public.usuarios add column if not exists funcionario_id uuid;
 alter table public.usuarios add column if not exists nome text;
 alter table public.usuarios add column if not exists email text;
 alter table public.usuarios add column if not exists perfil text;
