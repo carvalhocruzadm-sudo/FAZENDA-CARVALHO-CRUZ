@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 
 import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
+import ConsultaProduto from "./ConsultaProduto";
 import { Icone } from "./ui";
 
 /** Sugestões de um campo: a lista fixa + o que já foi digitado antes. */
@@ -172,6 +173,7 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
       {campos.filter(([, c]) => campoVisivel(c, reg)).map(([chave, campo]) => (
         <Campo key={chave} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />
       ))}
+      {colecao === "insumos" && <div className="largo"><ConsultaProduto reg={reg} setReg={setReg} /></div>}
     </div>
   );
 }
