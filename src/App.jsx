@@ -80,7 +80,7 @@ function Rotas({ sair, email, perfilCampo, aoDescobrirCampo }) {
   const [caminho, irPara] = useCaminho();
   if (perfilCampo || caminho.startsWith("/campo")) {
     return (
-      <ModoCampo caminho={caminho.startsWith("/campo") ? caminho : "/campo"} irPara={irPara} sair={sair}
+      <ModoCampo caminho={caminho.startsWith("/campo") ? caminho : "/campo"} irPara={irPara} sair={sair} email={email}
         voltarAoSistema={perfilCampo ? null : () => irPara("/")} />
     );
   }

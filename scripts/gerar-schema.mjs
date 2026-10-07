@@ -27,7 +27,8 @@ let sql = `-- ══════════════════════
 
 -- Conta do Modo Campo (o celular dos tratoristas): só vê os cadastros e só
 -- lança abastecimento, horímetro, as saídas/entradas do depósito de químicos e
--- o ticket da balança (só vê os tickets que ainda faltam completar, sem preço).
+-- o ticket da balança (só quem está marcado em Usuários → "Lança ticket da
+-- balança"; e só vê os tickets que ainda faltam completar, sem preço).
 -- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
 -- aqui (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
@@ -41,6 +42,19 @@ begin
   return exists (
     select 1 from public.usuarios u
     where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil = 'campo' and coalesce(u.ativo, true)
+  );
+end $$;
+
+-- Login de campo que pode lançar o ticket da balança (Usuários → "Lança ticket
+-- da balança no celular"). Os outros tratoristas nem veem o botão.
+create or replace function public.campo_ticket() returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if to_regclass('public.usuarios') is null then return false; end if;
+  return exists (
+    select 1 from public.usuarios u
+    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil = 'campo'
+      and coalesce(u.ativo, true) and coalesce(u.ticket_campo, false)
   );
 end $$;
 
