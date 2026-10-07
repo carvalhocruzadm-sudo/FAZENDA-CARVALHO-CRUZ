@@ -493,7 +493,9 @@ function Custos({ dados }) {
       <div className="barra"><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
       <p className="descricao">
         Custo pelo que foi consumido: despesas com centro de custo + químicos aplicados (a custo médio) + diesel
-        dos abastecimentos com talhão/cultura. O que não tem cultura fica em "Geral da fazenda".
+        dos abastecimentos com talhão/cultura. O que não tem cultura fica em "Geral da fazenda". A produtividade
+        usa a medida do cadastro da cultura (t/ha, sc/ha, kg/pé…) e sai das colheitas do talhão ou, sem elas,
+        do peso das cargas vendidas.
       </p>
       <div className="grade">
         <Stat rotulo="Receita de vendas (líquida)" valor={brl(c.receitaTotal)} />
@@ -516,7 +518,7 @@ function Custos({ dados }) {
       <div className="cartao">
         <h2>Por talhão</h2>
         <TabelaSimples
-          linhas={c.porTalhao.filter((x) => x.custo || x.receita || x.producao).map((x) => ({ ...x, id: x.talhao.id }))}
+          linhas={c.porTalhao.filter((x) => x.custo || x.receita || x.kg).map((x) => ({ ...x, id: x.talhao.id }))}
           vazio="Nenhum custo, venda ou colheita lançado com talhão no período."
           colunas={[
             { rotulo: "Talhão", valor: (x) => x.talhao.nome },
@@ -524,7 +526,8 @@ function Custos({ dados }) {
             { rotulo: "Área", num: true, valor: (x) => (x.talhao.area_ha ? `${numero(x.talhao.area_ha)} ha` : "—") },
             { rotulo: "Custo", num: true, valor: (x) => brl(x.custo) },
             { rotulo: "Custo/ha", num: true, valor: (x) => (x.custoHa != null ? brl(x.custoHa) : "—") },
-            { rotulo: "Colhido", num: true, valor: (x) => (x.producao ? numero(x.producao) : "—") },
+            { rotulo: "Colhido (t)", num: true, valor: (x) => (x.kg ? numero(x.kg / 1000, 2) : "—") },
+            { rotulo: "Produtividade", num: true, valor: (x) => (x.produtividade ? `${numero(x.produtividade.valor, 2)} ${x.produtividade.sigla}` : "—") },
             { rotulo: "Receita", num: true, valor: (x) => brl(x.receita) },
           ]}
         />

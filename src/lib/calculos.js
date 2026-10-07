@@ -3,6 +3,8 @@
  * Assim um lançamento corrigido corrige na hora o saldo, o custo e o alerta.
  */
 
+import { kgPorUnidade } from "./esquema";
+
 const n = (v) => Number(v) || 0;
 const soma = (lista, f) => lista.reduce((t, x) => t + n(f(x)), 0);
 
@@ -192,12 +194,12 @@ export function custos(dados, periodo) {
 
   const porTalhao = dados.talhoes.map((t) => {
     const custo = soma(linhas.filter((l) => l.talhao_id === t.id), (l) => l.valor);
-    const receita = soma(vendas.filter((v) => v.talhao_id === t.id), (v) => v.valor);
-    const colhido = colheitas.filter((c) => c.talhao_id === t.id);
-    const producao = soma(colhido, (c) => c.quantidade);
-    const unidade = colhido[0]?.unidade ?? null;
+    const vendido = vendas.filter((v) => v.talhao_id === t.id);
+    const receita = soma(vendido, (v) => v.valor);
+    const cultura = dados.culturas.find((c) => c.id === t.cultura_id);
+    const kg = kgColhidos(dados, colheitas.filter((c) => c.talhao_id === t.id), vendido);
     const area = n(t.area_ha);
-    return { talhao: t, custo, receita, producao, unidade, custoHa: area ? custo / area : null, producaoHa: area ? producao / area : null };
+    return { talhao: t, custo, receita, kg, custoHa: area ? custo / area : null, produtividade: produtividade(cultura, t, kg) };
   });
 
   const custoTotal = soma(linhas, (l) => l.valor);
@@ -292,6 +294,39 @@ export function resumoPlanejamento(dados) {
     const hectares = soma(Object.values(x.haPorFazenda), (h) => h);
     return { ...x, hectares, porHa: hectares ? x.total / hectares : null };
   });
+}
+
+// ─── Produtividade ──────────────────────────────────────────────────────────
+
+/**
+ * Quilos colhidos num talhão: pelas colheitas lançadas; se não houver
+ * nenhuma, pelo peso das cargas vendidas (os tickets da balança). Nunca soma
+ * os dois, senão a mesma carga contaria duas vezes.
+ */
+export function kgColhidos(dados, colheitas, vendas) {
+  const culturaDe = (id) => dados.culturas.find((c) => c.id === id);
+  if (colheitas.length) {
+    return soma(colheitas, (c) => n(c.quantidade) * (kgPorUnidade(c.unidade, culturaDe(c.cultura_id)) ?? 0));
+  }
+  return soma(vendas, (v) => v.peso_liquido ?? n(v.quantidade) * (kgPorUnidade(v.unidade, culturaDe(v.cultura_id)) ?? 0));
+}
+
+/**
+ * Produtividade na medida escolhida no cadastro da cultura (t/ha, sc/ha,
+ * kg/pé…). Devolve { valor, sigla } ou null quando falta área, nº de pés ou peso.
+ */
+export function produtividade(cultura, talhao, kg) {
+  if (!cultura || !kg) return null;
+  const area = n(talhao.area_ha), pes = n(talhao.pes);
+  const saca = n(cultura.peso_saca) || 60;
+  switch (cultura.produtividade) {
+    case "t_ha": return area ? { valor: kg / 1000 / area, sigla: "t/ha" } : null;
+    case "sc_ha": return area ? { valor: kg / saca / area, sigla: "sc/ha" } : null;
+    case "kg_ha": return area ? { valor: kg / area, sigla: "kg/ha" } : null;
+    case "kg_pe": return pes ? { valor: kg / pes, sigla: "kg/pé" } : null;
+    case "cx_pe": return pes ? { valor: kg / 40.8 / pes, sigla: "cx/pé" } : null;
+    default: return null;
+  }
 }
 
 export { soma };
