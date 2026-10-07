@@ -51,7 +51,8 @@ export default defineConfig({
           {
             // O offline é do IndexedDB + fila; resposta velha do Supabase aqui
             // faria a sincronização ler dado furado.
-            urlPattern: ({ url }) => url.pathname.startsWith("/rest/v1") || url.pathname.startsWith("/auth/v1"),
+            // As fotos também: ficam guardadas no IndexedDB (lib/fotos.js).
+            urlPattern: ({ url }) => ["/rest/v1", "/auth/v1", "/storage/v1"].some((p) => url.pathname.startsWith(p)),
             handler: "NetworkOnly",
           },
         ],

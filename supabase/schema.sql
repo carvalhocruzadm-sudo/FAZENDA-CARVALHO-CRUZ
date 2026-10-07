@@ -7,6 +7,24 @@
 -- falta, acrescenta colunas novas e não apaga nada.
 -- ════════════════════════════════════════════════════════════════════════
 
+-- Conta do Modo Campo (o celular dos tratoristas): só vê os cadastros e só
+-- lança abastecimento, horímetro e as saídas/entradas do depósito de químicos.
+-- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
+-- aqui (troque o e-mail):
+--   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
+--   where email = 'campo@fazenda.com';
+-- security definer: lê a tabela de usuários sem passar pelas regras dela.
+create or replace function public.eh_campo() returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '') = 'campo' then return true; end if;
+  if to_regclass('public.usuarios') is null then return false; end if;
+  return exists (
+    select 1 from public.usuarios u
+    where lower(u.email) = lower(auth.jwt() ->> 'email') and u.perfil = 'campo' and coalesce(u.ativo, true)
+  );
+end $$;
+
 -- Culturas
 create table if not exists public.culturas (
   id uuid primary key default gen_random_uuid(),
@@ -26,7 +44,12 @@ alter table public.culturas add column if not exists observacao text;
 alter table public.culturas enable row level security;
 drop policy if exists "equipe acessa culturas" on public.culturas;
 create policy "equipe acessa culturas" on public.culturas
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le culturas" on public.culturas;
+drop policy if exists "campo lanca culturas" on public.culturas;
+drop policy if exists "campo corrige culturas" on public.culturas;
+create policy "campo le culturas" on public.culturas
+  for select to authenticated using ((select public.eh_campo()));
 
 -- Fazendas
 create table if not exists public.fazendas (
@@ -44,7 +67,12 @@ alter table public.fazendas add column if not exists observacao text;
 alter table public.fazendas enable row level security;
 drop policy if exists "equipe acessa fazendas" on public.fazendas;
 create policy "equipe acessa fazendas" on public.fazendas
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le fazendas" on public.fazendas;
+drop policy if exists "campo lanca fazendas" on public.fazendas;
+drop policy if exists "campo corrige fazendas" on public.fazendas;
+create policy "campo le fazendas" on public.fazendas
+  for select to authenticated using ((select public.eh_campo()));
 
 -- Talhões / sítios
 create table if not exists public.talhoes (
@@ -53,6 +81,7 @@ create table if not exists public.talhoes (
   atualizado_em timestamptz
 );
 alter table public.talhoes add column if not exists nome text;
+alter table public.talhoes add column if not exists foto text;
 alter table public.talhoes add column if not exists fazenda_id uuid;
 alter table public.talhoes add column if not exists area_ha numeric;
 alter table public.talhoes add column if not exists cultura_id uuid;
@@ -66,7 +95,12 @@ alter table public.talhoes add column if not exists observacao text;
 alter table public.talhoes enable row level security;
 drop policy if exists "equipe acessa talhoes" on public.talhoes;
 create policy "equipe acessa talhoes" on public.talhoes
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le talhoes" on public.talhoes;
+drop policy if exists "campo lanca talhoes" on public.talhoes;
+drop policy if exists "campo corrige talhoes" on public.talhoes;
+create policy "campo le talhoes" on public.talhoes
+  for select to authenticated using ((select public.eh_campo()));
 
 -- Funcionários
 create table if not exists public.funcionarios (
@@ -75,6 +109,7 @@ create table if not exists public.funcionarios (
   atualizado_em timestamptz
 );
 alter table public.funcionarios add column if not exists nome text;
+alter table public.funcionarios add column if not exists foto text;
 alter table public.funcionarios add column if not exists funcao text;
 alter table public.funcionarios add column if not exists telefone text;
 alter table public.funcionarios add column if not exists cpf text;
@@ -86,7 +121,12 @@ alter table public.funcionarios add column if not exists observacao text;
 alter table public.funcionarios enable row level security;
 drop policy if exists "equipe acessa funcionarios" on public.funcionarios;
 create policy "equipe acessa funcionarios" on public.funcionarios
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le funcionarios" on public.funcionarios;
+drop policy if exists "campo lanca funcionarios" on public.funcionarios;
+drop policy if exists "campo corrige funcionarios" on public.funcionarios;
+create policy "campo le funcionarios" on public.funcionarios
+  for select to authenticated using ((select public.eh_campo()));
 
 -- Usuários
 create table if not exists public.usuarios (
@@ -104,7 +144,10 @@ alter table public.usuarios add column if not exists observacao text;
 alter table public.usuarios enable row level security;
 drop policy if exists "equipe acessa usuarios" on public.usuarios;
 create policy "equipe acessa usuarios" on public.usuarios
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le usuarios" on public.usuarios;
+drop policy if exists "campo lanca usuarios" on public.usuarios;
+drop policy if exists "campo corrige usuarios" on public.usuarios;
 
 -- Máquinas e veículos
 create table if not exists public.maquinas (
@@ -113,6 +156,7 @@ create table if not exists public.maquinas (
   atualizado_em timestamptz
 );
 alter table public.maquinas add column if not exists nome text;
+alter table public.maquinas add column if not exists foto text;
 alter table public.maquinas add column if not exists categoria text;
 alter table public.maquinas add column if not exists medidor text;
 alter table public.maquinas add column if not exists marca text;
@@ -127,7 +171,33 @@ alter table public.maquinas add column if not exists observacao text;
 alter table public.maquinas enable row level security;
 drop policy if exists "equipe acessa maquinas" on public.maquinas;
 create policy "equipe acessa maquinas" on public.maquinas
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le maquinas" on public.maquinas;
+drop policy if exists "campo lanca maquinas" on public.maquinas;
+drop policy if exists "campo corrige maquinas" on public.maquinas;
+create policy "campo le maquinas" on public.maquinas
+  for select to authenticated using ((select public.eh_campo()));
+
+-- Serviços / operações
+create table if not exists public.servicos (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.servicos add column if not exists nome text;
+alter table public.servicos add column if not exists figura text;
+alter table public.servicos add column if not exists foto text;
+alter table public.servicos add column if not exists ativo boolean;
+alter table public.servicos add column if not exists observacao text;
+alter table public.servicos enable row level security;
+drop policy if exists "equipe acessa servicos" on public.servicos;
+create policy "equipe acessa servicos" on public.servicos
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le servicos" on public.servicos;
+drop policy if exists "campo lanca servicos" on public.servicos;
+drop policy if exists "campo corrige servicos" on public.servicos;
+create policy "campo le servicos" on public.servicos
+  for select to authenticated using ((select public.eh_campo()));
 
 -- Produtos químicos e insumos
 create table if not exists public.insumos (
@@ -141,6 +211,8 @@ alter table public.insumos add column if not exists tipo text;
 alter table public.insumos add column if not exists principio_ativo text;
 alter table public.insumos add column if not exists unidade text;
 alter table public.insumos add column if not exists tamanho_embalagem numeric;
+alter table public.insumos add column if not exists embalagem_tipo text;
+alter table public.insumos add column if not exists codigo_barras text;
 alter table public.insumos add column if not exists qtd_embalagens numeric;
 alter table public.insumos add column if not exists estoque_inicial numeric;
 alter table public.insumos add column if not exists validade date;
@@ -152,7 +224,12 @@ alter table public.insumos add column if not exists observacao text;
 alter table public.insumos enable row level security;
 drop policy if exists "equipe acessa insumos" on public.insumos;
 create policy "equipe acessa insumos" on public.insumos
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le insumos" on public.insumos;
+drop policy if exists "campo lanca insumos" on public.insumos;
+drop policy if exists "campo corrige insumos" on public.insumos;
+create policy "campo le insumos" on public.insumos
+  for select to authenticated using ((select public.eh_campo()));
 
 -- Links do agrônomo
 create table if not exists public.links_agronomo (
@@ -166,7 +243,10 @@ alter table public.links_agronomo add column if not exists ativo boolean;
 alter table public.links_agronomo enable row level security;
 drop policy if exists "equipe acessa links_agronomo" on public.links_agronomo;
 create policy "equipe acessa links_agronomo" on public.links_agronomo
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le links_agronomo" on public.links_agronomo;
+drop policy if exists "campo lanca links_agronomo" on public.links_agronomo;
+drop policy if exists "campo corrige links_agronomo" on public.links_agronomo;
 
 -- Aplicações do agrônomo
 create table if not exists public.recomendacoes (
@@ -189,7 +269,10 @@ create index if not exists recomendacoes_data_idx on public.recomendacoes (data)
 alter table public.recomendacoes enable row level security;
 drop policy if exists "equipe acessa recomendacoes" on public.recomendacoes;
 create policy "equipe acessa recomendacoes" on public.recomendacoes
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le recomendacoes" on public.recomendacoes;
+drop policy if exists "campo lanca recomendacoes" on public.recomendacoes;
+drop policy if exists "campo corrige recomendacoes" on public.recomendacoes;
 
 -- Horímetro / operações
 create table if not exists public.operacoes (
@@ -213,7 +296,16 @@ create index if not exists operacoes_data_idx on public.operacoes (data);
 alter table public.operacoes enable row level security;
 drop policy if exists "equipe acessa operacoes" on public.operacoes;
 create policy "equipe acessa operacoes" on public.operacoes
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le operacoes" on public.operacoes;
+drop policy if exists "campo lanca operacoes" on public.operacoes;
+drop policy if exists "campo corrige operacoes" on public.operacoes;
+create policy "campo le operacoes" on public.operacoes
+  for select to authenticated using ((select public.eh_campo()));
+create policy "campo lanca operacoes" on public.operacoes
+  for insert to authenticated with check ((select public.eh_campo()));
+create policy "campo corrige operacoes" on public.operacoes
+  for update to authenticated using ((select public.eh_campo())) with check ((select public.eh_campo()));
 
 -- Revisões e manutenções
 create table if not exists public.revisoes (
@@ -232,7 +324,12 @@ create index if not exists revisoes_data_idx on public.revisoes (data);
 alter table public.revisoes enable row level security;
 drop policy if exists "equipe acessa revisoes" on public.revisoes;
 create policy "equipe acessa revisoes" on public.revisoes
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le revisoes" on public.revisoes;
+drop policy if exists "campo lanca revisoes" on public.revisoes;
+drop policy if exists "campo corrige revisoes" on public.revisoes;
+create policy "campo le revisoes" on public.revisoes
+  for select to authenticated using ((select public.eh_campo()));
 
 -- Compras de diesel
 create table if not exists public.diesel_entradas (
@@ -250,7 +347,10 @@ create index if not exists diesel_entradas_data_idx on public.diesel_entradas (d
 alter table public.diesel_entradas enable row level security;
 drop policy if exists "equipe acessa diesel_entradas" on public.diesel_entradas;
 create policy "equipe acessa diesel_entradas" on public.diesel_entradas
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le diesel_entradas" on public.diesel_entradas;
+drop policy if exists "campo lanca diesel_entradas" on public.diesel_entradas;
+drop policy if exists "campo corrige diesel_entradas" on public.diesel_entradas;
 
 -- Abastecimentos
 create table if not exists public.abastecimentos (
@@ -269,12 +369,23 @@ alter table public.abastecimentos add column if not exists cultura_id uuid;
 alter table public.abastecimentos add column if not exists posto text;
 alter table public.abastecimentos add column if not exists preco_litro numeric;
 alter table public.abastecimentos add column if not exists valor numeric;
+alter table public.abastecimentos add column if not exists foto_leitura text;
+alter table public.abastecimentos add column if not exists foto_bomba text;
 alter table public.abastecimentos add column if not exists observacao text;
 create index if not exists abastecimentos_data_idx on public.abastecimentos (data);
 alter table public.abastecimentos enable row level security;
 drop policy if exists "equipe acessa abastecimentos" on public.abastecimentos;
 create policy "equipe acessa abastecimentos" on public.abastecimentos
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le abastecimentos" on public.abastecimentos;
+drop policy if exists "campo lanca abastecimentos" on public.abastecimentos;
+drop policy if exists "campo corrige abastecimentos" on public.abastecimentos;
+create policy "campo le abastecimentos" on public.abastecimentos
+  for select to authenticated using ((select public.eh_campo()));
+create policy "campo lanca abastecimentos" on public.abastecimentos
+  for insert to authenticated with check ((select public.eh_campo()));
+create policy "campo corrige abastecimentos" on public.abastecimentos
+  for update to authenticated using ((select public.eh_campo())) with check ((select public.eh_campo()));
 
 -- Entradas de químicos/insumos
 create table if not exists public.insumo_entradas (
@@ -286,6 +397,9 @@ alter table public.insumo_entradas add column if not exists data date;
 alter table public.insumo_entradas add column if not exists insumo_id uuid;
 alter table public.insumo_entradas add column if not exists quantidade numeric;
 alter table public.insumo_entradas add column if not exists valor numeric;
+alter table public.insumo_entradas add column if not exists a_conferir boolean;
+alter table public.insumo_entradas add column if not exists foto text;
+alter table public.insumo_entradas add column if not exists responsavel_id uuid;
 alter table public.insumo_entradas add column if not exists cultura_id uuid;
 alter table public.insumo_entradas add column if not exists fornecedor text;
 alter table public.insumo_entradas add column if not exists nota text;
@@ -295,7 +409,16 @@ create index if not exists insumo_entradas_data_idx on public.insumo_entradas (d
 alter table public.insumo_entradas enable row level security;
 drop policy if exists "equipe acessa insumo_entradas" on public.insumo_entradas;
 create policy "equipe acessa insumo_entradas" on public.insumo_entradas
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le insumo_entradas" on public.insumo_entradas;
+drop policy if exists "campo lanca insumo_entradas" on public.insumo_entradas;
+drop policy if exists "campo corrige insumo_entradas" on public.insumo_entradas;
+create policy "campo le insumo_entradas" on public.insumo_entradas
+  for select to authenticated using ((select public.eh_campo()) and a_conferir = true);
+create policy "campo lanca insumo_entradas" on public.insumo_entradas
+  for insert to authenticated with check ((select public.eh_campo()) and a_conferir = true);
+create policy "campo corrige insumo_entradas" on public.insumo_entradas
+  for update to authenticated using ((select public.eh_campo()) and a_conferir = true) with check ((select public.eh_campo()) and a_conferir = true);
 
 -- Balanço / conferência de estoque
 create table if not exists public.insumo_ajustes (
@@ -313,7 +436,10 @@ create index if not exists insumo_ajustes_data_idx on public.insumo_ajustes (dat
 alter table public.insumo_ajustes enable row level security;
 drop policy if exists "equipe acessa insumo_ajustes" on public.insumo_ajustes;
 create policy "equipe acessa insumo_ajustes" on public.insumo_ajustes
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le insumo_ajustes" on public.insumo_ajustes;
+drop policy if exists "campo lanca insumo_ajustes" on public.insumo_ajustes;
+drop policy if exists "campo corrige insumo_ajustes" on public.insumo_ajustes;
 
 -- Aplicações / saídas
 create table if not exists public.aplicacoes (
@@ -324,6 +450,7 @@ create table if not exists public.aplicacoes (
 alter table public.aplicacoes add column if not exists data date;
 alter table public.aplicacoes add column if not exists insumo_id uuid;
 alter table public.aplicacoes add column if not exists quantidade numeric;
+alter table public.aplicacoes add column if not exists pulverizacao_id uuid;
 alter table public.aplicacoes add column if not exists talhao_id uuid;
 alter table public.aplicacoes add column if not exists cultura_id uuid;
 alter table public.aplicacoes add column if not exists dose_ha numeric;
@@ -335,7 +462,65 @@ create index if not exists aplicacoes_data_idx on public.aplicacoes (data);
 alter table public.aplicacoes enable row level security;
 drop policy if exists "equipe acessa aplicacoes" on public.aplicacoes;
 create policy "equipe acessa aplicacoes" on public.aplicacoes
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le aplicacoes" on public.aplicacoes;
+drop policy if exists "campo lanca aplicacoes" on public.aplicacoes;
+drop policy if exists "campo corrige aplicacoes" on public.aplicacoes;
+create policy "campo le aplicacoes" on public.aplicacoes
+  for select to authenticated using ((select public.eh_campo()));
+create policy "campo lanca aplicacoes" on public.aplicacoes
+  for insert to authenticated with check ((select public.eh_campo()));
+create policy "campo corrige aplicacoes" on public.aplicacoes
+  for update to authenticated using ((select public.eh_campo())) with check ((select public.eh_campo()));
+
+-- Ordens de pulverização
+create table if not exists public.pulverizacoes (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.pulverizacoes add column if not exists data date;
+alter table public.pulverizacoes add column if not exists talhao_id uuid;
+alter table public.pulverizacoes add column if not exists cultura_id uuid;
+alter table public.pulverizacoes add column if not exists area_ha numeric;
+alter table public.pulverizacoes add column if not exists maquina_id uuid;
+alter table public.pulverizacoes add column if not exists operador_id uuid;
+alter table public.pulverizacoes add column if not exists situacao text;
+alter table public.pulverizacoes add column if not exists observacao text;
+create index if not exists pulverizacoes_data_idx on public.pulverizacoes (data);
+alter table public.pulverizacoes enable row level security;
+drop policy if exists "equipe acessa pulverizacoes" on public.pulverizacoes;
+create policy "equipe acessa pulverizacoes" on public.pulverizacoes
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le pulverizacoes" on public.pulverizacoes;
+drop policy if exists "campo lanca pulverizacoes" on public.pulverizacoes;
+drop policy if exists "campo corrige pulverizacoes" on public.pulverizacoes;
+create policy "campo le pulverizacoes" on public.pulverizacoes
+  for select to authenticated using ((select public.eh_campo()));
+create policy "campo lanca pulverizacoes" on public.pulverizacoes
+  for insert to authenticated with check ((select public.eh_campo()));
+create policy "campo corrige pulverizacoes" on public.pulverizacoes
+  for update to authenticated using ((select public.eh_campo())) with check ((select public.eh_campo()));
+
+-- Produtos da ordem de pulverização
+create table if not exists public.pulverizacao_itens (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.pulverizacao_itens add column if not exists pulverizacao_id uuid;
+alter table public.pulverizacao_itens add column if not exists insumo_id uuid;
+alter table public.pulverizacao_itens add column if not exists dose_ha numeric;
+alter table public.pulverizacao_itens add column if not exists quantidade numeric;
+alter table public.pulverizacao_itens enable row level security;
+drop policy if exists "equipe acessa pulverizacao_itens" on public.pulverizacao_itens;
+create policy "equipe acessa pulverizacao_itens" on public.pulverizacao_itens
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le pulverizacao_itens" on public.pulverizacao_itens;
+drop policy if exists "campo lanca pulverizacao_itens" on public.pulverizacao_itens;
+drop policy if exists "campo corrige pulverizacao_itens" on public.pulverizacao_itens;
+create policy "campo le pulverizacao_itens" on public.pulverizacao_itens
+  for select to authenticated using ((select public.eh_campo()));
 
 -- Despesas
 create table if not exists public.despesas (
@@ -365,7 +550,10 @@ create index if not exists despesas_data_idx on public.despesas (data);
 alter table public.despesas enable row level security;
 drop policy if exists "equipe acessa despesas" on public.despesas;
 create policy "equipe acessa despesas" on public.despesas
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le despesas" on public.despesas;
+drop policy if exists "campo lanca despesas" on public.despesas;
+drop policy if exists "campo corrige despesas" on public.despesas;
 
 -- Outras entradas
 create table if not exists public.entradas (
@@ -382,7 +570,10 @@ create index if not exists entradas_data_idx on public.entradas (data);
 alter table public.entradas enable row level security;
 drop policy if exists "equipe acessa entradas" on public.entradas;
 create policy "equipe acessa entradas" on public.entradas
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le entradas" on public.entradas;
+drop policy if exists "campo lanca entradas" on public.entradas;
+drop policy if exists "campo corrige entradas" on public.entradas;
 
 -- Colheitas
 create table if not exists public.colheitas (
@@ -401,7 +592,10 @@ create index if not exists colheitas_data_idx on public.colheitas (data);
 alter table public.colheitas enable row level security;
 drop policy if exists "equipe acessa colheitas" on public.colheitas;
 create policy "equipe acessa colheitas" on public.colheitas
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le colheitas" on public.colheitas;
+drop policy if exists "campo lanca colheitas" on public.colheitas;
+drop policy if exists "campo corrige colheitas" on public.colheitas;
 
 -- Vendas da produção
 create table if not exists public.vendas (
@@ -443,7 +637,10 @@ create index if not exists vendas_data_idx on public.vendas (data);
 alter table public.vendas enable row level security;
 drop policy if exists "equipe acessa vendas" on public.vendas;
 create policy "equipe acessa vendas" on public.vendas
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le vendas" on public.vendas;
+drop policy if exists "campo lanca vendas" on public.vendas;
+drop policy if exists "campo corrige vendas" on public.vendas;
 
 -- Recebimentos
 create table if not exists public.recebimentos (
@@ -461,7 +658,10 @@ create index if not exists recebimentos_data_idx on public.recebimentos (data);
 alter table public.recebimentos enable row level security;
 drop policy if exists "equipe acessa recebimentos" on public.recebimentos;
 create policy "equipe acessa recebimentos" on public.recebimentos
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le recebimentos" on public.recebimentos;
+drop policy if exists "campo lanca recebimentos" on public.recebimentos;
+drop policy if exists "campo corrige recebimentos" on public.recebimentos;
 
 -- Fretes do caminhão
 create table if not exists public.fretes (
@@ -485,7 +685,10 @@ create index if not exists fretes_data_idx on public.fretes (data);
 alter table public.fretes enable row level security;
 drop policy if exists "equipe acessa fretes" on public.fretes;
 create policy "equipe acessa fretes" on public.fretes
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le fretes" on public.fretes;
+drop policy if exists "campo lanca fretes" on public.fretes;
+drop policy if exists "campo corrige fretes" on public.fretes;
 
 -- Planejamento da safra
 create table if not exists public.planejamento (
@@ -506,14 +709,35 @@ alter table public.planejamento add column if not exists total numeric;
 alter table public.planejamento enable row level security;
 drop policy if exists "equipe acessa planejamento" on public.planejamento;
 create policy "equipe acessa planejamento" on public.planejamento
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le planejamento" on public.planejamento;
+drop policy if exists "campo lanca planejamento" on public.planejamento;
+drop policy if exists "campo corrige planejamento" on public.planejamento;
+
+-- ─── Fotos (Storage) ──────────────────────────────────────────────────────
+-- Bucket privado: só quem tem login vê. O Modo Campo tira e vê fotos, mas não apaga.
+insert into storage.buckets (id, name, public) values ('fotos', 'fotos', false) on conflict (id) do nothing;
+drop policy if exists "equipe ve fotos" on storage.objects;
+create policy "equipe ve fotos" on storage.objects
+  for select to authenticated using (bucket_id = 'fotos');
+drop policy if exists "equipe envia fotos" on storage.objects;
+create policy "equipe envia fotos" on storage.objects
+  for insert to authenticated with check (bucket_id = 'fotos');
+drop policy if exists "equipe troca fotos" on storage.objects;
+create policy "equipe troca fotos" on storage.objects
+  for update to authenticated using (bucket_id = 'fotos') with check (bucket_id = 'fotos');
+drop policy if exists "escritorio apaga fotos" on storage.objects;
+create policy "escritorio apaga fotos" on storage.objects
+  for delete to authenticated using (bucket_id = 'fotos' and not (select public.eh_campo()));
 
 -- ─── Comprovantes (fotos e PDFs anexados às despesas) ──────────────────────
--- Pasta privada no Storage: só quem tem login no app vê e envia.
+-- Pasta privada no Storage: só quem tem login no app vê e envia (a conta do
+-- Modo Campo não vê os comprovantes).
 insert into storage.buckets (id, name, public) values ('comprovantes', 'comprovantes', false) on conflict (id) do nothing;
 drop policy if exists "equipe acessa comprovantes" on storage.objects;
 create policy "equipe acessa comprovantes" on storage.objects
-  for all to authenticated using (bucket_id = 'comprovantes') with check (bucket_id = 'comprovantes');
+  for all to authenticated using (bucket_id = 'comprovantes' and not (select public.eh_campo()))
+  with check (bucket_id = 'comprovantes' and not (select public.eh_campo()));
 
 -- ─── Link do agrônomo (acesso sem login, só ao estoque de químicos) ────────
 -- O agrônomo não tem senha: abre o link com o código. Estas funções conferem o
@@ -627,6 +851,19 @@ insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, vari
 insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000013', 'Gameleira', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
 insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000014', 'Juerana', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
 insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000015', 'Águas Claras', '00000000-0000-4000-8100-000000000004', 25, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000001', 'Gradagem', '🚜', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000002', 'Aração', '⛏️', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000003', 'Subsolagem', '🪨', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000004', 'Plantio', '🌱', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000005', 'Pulverização', '💦', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000006', 'Adubação', '🧪', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000007', 'Roçagem', '✂️', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000008', 'Colheita', '🌽', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000009', 'Ensilagem', '🌾', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000010', 'Transporte', '🚚', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000011', 'Distribuição de ração', '🐄', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000012', 'Terraplanagem', '🏗️', null, true, null) on conflict (id) do nothing;
+insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000013', 'Serviço geral', '🔧', null, true, null) on conflict (id) do nothing;
 
 -- ─── Tipo de cultura, medida de produtividade e turma nas culturas antigas ─
 update public.culturas set grupo = 'graos', unidade = 'sc60', peso_saca = null, produtividade = 'sc_ha', turma_colheita = false where id = '00000000-0000-4000-8000-000000000001' and grupo is null;

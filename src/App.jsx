@@ -8,9 +8,10 @@ import { useSync } from "./hooks/useSync";
 import { lerCompartilhado } from "./lib/arquivos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Agronomo from "./pages/Agronomo";
+import ModoCampo from "./pages/Campo";
 import Login, { NovaSenha } from "./pages/Login";
 import Painel from "./pages/Painel";
-import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Usuarios, Vendas } from "./pages/Secoes";
+import { CadastrosCampo, Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Usuarios, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 import Ticket, { LINK_TICKET } from "./pages/Ticket";
 
@@ -25,6 +26,7 @@ const MENU = [
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],
   ["fretes", "Caminhões e fretes", "caminhao", Fretes],
   ["equipe", "Funcionários", "pessoas", Equipe],
+  ["campo", "Modo Campo (QR)", "trator", CadastrosCampo],
   ["usuarios", "Usuários", "pessoas", Usuarios],
   ["sync", "Sincronização", "nuvem", Sincronizacao],
 ];
@@ -51,6 +53,38 @@ function AvisoAtualizacao() {
       </div>
     </div>
   );
+}
+
+/** Endereço atual (/campo/…) sem biblioteca de rotas: pushState + voltar do navegador. */
+function useCaminho() {
+  const [caminho, setCaminho] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const aoVoltar = () => setCaminho(window.location.pathname);
+    window.addEventListener("popstate", aoVoltar);
+    return () => window.removeEventListener("popstate", aoVoltar);
+  }, []);
+  const irPara = useCallback((novo) => {
+    if (novo !== window.location.pathname) window.history.pushState(null, "", novo);
+    setCaminho(novo);
+    window.scrollTo(0, 0);
+  }, []);
+  return [caminho, irPara];
+}
+
+/**
+ * O QR code abre /campo/…: as telas simples dos tratoristas. A conta com
+ * perfil "campo" só enxerga essas telas; as outras contas também podem abrir
+ * (para testar) e voltar ao sistema completo.
+ */
+function Rotas({ sair, email, perfilCampo }) {
+  const [caminho, irPara] = useCaminho();
+  if (perfilCampo || caminho.startsWith("/campo")) {
+    return (
+      <ModoCampo caminho={caminho.startsWith("/campo") ? caminho : "/campo"} irPara={irPara} sair={sair}
+        voltarAoSistema={perfilCampo ? null : () => irPara("/")} />
+    );
+  }
+  return <Sistema sair={sair} email={email} abrirCampo={() => irPara("/campo")} />;
 }
 
 function TrocarSenha({ email, aoFechar }) {
@@ -108,7 +142,7 @@ function TrocarSenha({ email, aoFechar }) {
   );
 }
 
-function Sistema({ sair, email }) {
+function Sistema({ sair, email, abrirCampo }) {
   const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
   const [tela, setTela] = useState(() => {
     // O link fixado no grupo do WhatsApp (/ticket) abre direto no lançamento do ticket.
@@ -174,7 +208,7 @@ function Sistema({ sair, email }) {
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
           {!pronto ? <div className="vazio">Carregando…</div> : (
             <Pagina key={tela} dados={dados} salvar={salvar} remover={remover} irPara={irPara}
-              sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} />
+              sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} abrirCampo={abrirCampo} />
           )}
         </div>
       </main>
@@ -188,10 +222,46 @@ function Sistema({ sair, email }) {
   );
 }
 
+/**
+ * O login é de tratorista (só Modo Campo)? Vem do perfil marcado em Usuários
+ * (perguntado ao banco) ou do app_metadata. Fica guardado no aparelho para
+ * abrir certo também sem internet. `null` = ainda perguntando.
+ */
+function usePerfilCampo(usuario) {
+  const email = usuario?.email ?? null;
+  const doMetadata = usuario?.app_metadata?.perfil === "campo";
+  const chave = `fcc-campo:${email}`;
+  const lerGuardado = () => {
+    try { const v = localStorage.getItem(chave); return v == null ? null : v === "1"; } catch { return null; }
+  };
+  const [resposta, setResposta] = useState({ email: null, campo: null });
+
+  useEffect(() => {
+    if (!email || doMetadata) return undefined;
+    let vivo = true;
+    supabase.rpc("eh_campo").then(({ data, error }) => {
+      if (!vivo) return;
+      // Sem resposta (sem internet, banco sem a função): fica o que estava guardado, ou "não".
+      const campo = error ? null : Boolean(data);
+      if (campo != null) { try { localStorage.setItem(chave, campo ? "1" : "0"); } catch { /* sem armazenamento */ } }
+      setResposta({ email, campo });
+    });
+    return () => { vivo = false; };
+  }, [email, doMetadata, chave]);
+
+  if (!email) return false;
+  if (doMetadata) return true;
+  if (resposta.email === email && resposta.campo != null) return resposta.campo;
+  const guardado = lerGuardado();
+  if (guardado != null) return guardado;
+  return resposta.email === email || !navigator.onLine ? false : null;
+}
+
 /** Com Supabase, só entra quem tem login. Sem ele, modo demonstração. */
 function Portao() {
   const [sessao, setSessao] = useState(undefined);
   const [recuperando, setRecuperando] = useState(false);
+  const perfilCampo = usePerfilCampo(sessao?.user);
 
   useEffect(() => {
     if (!supabaseConfigurado) return undefined;
@@ -203,11 +273,12 @@ function Portao() {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  if (!supabaseConfigurado) return <Sistema />;
+  if (!supabaseConfigurado) return <Rotas />;
   if (sessao === undefined) return <div className="vazio">Verificando acesso…</div>;
   if (recuperando && sessao) return <NovaSenha aoConcluir={() => setRecuperando(false)} />;
   if (!sessao) return <Login />;
-  return <Sistema email={sessao.user.email} sair={() => supabase.auth.signOut()} />;
+  if (perfilCampo == null) return <div className="vazio">Verificando acesso…</div>;
+  return <Rotas email={sessao.user.email} sair={() => supabase.auth.signOut()} perfilCampo={perfilCampo} />;
 }
 
 class ProtecaoErro extends Component {

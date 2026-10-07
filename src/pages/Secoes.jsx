@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
+import EtiquetasQR, { EtiquetasDeposito } from "../components/EtiquetasQR";
+import OrdensPulverizacao from "../components/OrdensPulverizacao";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
@@ -110,6 +112,49 @@ export function Maquinas(props) {
   );
 }
 
+// ─── Modo Campo (cadastros) ─────────────────────────────────────────────────
+
+/**
+ * Tudo o que aparece nas telas dos tratoristas, num lugar só: os serviços, a
+ * foto de cada operador, de cada trator e de cada talhão, e os QR codes.
+ */
+export function CadastrosCampo(props) {
+  const { dados, abrirCampo } = props;
+  const semFoto = (lista) => lista.filter((x) => x.ativo !== false && !x.foto && !x.fotos_rotulo?.length).length;
+  const tratoristas = dados.funcionarios.filter((f) => /tratorista|operador|motorista/i.test(f.funcao ?? ""));
+  const tratores = dados.maquinas.filter((m) => m.medidor === "horas");
+  const produtos = dados.insumos.filter((i) => i.ativo !== false);
+  return (
+    <>
+      <div className="cartao" style={{ marginBottom: 16 }}>
+        <div className="barra" style={{ marginBottom: 0 }}>
+          <p className="descricao" style={{ margin: 0, flex: 1, minWidth: 240 }}>
+            Aqui se cadastra tudo o que o tratorista vê no celular. Quem não tem foto aparece com a primeira letra do
+            nome num quadrado colorido. Cadastrou ou mudou algo? Aparece no celular deles na próxima sincronização.
+          </p>
+          <button className="btn primario" onClick={abrirCampo}>🚜 Abrir o Modo Campo</button>
+        </div>
+      </div>
+      <div className="grade">
+        <Stat rotulo="Tratoristas sem foto" valor={semFoto(tratoristas)} cor={semFoto(tratoristas) ? "laranja" : ""} sub={`de ${tratoristas.length}`} />
+        <Stat rotulo="Tratores sem foto" valor={semFoto(tratores)} cor={semFoto(tratores) ? "laranja" : ""} sub={`de ${tratores.length}`} />
+        <Stat rotulo="Produtos sem foto" valor={semFoto(produtos)} cor={semFoto(produtos) ? "laranja" : ""} sub={`de ${produtos.length}`} />
+        <Stat rotulo="Serviços ativos" valor={dados.servicos.filter((s) => s.ativo !== false).length} cor="cinza" />
+        <Stat rotulo="Talhões ativos" valor={dados.talhoes.filter((t) => t.ativo !== false).length} cor="cinza" />
+      </div>
+      <Secao props={props} abas={[
+        ["servicos", "Serviços"],
+        ["funcionarios", "Operadores (fotos)", { colecao: "funcionarios", padrao: { funcao: "Tratorista" } }],
+        ["maquinas", "Tratores (fotos)", { colecao: "maquinas" }],
+        ["talhoes", "Talhões", { colecao: "talhoes" }],
+        ["insumos", "Produtos do depósito (fotos)", { colecao: "insumos" }],
+        ["qr", "QR codes do PA", EtiquetasQR],
+        ["qrdeposito", "QR codes do depósito", EtiquetasDeposito],
+      ]} />
+    </>
+  );
+}
+
 // ─── Diesel ─────────────────────────────────────────────────────────────────
 
 function ConsumoDiesel({ dados }) {
@@ -177,6 +222,7 @@ function EstoqueQuimicos({ dados }) {
   const [busca, setBusca] = useState("");
   const lista = estoqueInsumos(dados).filter((x) => (x.insumo.ativo !== false || x.saldo) && achaProduto(x.insumo, busca));
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
+  const aConferir = dados.insumo_entradas.filter((e) => e.a_conferir).length;
   const [exportando, setExportando] = useState(false);
   const exportar = async () => {
     setExportando(true);
@@ -197,12 +243,18 @@ function EstoqueQuimicos({ dados }) {
     <div className="cartao">
       <div className="barra">
         <CampoBuscaProduto valor={busca} aoMudar={setBusca} />
-        <p className="descricao" style={{ margin: 0 }}>Saldo = quantidade inicial + entradas − aplicações. O custo médio vem das entradas.</p>
+        <p className="descricao" style={{ margin: 0 }}>Saldo = quantidade inicial + entradas − aplicações (a sobra que voltou da pulverização conta como aplicação negativa). O custo médio vem das entradas com preço.</p>
         <span className="espaco" />
         <button className="btn" onClick={exportar} disabled={!lista.length || exportando} title="Baixar planilha do estoque para o agrônomo">
           <Icone nome="exportar" /> {exportando ? "Gerando…" : "Planilha para o agrônomo"}
         </button>
       </div>
+      {aConferir > 0 && (
+        <div className="aviso info">
+          {aConferir} entrada(s) lançada(s) no depósito pelo QR code ainda sem preço. Abra a aba Entradas / compras,
+          complete o valor e a nota e desmarque "Falta conferir".
+        </div>
+      )}
       <TabelaSimples
         vazio="Cadastre os produtos na aba Produtos e lance as entradas."
         linhas={lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({ ...x, id: x.insumo.id }))}
@@ -314,6 +366,7 @@ export function Quimicos(props) {
   return (
     <Secao props={props} abas={[
       ["estoque", "Estoque", EstoqueQuimicos],
+      ["ordens", "Ordens de pulverização", OrdensPulverizacao],
       ["agronomo", `Aplicações do agrônomo${novas ? ` (${novas} ${novas === 1 ? "nova" : "novas"})` : ""}`, AplicacoesAgronomo],
       ["link", "Link do agrônomo", LinkAgronomo],
       ["balanco", "Balanço / conferência", BalancoEstoque],
@@ -321,6 +374,7 @@ export function Quimicos(props) {
       ["aplicacoes", "Aplicações / saídas"],
       ["insumo_entradas", "Entradas / compras"],
       ["insumos", "Produtos"],
+      ["qrdeposito", "QR codes do depósito", EtiquetasDeposito],
     ]} />
   );
 }
