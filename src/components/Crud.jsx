@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from "react";
 import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
 import { baixarCSV, exibir, numero } from "../lib/formato";
+import DetalheProduto from "./DetalheProduto";
 import Formulario from "./Formulario";
 import { Icone, Modal, SeletorPeriodo } from "./ui";
 
@@ -48,6 +49,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   const [rascunho, setRascunho] = useState(null);
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [produtoAberto, setProdutoAberto] = useState(null);
 
   const colunas = colunasProp ?? def.colunas;
   const contexto = useMemo(() => ({ ultimaLeitura: (id) => ultimaLeitura(dados, id) }), [dados]);
@@ -137,9 +139,15 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
                 <tr key={l.id} className="clicavel" onClick={() => abrir({ ...l })}>
                   {colunas.map((c) => {
                     const campo = def.campos[c];
+                    const ehProduto = (campo.tipo === "ref" && campo.colecao === "insumos" && l[c]) || (colecao === "insumos" && c === "nome");
                     return (
                       <td key={c} data-rotulo={campo.rotulo} className={["numero", "dinheiro"].includes(campo.tipo) ? "num" : ""}>
-                        {exibir(campo, l[c], dados)}
+                        {ehProduto ? (
+                          <button type="button" className="link-produto" title="Ver detalhes e foto"
+                            onClick={(e) => { e.stopPropagation(); setProdutoAberto(colecao === "insumos" ? l.id : l[c]); }}>
+                            {exibir(campo, l[c], dados)}
+                          </button>
+                        ) : exibir(campo, l[c], dados)}
                       </td>
                     );
                   })}
@@ -163,6 +171,8 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
           </table>
         </div>
       )}
+
+      {produtoAberto && <DetalheProduto id={produtoAberto} dados={dados} aoFechar={() => setProdutoAberto(null)} />}
 
       {rascunho && (
         <Modal

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
+import DetalheProduto from "../components/DetalheProduto";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
@@ -157,6 +158,7 @@ function EstoqueQuimicos({ dados }) {
   const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false || x.saldo);
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
   const [exportando, setExportando] = useState(false);
+  const [produtoAberto, setProdutoAberto] = useState(null);
   const exportar = async () => {
     setExportando(true);
     try {
@@ -185,7 +187,14 @@ function EstoqueQuimicos({ dados }) {
         vazio="Cadastre os produtos na aba Produtos e lance as entradas."
         linhas={lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({ ...x, id: x.insumo.id }))}
         colunas={[
-          { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          {
+            rotulo: "Produto",
+            valor: (x) => (
+              <button type="button" className="link-produto" title="Ver detalhes e foto" onClick={() => setProdutoAberto(x.insumo.id)}>
+                {x.insumo.nome}
+              </button>
+            ),
+          },
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "Tipo", valor: (x) => tipos[x.insumo.tipo] ?? "—" },
           { rotulo: "Entrou", num: true, valor: (x) => numero(x.entrada) },
@@ -197,6 +206,7 @@ function EstoqueQuimicos({ dados }) {
         ]}
         rodape={["Total", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
       />
+      {produtoAberto && <DetalheProduto id={produtoAberto} dados={dados} aoFechar={() => setProdutoAberto(null)} />}
     </div>
   );
 }

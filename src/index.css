@@ -193,6 +193,9 @@ table { border-collapse: collapse; }
 .girando { animation: girar 1s linear infinite; }
 @keyframes girar { to { transform: rotate(360deg); } }
 
+/* Nome do produto que abre os detalhes */
+.link-produto { background: none; border: 0; padding: 0; font: inherit; color: var(--verde); font-weight: 600; text-align: left; cursor: pointer; text-decoration: underline dotted; }
+
 /* Fotos do rótulo */
 .fotos { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
 .foto { position: relative; }
