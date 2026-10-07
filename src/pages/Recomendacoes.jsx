@@ -87,12 +87,23 @@ function Detalhe({ rec, dados, salvar, aoFechar }) {
 
 export function AplicacoesAgronomo({ dados, salvar }) {
   const [aberta, setAberta] = useState(null);
-  const lista = [...dados.recomendacoes].sort((a, b) => String(b.criado_em ?? b.data).localeCompare(String(a.criado_em ?? a.data)));
+  const [busca, setBusca] = useState("");
+  const termo = busca.trim().toLowerCase();
+  // Acha pelo nome, fabricante e princípio ativo dos produtos da aplicação, e também por agrônomo, talhão e alvo.
+  const porProduto = new Map((dados.insumos ?? []).map((i) => [i.id, i]));
+  const texto = (r) => [
+    r.agronomo, r.alvo, nomeRef(dados, "talhoes", r.talhao_id),
+    ...(r.itens ?? []).flatMap((i) => { const p = porProduto.get(i.insumo_id); return [i.nome, i.fabricante, p?.nome, p?.fabricante, p?.principio_ativo]; }),
+  ].map((v) => String(v ?? "")).join(" ").toLowerCase();
+  const lista = [...dados.recomendacoes].filter((r) => !termo || texto(r).includes(termo)).sort((a, b) => String(b.criado_em ?? b.data).localeCompare(String(a.criado_em ?? a.data)));
   return (
     <div className="cartao">
       <p className="descricao">
         Aplicações que o agrônomo montou. Abra uma para ver, baixar o PDF ou <b>dar baixa no estoque</b> quando for aplicada.
       </p>
+      <div className="barra">
+        <input className="entrada busca" placeholder="Buscar produto, fabricante, talhão…" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar" />
+      </div>
       <TabelaSimples
         vazio="Nenhuma aplicação do agrônomo ainda. Mande o link para ele na aba “Link do agrônomo”."
         linhas={lista}
