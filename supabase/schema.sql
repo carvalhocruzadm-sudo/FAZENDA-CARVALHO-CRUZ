@@ -117,6 +117,8 @@ alter table public.insumos add column if not exists fabricante text;
 alter table public.insumos add column if not exists tipo text;
 alter table public.insumos add column if not exists principio_ativo text;
 alter table public.insumos add column if not exists unidade text;
+alter table public.insumos add column if not exists estoque_inicial numeric;
+alter table public.insumos add column if not exists custo_inicial numeric;
 alter table public.insumos add column if not exists estoque_minimo numeric;
 alter table public.insumos add column if not exists ativo boolean;
 alter table public.insumos add column if not exists fotos_rotulo jsonb;
@@ -229,6 +231,24 @@ create index if not exists insumo_entradas_data_idx on public.insumo_entradas (d
 alter table public.insumo_entradas enable row level security;
 drop policy if exists "equipe acessa insumo_entradas" on public.insumo_entradas;
 create policy "equipe acessa insumo_entradas" on public.insumo_entradas
+  for all to authenticated using (true) with check (true);
+
+-- Balanço / conferência de estoque
+create table if not exists public.insumo_ajustes (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.insumo_ajustes add column if not exists data date;
+alter table public.insumo_ajustes add column if not exists insumo_id uuid;
+alter table public.insumo_ajustes add column if not exists contado numeric;
+alter table public.insumo_ajustes add column if not exists quantidade numeric;
+alter table public.insumo_ajustes add column if not exists custo_unitario numeric;
+alter table public.insumo_ajustes add column if not exists observacao text;
+create index if not exists insumo_ajustes_data_idx on public.insumo_ajustes (data);
+alter table public.insumo_ajustes enable row level security;
+drop policy if exists "equipe acessa insumo_ajustes" on public.insumo_ajustes;
+create policy "equipe acessa insumo_ajustes" on public.insumo_ajustes
   for all to authenticated using (true) with check (true);
 
 -- Aplicações / saídas
