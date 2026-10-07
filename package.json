@@ -16,8 +16,6 @@
     "exceljs": "^4.4.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
-    "jsqr": "^1.4.0",
-    "qrcode-generator": "^2.0.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "vite-plugin-pwa": "^1.3.0",

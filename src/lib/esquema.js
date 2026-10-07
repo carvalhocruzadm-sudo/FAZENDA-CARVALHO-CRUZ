@@ -286,7 +286,7 @@ export const ESQUEMA = {
     descricao: "Inventário de tratores, implementos, caminhões e veículos. Tratores e colheitadeiras marcam horímetro; caminhões marcam km.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome / identificação", obrigatorio: true, dica: "Ex.: Trator MF 4292" },
-      foto: { tipo: "foto", rotulo: "Foto (vai na etiqueta QR do PA)" },
+      foto: { tipo: "foto", rotulo: "Foto (o tratorista acha o trator por ela)" },
       categoria: { tipo: "opcoes", rotulo: "Categoria", padrao: "trator", opcoes: [
         ["trator", "Trator"], ["colheitadeira", "Colheitadeira"], ["pulverizador", "Pulverizador autopropelido"],
         ["implemento", "Implemento"], ["caminhao", "Caminhão"], ["veiculo", "Carro / moto"], ["outro", "Outro"],
@@ -339,7 +339,6 @@ export const ESQUEMA = {
       unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: ["L", "kg", "saco", "t", "unidade", "dose"], padrao: "L", obrigatorio: true },
       tamanho_embalagem: { tipo: "numero", rotulo: "Tamanho da embalagem", casas: 2, dica: "Quanto vem em cada embalagem, na unidade acima. Ex.: galão de 20 L → 20. Se a unidade já é a embalagem (saco, caixa), deixe vazio." },
       embalagem_tipo: { tipo: "sugestao", rotulo: "Tipo de embalagem", sugestoes: ["Galão", "Bombona", "Frasco", "Balde", "Saco", "Caixa", "Tambor"], padrao: "Galão" },
-      codigo_barras: { tipo: "texto", rotulo: "Código de barras (se tiver)", dica: "Os números embaixo das barras. Sem código, use a etiqueta QR do sistema (Químicos → QR codes do depósito)." },
       qtd_embalagens: { tipo: "numero", rotulo: "Quantas embalagens você tem hoje", casas: 2, dica: "As próximas compras entram pela aba Entradas / compras. Pode corrigir depois." },
       estoque_inicial: { tipo: "numero", rotulo: "Quantidade em estoque hoje (total)", casas: 2, dica: "Calculado sozinho (tamanho × embalagens), mas você pode corrigir o total. Ex.: 5 galões de 20 L, mas um está pela metade → 90." },
       validade: { tipo: "data", rotulo: "Validade", dica: "Se as embalagens têm validades diferentes, coloque a mais próxima de vencer." },
@@ -457,7 +456,7 @@ export const ESQUEMA = {
 
   abastecimentos: {
     titulo: "Abastecimentos", singular: "abastecimento", icone: "combustivel", lancamento: true, campo: "grava",
-    descricao: "Saída do tanque da fazenda ou abastecimento em posto. Os lançados pelo QR code do PA vêm com a foto do horímetro e da bomba.",
+    descricao: "Saída do tanque da fazenda ou abastecimento em posto. Os lançados no Modo Campo vêm com a foto do horímetro e da bomba.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       origem: { tipo: "opcoes", rotulo: "Onde abasteceu", padrao: "tanque", opcoes: [["tanque", "Tanque da fazenda"], ["posto", "Posto"]] },
@@ -482,7 +481,7 @@ export const ESQUEMA = {
   insumo_entradas: {
     titulo: "Entradas de químicos/insumos", singular: "entrada", icone: "caixa", lancamento: true,
     campo: "grava", campoSql: "a_conferir = true",
-    descricao: "Compras que entram no estoque. O custo médio sai daqui. As lançadas no depósito pelo QR code chegam sem preço e marcadas \"Falta conferir\": complete o valor e a nota e desmarque.",
+    descricao: "Compras que entram no estoque. O custo médio sai daqui. As lançadas no depósito pelo Modo Campo chegam sem preço e marcadas \"Falta conferir\": complete o valor e a nota e desmarque.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
@@ -536,7 +535,7 @@ export const ESQUEMA = {
 
   pulverizacoes: {
     titulo: "Ordens de pulverização", singular: "ordem de pulverização", icone: "spray", lancamento: true, campo: "grava",
-    descricao: "O gerente cria a ordem (talhão, trator, produtos e dose por ha). No depósito, o tratorista lê o QR de SAÍDA, vê a ordem com as fotos dos produtos e confere cada um pelo QR code.",
+    descricao: "O gerente cria a ordem (talhão, trator, produtos e dose por ha). No depósito, o tratorista abre o Modo Campo → Tirar do depósito, vê a ordem com as fotos dos produtos e separa um por um, conferindo pela foto.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       talhao_id: { ...refTalhao, obrigatorio: true },

@@ -290,25 +290,6 @@ table { border-collapse: collapse; }
 .pronto h2 { font-size: 36px; }
 .campo-links { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 30px; }
 
-/* ─── Etiquetas QR (imprimir) ───────────────────────────────────────────── */
-.etiquetas { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
-.etiqueta { border: 2px solid var(--texto); border-radius: 14px; padding: 12px; text-align: center; break-inside: avoid; background: #fff; }
-.etiqueta-topo { display: flex; align-items: center; gap: 10px; text-align: left; margin-bottom: 8px; }
-.etiqueta-topo b { display: block; font-size: 20px; }
-.etiqueta-topo small { font-size: 14px; color: var(--texto-2); }
-.etiqueta-foto { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; }
-.etiqueta-figura { font-size: 48px; }
-.etiqueta .qr svg { width: 100%; max-width: 220px; height: auto; }
-.etiqueta p { margin: 6px 0 0; font-weight: 700; }
-
-@media print {
-  body { background: #fff; }
-  .lateral, .topo, .abas, .nao-imprimir, .sync { display: none !important; }
-  .conteudo { padding: 0; max-width: none; }
-  .cartao { box-shadow: none; padding: 0; }
-  .etiquetas { grid-template-columns: repeat(2, 1fr); }
-}
-
 /* Botão 🔊 de cada item e da pergunta */
 .campo-item { position: relative; display: flex; }
 .campo-item .campo-cartao { flex: 1; }
@@ -368,21 +349,12 @@ span.figura.mini, .mini .figura { font-size: 30px; }
 .embalagens-fotos b { font-size: 26px; }
 .embalagens-fotos .parcial { opacity: 0.45; transform: scale(0.8); }
 .embalagens-texto { font-size: 26px; font-weight: 800; margin: 0; color: var(--laranja); }
-.link-sem-qr { display: block; margin: 22px auto 0; background: none; border: 0; color: var(--texto-2); text-decoration: underline; font-size: 16px; cursor: pointer; }
-.botao-qr { width: 100%; margin-bottom: 14px; flex: none; }
 
 .resultado { align-items: center; justify-content: center; text-align: center; color: #fff; padding: 20px 16px 120px; }
 .resultado.certo { background: #1f8a4c; }
-.resultado.errado { background: var(--vermelho); }
 .resultado-marca { font-size: 150px; font-weight: 900; line-height: 1; }
 .resultado h2 { font-size: 40px; margin: 10px 0; }
 .resultado p { font-size: 24px; font-weight: 700; margin: 0 0 10px; }
-.troca { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 480px; }
-.troca > div { background: #fff; color: var(--texto); border-radius: 16px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.troca .foto { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }
-.troca .figura { font-size: 80px; }
-.troca small { color: var(--texto-2); font-size: 15px; }
-.troca b { font-size: 18px; }
 
 .contador { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 10px 0 14px; }
 .contador button { width: 88px; height: 88px; border-radius: 50%; border: 0; font-size: 52px; font-weight: 800; background: var(--verde); color: #fff; cursor: pointer; }
@@ -391,18 +363,6 @@ span.figura.mini, .mini .figura { font-size: 30px; }
 .contador b { display: block; font-size: 64px; line-height: 1; }
 .contador small { font-size: 16px; color: var(--texto-2); }
 
-.leitor { position: fixed; inset: 0; z-index: 80; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.leitor video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.leitor-mira { position: relative; width: min(70vw, 300px); aspect-ratio: 1; border: 5px solid #fff; border-radius: 24px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45); }
-.leitor-titulo { position: absolute; top: 20px; left: 16px; right: 16px; text-align: center; color: #fff; font-size: 22px; font-weight: 800; text-shadow: 0 1px 4px #000; }
-.leitor-fechar { position: absolute; bottom: calc(20px + env(safe-area-inset-bottom)); left: 16px; right: 16px; flex: none; }
-
-/* Cartaz dos QR do depósito (folha inteira) */
-.cartaz { border: 3px solid var(--texto); border-radius: 18px; padding: 18px; text-align: center; break-inside: avoid; background: #fff; }
-.cartaz .cartaz-figura { font-size: 90px; line-height: 1; }
-.cartaz h3 { font-size: 30px; margin: 8px 0 4px; }
-.cartaz p { font-size: 18px; margin: 0 0 10px; }
-.cartaz .qr svg { width: 100%; max-width: 300px; height: auto; }
 
 /* Ordem de pulverização (escritório) */
 .itens-ordem { display: grid; gap: 10px; margin-bottom: 10px; }

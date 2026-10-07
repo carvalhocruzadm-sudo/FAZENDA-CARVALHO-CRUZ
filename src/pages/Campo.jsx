@@ -4,7 +4,7 @@ import {
   Cartao, FiguraServico, FotoComprovante, FotoOuInicial, Ouvir, Passos, Pergunta, Rodape, Teclado, Topo,
 } from "../components/CampoUI";
 import { useDados } from "../hooks/useDados";
-import { Entrada, Produto, Saida } from "./CampoDeposito";
+import { Entrada, Saida } from "./CampoDeposito";
 import {
   falar, lancamentosDoPA, maquinasDoPA, operadores, paraNumero, servicoPorNome, servicos, vibrar,
 } from "../lib/campo";
@@ -13,11 +13,11 @@ import { guardarFotosDosCadastros } from "../lib/fotos";
 import { numero } from "../lib/formato";
 
 /**
- * Modo Campo: as telas dos tratoristas, abertas pelo QR code.
+ * Modo Campo: as telas dos tratoristas, no celular.
  *   /campo                      → o que vai fazer (abastecer, tirar ou guardar no depósito)
  *   /campo/abastecer            → escolher o trator
- *   /campo/abastecer/<máquina>  → abastecimento no PA (QR colado em cada trator)
- *   /campo/saida, /entrada, /produto/<id> → depósito de químicos (CampoDeposito.jsx)
+ *   /campo/abastecer/<máquina>  → abastecimento no PA
+ *   /campo/saida, /campo/entrada → depósito de químicos (CampoDeposito.jsx)
  *
  * Uma pergunta por tela, figura grande, poucas palavras e o botão 🔊 que lê
  * a pergunta em voz alta.
@@ -25,11 +25,15 @@ import { numero } from "../lib/formato";
 
 // ─── Abastecimento no PA ────────────────────────────────────────────────────
 
-const PASSOS = ["operador", "servico", "talhao", "horimetro", "litros", "conferir"];
+const PASSOS = ["operador", "servico", "fazenda", "talhao", "horimetro", "litros", "conferir"];
+
+/** "Sem fazenda" para os talhões que não têm fazenda no cadastro. */
+const SEM_FAZENDA = "sem";
 
 const FALA = {
   operador: "Quem é você? Toque na sua foto.",
   servico: "Qual serviço você fez hoje?",
+  fazenda: "Em qual fazenda? Toque nela.",
   talhao: "Em qual talhão? Pode marcar mais de um. Depois toque em próximo.",
   horimetro: "Tire a foto do horímetro e digite as horas que estão marcando agora.",
   litros: "Tire a foto da bomba e digite quantos litros de diesel colocou.",
@@ -37,10 +41,10 @@ const FALA = {
   pronto: "Pronto! Abastecimento guardado. Obrigado.",
 };
 
-function Abastecer({ dados, salvar, maquinaId, irPara }) {
+function Abastecer({ dados, salvar, maquinaId, irPara, editarServicos }) {
   const maquina = dados.maquinas.find((m) => m.id === maquinaId);
   const [passo, setPasso] = useState("operador");
-  const [r, setR] = useState({ operador_id: null, operacao: null, talhoes: [], leitura: "", litros: "", foto_leitura: null, foto_bomba: null });
+  const [r, setR] = useState({ operador_id: null, operacao: null, fazenda: null, talhoes: [], leitura: "", litros: "", foto_leitura: null, foto_bomba: null });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
 
@@ -50,20 +54,32 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
     .filter((t) => t.ativo !== false)
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true })), [dados.talhoes]);
 
+  // As fazendas que têm talhão ativo; com uma só, a pergunta da fazenda é pulada.
+  const fazendas = useMemo(() => {
+    const ids = new Set(talhoes.map((t) => t.fazenda_id ?? SEM_FAZENDA));
+    const lista = dados.fazendas
+      .filter((f) => ids.has(f.id))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }))
+      .map((f) => ({ id: f.id, nome: f.nome }));
+    if (ids.has(SEM_FAZENDA)) lista.push({ id: SEM_FAZENDA, nome: "Outros talhões" });
+    return lista;
+  }, [talhoes, dados.fazendas]);
+  const passos = fazendas.length > 1 ? PASSOS : PASSOS.filter((p) => p !== "fazenda");
+
   if (!maquina) {
     return (
       <div className="campo-app">
-        <Topo titulo="Trator não encontrado" pergunta="Este QR code não é de nenhum trator cadastrado." />
-        <div className="campo-corpo"><div className="campo-aviso">Este QR code não é de nenhum trator cadastrado. Chame o gerente.</div></div>
+        <Topo titulo="Trator não encontrado" pergunta="Este trator não está cadastrado." />
+        <div className="campo-corpo"><div className="campo-aviso">Este trator não está cadastrado. Chame o gerente.</div></div>
         <Rodape aoVoltar={() => irPara("/campo")} />
       </div>
     );
   }
 
-  const i = PASSOS.indexOf(passo);
+  const i = passos.indexOf(passo);
   const ir = (p) => { setErro(null); setPasso(p); window.scrollTo(0, 0); };
-  const voltar = i > 0 ? () => ir(PASSOS[i - 1]) : () => irPara("/campo");
-  const seguir = () => ir(PASSOS[i + 1]);
+  const voltar = i > 0 ? () => ir(passos[i - 1]) : () => irPara("/campo");
+  const seguir = () => ir(passos[i + 1]);
   const mudar = (patch) => setR((x) => ({ ...x, ...patch }));
 
   const resumo = passo === "conferir"
@@ -92,6 +108,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
 
   const operador = dados.funcionarios.find((f) => f.id === r.operador_id);
   const nomesTalhoes = r.talhoes.map((id) => dados.talhoes.find((t) => t.id === id)?.nome).filter(Boolean);
+  const nomeFazenda = fazendas.length > 1 ? fazendas.find((f) => f.id === r.fazenda)?.nome : null;
 
   // O que o 🔊 lê em cada tela: a pergunta e, quando já tem, o que foi digitado.
   const falaHorimetro = `${FALA.horimetro}${r.leitura ? ` Você digitou ${r.leitura} horas.` : ""}${r.foto_leitura ? " A foto já foi tirada." : ""}`;
@@ -99,6 +116,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
   const falaConferir = resumo ? [
     resumo.aviso ? `Atenção: ${resumo.aviso}` : null,
     `Operador: ${operador?.nome}.`, `Serviço: ${r.operacao}.`,
+    nomeFazenda ? `Fazenda: ${nomeFazenda}.` : null,
     `${nomesTalhoes.length > 1 ? "Talhões" : "Talhão"}: ${nomesTalhoes.join(" e ")}.`,
     `Horímetro: ${r.leitura} horas.`, `Diesel: ${r.litros} litros.`,
     "Se estiver tudo certo, toque em salvar.",
@@ -133,9 +151,37 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
           <div className="campo-grade">
             {servicos(dados).map((s) => (
               <Cartao key={s.id} marcado={r.operacao === s.nome} fala={s.nome}
-                aoTocar={() => { mudar({ operacao: s.nome }); falar(s.nome); vibrar(); ir("talhao"); }}>
+                aoTocar={() => { mudar({ operacao: s.nome }); falar(s.nome); vibrar(); seguir(); }}>
                 <FiguraServico servico={s} />
                 <span>{s.nome}</span>
+              </Cartao>
+            ))}
+          </div>
+          {editarServicos && (
+            <div className="campo-links">
+              <button type="button" className="btn" onClick={editarServicos}>✏️ Cadastrar ou editar serviços (escritório)</button>
+            </div>
+          )}
+        </>
+      );
+      rodape = <Rodape aoVoltar={voltar} />;
+      break;
+
+    case "fazenda":
+      corpo = (
+        <>
+          <Pergunta figura="🏡">Qual fazenda?</Pergunta>
+          <div className="campo-grade">
+            {fazendas.map((f) => (
+              <Cartao key={f.id} marcado={r.fazenda === f.id} fala={f.nome} aoTocar={() => {
+                falar(f.nome);
+                vibrar();
+                // Trocou de fazenda: os talhões marcados eram da outra.
+                mudar(r.fazenda === f.id ? {} : { fazenda: f.id, talhoes: [] });
+                seguir();
+              }}>
+                <span className="figura">🏡</span>
+                <span>{f.nome}</span>
               </Cartao>
             ))}
           </div>
@@ -144,12 +190,15 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
       rodape = <Rodape aoVoltar={voltar} />;
       break;
 
-    case "talhao":
+    case "talhao": {
+      const daFazenda = fazendas.length > 1 && r.fazenda
+        ? talhoes.filter((t) => (t.fazenda_id ?? SEM_FAZENDA) === r.fazenda)
+        : talhoes;
       corpo = (
         <>
           <Pergunta figura="🗺️">Qual talhão? <small>Pode marcar mais de um</small></Pergunta>
           <div className="campo-grade">
-            {talhoes.map((t) => {
+            {daFazenda.map((t) => {
               const marcado = r.talhoes.includes(t.id);
               return (
                 <Cartao key={t.id} marcado={marcado} fala={t.nome} aoTocar={() => {
@@ -167,6 +216,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
       );
       rodape = <Rodape aoVoltar={voltar} aoSeguir={seguir} podeSeguir={r.talhoes.length > 0} />;
       break;
+    }
 
     case "horimetro": {
       const ultima = lancamentosDoPA(dados, { ...r, maquina_id: maquina.id, talhoes: [], leitura: 0, litros: 0 }, hoje()).anterior;
@@ -208,7 +258,8 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
             <FiguraServico servico={servicoPorNome(dados, r.operacao)} /><span>{r.operacao}</span>
           </div>
           <div className="resumo-linha" onClick={() => ir("talhao")}>
-            <span className="figura">🗺️</span><span>{nomesTalhoes.join(" + ")}</span>
+            <span className="figura">🗺️</span>
+            <span>{nomesTalhoes.join(" + ")}{nomeFazenda && <small> · {nomeFazenda}</small>}</span>
           </div>
           <div className="resumo-linha" onClick={() => ir("horimetro")}>
             <span className="figura">⏱️</span>
@@ -248,7 +299,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
   return (
     <div className="campo-app">
       <Topo maquina={maquina} pergunta={falaTopo} />
-      {i >= 0 && <Passos total={PASSOS.length} atual={i} />}
+      {i >= 0 && <Passos total={passos.length} atual={i} />}
       <div className="campo-corpo">{corpo}</div>
       {rodape}
     </div>
@@ -257,7 +308,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara }) {
 
 // ─── Início ─────────────────────────────────────────────────────────────────
 
-/** /campo/abastecer: escolher o trator (quando não veio pelo QR do trator). */
+/** /campo/abastecer: escolher o trator. */
 function EscolherTrator({ dados, irPara }) {
   useEffect(() => { falar("Toque no trator que você vai abastecer."); }, []);
   const maquinas = maquinasDoPA(dados);
@@ -324,16 +375,21 @@ export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema }) {
   if (erro) return <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>;
 
   const [, , acao, id] = caminho.split("/");
+  // Só quem tem o sistema completo: abre a aba Serviços do menu Modo Campo.
+  const editarServicos = voltarAoSistema ? () => {
+    try { localStorage.setItem("fcc-tela", "campo"); } catch { /* sem armazenamento: abre no Painel */ }
+    voltarAoSistema();
+  } : null;
   const props = { dados, salvar, irPara };
   switch (acao) {
     case "abastecer":
-      return id ? <Abastecer key={id} {...props} maquinaId={id} /> : <EscolherTrator {...props} />;
+      return id
+        ? <Abastecer key={id} {...props} maquinaId={id} editarServicos={editarServicos} />
+        : <EscolherTrator {...props} />;
     case "saida":
       return <Saida key={caminho} {...props} />;
     case "entrada":
-      return <Entrada key={caminho} {...props} produtoInicial={id ?? null} />;
-    case "produto":
-      return <Produto key={id} {...props} id={id} />;
+      return <Entrada key={caminho} {...props} />;
     default:
       return <Inicio irPara={irPara} sair={sair} voltarAoSistema={voltarAoSistema} />;
   }
