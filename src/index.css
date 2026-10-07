@@ -40,6 +40,8 @@ table { border-collapse: collapse; }
 .lateral {
   width: 232px; flex-shrink: 0; background: var(--verde-escuro); color: #e8f1ec;
   display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  /* No celular, 100vh passa da tela visível (barra do navegador) e esconde o "Sair". */
+  height: 100dvh; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
 }
 .lateral .marca { display: flex; align-items: center; gap: 10px; padding: 18px 16px 14px; }
 .lateral .marca img { width: 38px; height: 38px; border-radius: 10px; background: #fff; padding: 3px; }
@@ -52,7 +54,7 @@ table { border-collapse: collapse; }
 }
 .lateral nav button:hover { background: rgba(255, 255, 255, 0.07); }
 .lateral nav button.ativo { background: rgba(255, 255, 255, 0.14); font-weight: 700; }
-.lateral .rodape { margin-top: auto; padding: 12px 16px; font-size: 12px; color: #a9c7b5; }
+.lateral .rodape { margin-top: auto; padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); font-size: 12px; color: #a9c7b5; }
 
 .principal { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topo {
@@ -140,7 +142,7 @@ table { border-collapse: collapse; }
 .modal footer .espaco { flex: 1; }
 @media (max-width: 640px) {
   .modal-fundo { padding: 0; }
-  .modal { border-radius: 0; min-height: 100vh; }
+  .modal { border-radius: 0; min-height: 100vh; min-height: 100dvh; }
 }
 .aviso { padding: 10px 12px; border-radius: 9px; background: var(--vermelho-pale); color: var(--vermelho); font-size: 13px; margin-bottom: 12px; }
 .aviso.info { background: var(--amarelo-pale); color: var(--amarelo); }
