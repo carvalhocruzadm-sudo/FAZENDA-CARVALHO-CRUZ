@@ -117,6 +117,8 @@ alter table public.insumos add column if not exists fabricante text;
 alter table public.insumos add column if not exists tipo text;
 alter table public.insumos add column if not exists principio_ativo text;
 alter table public.insumos add column if not exists unidade text;
+alter table public.insumos add column if not exists tamanho_embalagem numeric;
+alter table public.insumos add column if not exists qtd_embalagens numeric;
 alter table public.insumos add column if not exists estoque_inicial numeric;
 alter table public.insumos add column if not exists custo_inicial numeric;
 alter table public.insumos add column if not exists estoque_minimo numeric;
