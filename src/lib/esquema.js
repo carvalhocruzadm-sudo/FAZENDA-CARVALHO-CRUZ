@@ -8,6 +8,7 @@
  *
  * Tipos de campo:
  *   texto · textoLongo · numero · dinheiro · data · booleano
+ *   fotos    → lista de fotos (comprimidas, guardadas no próprio registro)
  *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
  *   sugestao → texto livre com sugestões (dá para criar uma categoria nova)
  *   ref      → aponta para outra coleção (`colecao`, `filtro` opcional)
@@ -19,6 +20,7 @@
  * Sem `campo`, essa conta não enxerga a tabela. Vale no banco (RLS).
  * `campoSql` limita as linhas que ela vê e corrige (ex.: só as entradas que
  * ela mesma lançou e o escritório ainda não conferiu, sem os preços das outras).
+ *   itens    → lista guardada como JSON (sem campo na tela padrão: tem tela própria)
  *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
@@ -97,6 +99,14 @@ const culturaDoTalhao = {
   },
 };
 
+/** Código difícil de adivinhar para o link do agrônomo (192 bits). */
+function novoToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+const totalEmbalagens = (r) => +(num(r.qtd_embalagens) * (num(r.tamanho_embalagem) || 1)).toFixed(3);
+
 export const ESQUEMA = {
   // ─── Cadastros ────────────────────────────────────────────────────────────
   culturas: {
@@ -173,6 +183,29 @@ export const ESQUEMA = {
     resumo: (r) => r.nome,
   },
 
+  usuarios: {
+    titulo: "Usuários", singular: "usuário", icone: "pessoas",
+    descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users). Perfil Tratorista: esse login só abre o Modo Campo (abastecimento e depósito), no celular.",
+    campos: {
+      funcionario_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Funcionário", dica: "Escolha para trazer o nome e o telefone do cadastro de funcionários" },
+      nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
+      email: { tipo: "texto", rotulo: "E-mail de acesso", obrigatorio: true },
+      perfil: { tipo: "opcoes", rotulo: "Perfil", padrao: "operador", opcoes: [["admin", "Administrador (tudo)"], ["gerente", "Gerente"], ["operador", "Operador (lança dados)"], ["consulta", "Só consulta"], ["campo", "Tratorista (só o Modo Campo, no celular)"]] },
+      telefone: { tipo: "texto", rotulo: "Telefone" },
+      ativo: { tipo: "booleano", rotulo: "Acesso liberado", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    aoMudar: {
+      funcionario_id: (reg, dados) => {
+        const f = dados.funcionarios.find((x) => x.id === reg.funcionario_id);
+        return f ? { nome: f.nome, telefone: f.telefone ?? reg.telefone } : {};
+      },
+    },
+    colunas: ["nome", "funcionario_id", "email", "perfil", "telefone", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.nome,
+  },
+
   maquinas: {
     titulo: "Máquinas e veículos", singular: "máquina", icone: "trator", campo: "le",
     descricao: "Inventário de tratores, implementos, caminhões e veículos. Tratores e colheitadeiras marcam horímetro; caminhões marcam km.",
@@ -222,23 +255,71 @@ export const ESQUEMA = {
 
   insumos: {
     titulo: "Produtos químicos e insumos", singular: "produto", icone: "frasco", campo: "le",
-    descricao: "Defensivos, adubos, sementes, ração… O estoque é a conta: entradas − aplicações. A foto e a embalagem são o que o tratorista vê no depósito (\"pegue 3 galões\").",
+    descricao: "Defensivos, adubos, sementes, ração… O estoque é a conta: quantidade inicial + entradas − aplicações. A primeira foto do rótulo, o tipo e o tamanho da embalagem são o que o tratorista vê no depósito (\"pegue 3 galões de 5 L\").",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome comercial", obrigatorio: true },
-      foto: { tipo: "foto", rotulo: "Foto da embalagem (o tratorista acha o produto por ela)" },
+      fabricante: { tipo: "texto", rotulo: "Fabricante" },
       tipo: { tipo: "opcoes", rotulo: "Tipo", opcoes: TIPOS_INSUMO, padrao: "herbicida" },
       principio_ativo: { tipo: "texto", rotulo: "Princípio ativo" },
       unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: ["L", "kg", "saco", "t", "unidade", "dose"], padrao: "L", obrigatorio: true },
-      embalagem_tipo: { tipo: "sugestao", rotulo: "Embalagem", sugestoes: ["Galão", "Bombona", "Frasco", "Balde", "Saco", "Caixa", "Tambor"], padrao: "Galão" },
-      embalagem: { tipo: "numero", rotulo: "Quanto cabe numa embalagem", casas: 3, dica: "Na unidade do produto. Ex.: galão de 5 L → 5" },
-      codigo_barras: { tipo: "texto", rotulo: "Código de barras (se tiver)", dica: "Os números embaixo das barras. Sem código, use a etiqueta QR do sistema." },
+      tamanho_embalagem: { tipo: "numero", rotulo: "Tamanho da embalagem", casas: 2, dica: "Quanto vem em cada embalagem, na unidade acima. Ex.: galão de 20 L → 20. Se a unidade já é a embalagem (saco, caixa), deixe vazio." },
+      embalagem_tipo: { tipo: "sugestao", rotulo: "Tipo de embalagem", sugestoes: ["Galão", "Bombona", "Frasco", "Balde", "Saco", "Caixa", "Tambor"], padrao: "Galão" },
+      codigo_barras: { tipo: "texto", rotulo: "Código de barras (se tiver)", dica: "Os números embaixo das barras. Sem código, use a etiqueta QR do sistema (Químicos → QR codes do depósito)." },
+      qtd_embalagens: { tipo: "numero", rotulo: "Quantas embalagens você tem hoje", casas: 2, dica: "As próximas compras entram pela aba Entradas / compras. Pode corrigir depois." },
+      estoque_inicial: { tipo: "numero", rotulo: "Quantidade em estoque hoje (total)", casas: 2, dica: "Calculado sozinho (tamanho × embalagens), mas você pode corrigir o total. Ex.: 5 galões de 20 L, mas um está pela metade → 90." },
+      validade: { tipo: "data", rotulo: "Validade", dica: "Se as embalagens têm validades diferentes, coloque a mais próxima de vencer." },
+      custo_inicial: { tipo: "dinheiro", rotulo: "Custo por unidade do produto (opcional)", dica: "Preço de 1 L / 1 kg / 1 unidade do que já está em estoque. Serve para o valor do estoque." },
       estoque_minimo: { tipo: "numero", rotulo: "Estoque mínimo", casas: 2 },
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
+      fotos_rotulo: { tipo: "fotos", rotulo: "Fotos do rótulo", dica: "Tire foto da frente, do verso e da bula, se tiver." },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "foto", "tipo", "principio_ativo", "unidade", "embalagem_tipo", "embalagem", "estoque_minimo"],
+    // Ao mexer no tamanho ou nas embalagens o total é refeito; depois dá para corrigir o total à mão.
+    aoMudar: {
+      tamanho_embalagem: (r) => (r.qtd_embalagens == null || r.qtd_embalagens === "" ? {} : { estoque_inicial: totalEmbalagens(r) }),
+      qtd_embalagens: (r) => ({ estoque_inicial: r.qtd_embalagens === "" || r.qtd_embalagens == null ? null : totalEmbalagens(r) }),
+    },
+    colunas: ["nome", "fabricante", "tipo", "principio_ativo", "unidade", "estoque_inicial", "validade", "estoque_minimo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => `${r.nome} (${r.unidade})`,
+  },
+
+  // ─── Agrônomo ─────────────────────────────────────────────────────────────
+  links_agronomo: {
+    titulo: "Links do agrônomo", singular: "link", icone: "pessoas",
+    descricao: "Quem tem o link vê só o estoque de químicos e pode montar uma aplicação. Não vê dinheiro, vendas nem o resto do sistema.",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome do agrônomo", obrigatorio: true },
+      token: { tipo: "texto", rotulo: "Código do link", somenteLeitura: true },
+      ativo: { tipo: "booleano", rotulo: "Link ativo", padrao: true },
+    },
+    // O código nasce uma vez e nunca muda (é ele que vai no link).
+    calcular: (r) => (r.token ? {} : { token: novoToken() }),
+    colunas: ["nome", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.nome,
+  },
+
+  recomendacoes: {
+    titulo: "Aplicações do agrônomo", singular: "aplicação do agrônomo", icone: "spray",
+    descricao: "Receitas montadas pelo agrônomo. Só viram saída de estoque quando você der baixa.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      agronomo: { tipo: "texto", rotulo: "Agrônomo" },
+      talhao_id: { ...refTalhao, obrigatorio: true },
+      cultura_id: refCultura,
+      area_ha: { tipo: "numero", rotulo: "Área a aplicar (ha)", casas: 2 },
+      alvo: { tipo: "texto", rotulo: "Alvo (praga, doença, planta daninha)" },
+      calda_l_ha: { tipo: "numero", rotulo: "Calda (L/ha)", casas: 1 },
+      itens: { tipo: "itens", rotulo: "Produtos" },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      situacao: {
+        tipo: "opcoes", rotulo: "Situação", padrao: "nova",
+        opcoes: [["nova", "Nova"], ["aprovada", "Aprovada"], ["aplicada", "Aplicada (baixa dada)"], ["cancelada", "Cancelada"]],
+      },
+      link_id: { tipo: "ref", colecao: "links_agronomo", rotulo: "Link usado" },
+    },
+    colunas: ["data", "agronomo", "talhao_id", "alvo", "situacao"],
   },
 
   // ─── Lançamentos ──────────────────────────────────────────────────────────
@@ -338,9 +419,24 @@ export const ESQUEMA = {
       cultura_id: { ...refCultura, rotulo: "Comprado para a cultura" },
       fornecedor: { tipo: "texto", rotulo: "Fornecedor" },
       nota: { tipo: "texto", rotulo: "Nota fiscal" },
-      lote: { tipo: "texto", rotulo: "Lote / validade" },
+      lote: { tipo: "texto", rotulo: "Lote" },
+      validade: { tipo: "data", rotulo: "Validade", dica: "Está na embalagem. O agrônomo vê pela validade." },
     },
-    colunas: ["data", "insumo_id", "quantidade", "valor", "a_conferir", "cultura_id", "fornecedor"],
+    colunas: ["data", "insumo_id", "quantidade", "valor", "a_conferir", "validade", "fornecedor"],
+  },
+
+  insumo_ajustes: {
+    titulo: "Balanço / conferência de estoque", singular: "ajuste", icone: "lista", lancamento: true,
+    descricao: "Contagem do que existe de fato no estoque. Guarda só a diferença (+ entra / − sai) e não conta como compra nem como despesa.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
+      contado: { tipo: "numero", rotulo: "Quantidade contada", casas: 2 },
+      quantidade: { tipo: "numero", rotulo: "Diferença (+ entra / − sai)", casas: 2, obrigatorio: true },
+      custo_unitario: { tipo: "dinheiro", rotulo: "Custo por unidade (opcional)", dica: "Usado no custo médio e no valor em estoque quando a diferença é positiva." },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["data", "insumo_id", "contado", "quantidade", "custo_unitario", "observacao"],
   },
 
   aplicacoes: {
@@ -617,6 +713,7 @@ export function prepararRegistro(colecao, bruto) {
     if (!campoVisivel(campo, reg)) v = null;
     if (["numero", "dinheiro"].includes(campo.tipo)) v = v === "" || v == null ? null : Number(v);
     if (campo.tipo === "booleano") v = Boolean(v);
+    if ((campo.tipo === "fotos" || campo.tipo === "itens") && !v?.length) v = null;
     if (typeof v === "string") v = v.trim() || null;
     reg[chave] = v;
   }

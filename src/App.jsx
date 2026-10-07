@@ -1,14 +1,15 @@
 import { Component, useCallback, useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
-import { Icone } from "./components/ui";
+import { Icone, Modal } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
+import Agronomo from "./pages/Agronomo";
 import ModoCampo from "./pages/Campo";
-import Login from "./pages/Login";
+import Login, { NovaSenha } from "./pages/Login";
 import Painel from "./pages/Painel";
-import { CadastrosCampo, Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
+import { CadastrosCampo, Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Usuarios, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 
 const MENU = [
@@ -22,6 +23,7 @@ const MENU = [
   ["fretes", "Caminhões e fretes", "caminhao", Fretes],
   ["equipe", "Funcionários", "pessoas", Equipe],
   ["campo", "Modo Campo (QR)", "trator", CadastrosCampo],
+  ["usuarios", "Usuários", "pessoas", Usuarios],
   ["sync", "Sincronização", "nuvem", Sincronizacao],
 ];
 
@@ -81,12 +83,69 @@ function Rotas({ sair, email, perfilCampo }) {
   return <Sistema sair={sair} email={email} abrirCampo={() => irPara("/campo")} />;
 }
 
+function TrocarSenha({ email, aoFechar }) {
+  const [atual, setAtual] = useState("");
+  const [nova, setNova] = useState("");
+  const [repetida, setRepetida] = useState("");
+  const [erro, setErro] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const [pronto, setPronto] = useState(false);
+
+  const salvar = async (e) => {
+    e.preventDefault();
+    setErro(null);
+    if (nova.length < 6) { setErro("A nova senha precisa ter pelo menos 6 caracteres."); return; }
+    if (nova !== repetida) { setErro("As duas senhas novas não são iguais."); return; }
+    setSalvando(true);
+    // Confere a senha atual antes de trocar.
+    const { error: erroAtual } = await supabase.auth.signInWithPassword({ email, password: atual });
+    if (erroAtual) {
+      setSalvando(false);
+      setErro("A senha atual está incorreta.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: nova });
+    setSalvando(false);
+    if (error) setErro(error.message);
+    else setPronto(true);
+  };
+
+  return (
+    <Modal titulo="Trocar senha" aoFechar={aoFechar}>
+      {pronto ? (
+        <>
+          <p>Senha trocada com sucesso.</p>
+          <button className="btn primario" onClick={aoFechar}>Fechar</button>
+        </>
+      ) : (
+        <form onSubmit={salvar} style={{ display: "grid", gap: 12 }}>
+          {erro && <div className="aviso">{erro}</div>}
+          <label className="campo"><span>Senha atual</span>
+            <input type="password" autoComplete="current-password" value={atual} onChange={(e) => setAtual(e.target.value)} required />
+          </label>
+          <label className="campo"><span>Nova senha</span>
+            <input type="password" autoComplete="new-password" value={nova} onChange={(e) => setNova(e.target.value)} required />
+          </label>
+          <label className="campo"><span>Repita a nova senha</span>
+            <input type="password" autoComplete="new-password" value={repetida} onChange={(e) => setRepetida(e.target.value)} required />
+          </label>
+          <button className="btn primario" style={{ justifyContent: "center" }} disabled={salvando}>
+            {salvando ? "Salvando…" : "Salvar nova senha"}
+          </button>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 function Sistema({ sair, email, abrirCampo }) {
   const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
   const [tela, setTela] = useState(() => {
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
   });
   const [menuAberto, setMenuAberto] = useState(false);
+  const [trocandoSenha, setTrocandoSenha] = useState(false);
+  const fecharTrocaSenha = useCallback(() => setTrocandoSenha(false), []);
 
   const irPara = (id) => {
     setTela(id);
@@ -114,6 +173,11 @@ function Sistema({ sair, email, abrirCampo }) {
         </nav>
         <div className="rodape">
           {email && <div style={{ marginBottom: 8, wordBreak: "break-all" }}>{email}</div>}
+          {sair && email && (
+            <button className="btn" style={{ marginBottom: 8 }} onClick={() => { setTrocandoSenha(true); setMenuAberto(false); }}>
+              <Icone nome="chave" /> Trocar senha
+            </button>
+          )}
           {sair && <button className="btn" onClick={sair}><Icone nome="sair" /> Sair</button>}
         </div>
       </aside>
@@ -131,28 +195,68 @@ function Sistema({ sair, email, abrirCampo }) {
           )}
         </div>
       </main>
+      {trocandoSenha && <TrocarSenha email={email} aoFechar={fecharTrocaSenha} />}
     </div>
   );
+}
+
+/**
+ * O login é de tratorista (só Modo Campo)? Vem do perfil marcado em Usuários
+ * (perguntado ao banco) ou do app_metadata. Fica guardado no aparelho para
+ * abrir certo também sem internet. `null` = ainda perguntando.
+ */
+function usePerfilCampo(usuario) {
+  const email = usuario?.email ?? null;
+  const doMetadata = usuario?.app_metadata?.perfil === "campo";
+  const chave = `fcc-campo:${email}`;
+  const lerGuardado = () => {
+    try { const v = localStorage.getItem(chave); return v == null ? null : v === "1"; } catch { return null; }
+  };
+  const [resposta, setResposta] = useState({ email: null, campo: null });
+
+  useEffect(() => {
+    if (!email || doMetadata) return undefined;
+    let vivo = true;
+    supabase.rpc("eh_campo").then(({ data, error }) => {
+      if (!vivo) return;
+      // Sem resposta (sem internet, banco sem a função): fica o que estava guardado, ou "não".
+      const campo = error ? null : Boolean(data);
+      if (campo != null) { try { localStorage.setItem(chave, campo ? "1" : "0"); } catch { /* sem armazenamento */ } }
+      setResposta({ email, campo });
+    });
+    return () => { vivo = false; };
+  }, [email, doMetadata, chave]);
+
+  if (!email) return false;
+  if (doMetadata) return true;
+  if (resposta.email === email && resposta.campo != null) return resposta.campo;
+  const guardado = lerGuardado();
+  if (guardado != null) return guardado;
+  return resposta.email === email || !navigator.onLine ? false : null;
 }
 
 /** Com Supabase, só entra quem tem login. Sem ele, modo demonstração. */
 function Portao() {
   const [sessao, setSessao] = useState(undefined);
+  const [recuperando, setRecuperando] = useState(false);
+  const perfilCampo = usePerfilCampo(sessao?.user);
 
   useEffect(() => {
     if (!supabaseConfigurado) return undefined;
     supabase.auth.getSession().then(({ data }) => setSessao(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSessao(s));
+    const { data } = supabase.auth.onAuthStateChange((evento, s) => {
+      if (evento === "PASSWORD_RECOVERY") setRecuperando(true);
+      setSessao(s);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
   if (!supabaseConfigurado) return <Rotas />;
   if (sessao === undefined) return <div className="vazio">Verificando acesso…</div>;
+  if (recuperando && sessao) return <NovaSenha aoConcluir={() => setRecuperando(false)} />;
   if (!sessao) return <Login />;
-  return (
-    <Rotas email={sessao.user.email} sair={() => supabase.auth.signOut()}
-      perfilCampo={sessao.user.app_metadata?.perfil === "campo"} />
-  );
+  if (perfilCampo == null) return <div className="vazio">Verificando acesso…</div>;
+  return <Rotas email={sessao.user.email} sair={() => supabase.auth.signOut()} perfilCampo={perfilCampo} />;
 }
 
 class ProtecaoErro extends Component {
@@ -172,7 +276,12 @@ class ProtecaoErro extends Component {
   }
 }
 
+/** O link do agrônomo (/agronomo/CÓDIGO) abre direto, sem login. */
+const tokenAgronomo = () => window.location.pathname.match(/^\/agronomo\/([A-Za-z0-9]{16,})\/?$/)?.[1];
+
 export default function App() {
+  const token = tokenAgronomo();
+  if (token) return <ProtecaoErro><Agronomo token={token} /></ProtecaoErro>;
   return (
     <ProtecaoErro>
       <Portao />

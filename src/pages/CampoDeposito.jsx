@@ -278,7 +278,7 @@ export function Saida({ dados, salvar, irPara }) {
 // ─── QR-2: Entrada (compra ou sobra) ───────────────────────────────────────
 
 function Contador({ insumo, valor, aoMudar }) {
-  const tam = Number(insumo.embalagem) || 0;
+  const tam = Number(insumo.tamanho_embalagem) || 0;
   const qtd = Math.round((Number(valor) || 0) / tam);
   const mudar = (d) => { vibrar(20); aoMudar(Math.max(0, qtd + d) * tam); };
   return (
@@ -410,7 +410,7 @@ export function Entrada({ dados, salvar, irPara, produtoInicial }) {
     }
 
     case "quantidade": {
-      const usaContador = tipo === "compra" && Number(insumo?.embalagem) > 0;
+      const usaContador = tipo === "compra" && Number(insumo?.tamanho_embalagem) > 0;
       const saiu = tipo === "sobra"
         ? dados.aplicacoes.filter((a) => a.pulverizacao_id === ordemId && a.insumo_id === insumoId).reduce((s, a) => s + (Number(a.quantidade) || 0), 0)
         : null;

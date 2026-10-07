@@ -103,26 +103,47 @@ export function consumoPorMaquina(dados, periodo) {
 // ─── Químicos / insumos ─────────────────────────────────────────────────────
 
 /**
- * Estoque de cada produto: entradas − aplicações (a sobra que voltou da
- * pulverização é aplicação negativa). O custo médio só conta as entradas com
- * preço: a que chegou pelo depósito e ainda não foi conferida não o derruba.
+ * Estoque de cada produto: quantidade inicial + entradas + balanços −
+ * aplicações (a sobra que voltou da pulverização é aplicação negativa). O
+ * custo médio só conta as entradas com preço: a que chegou pelo depósito e
+ * ainda não foi conferida não o derruba.
  */
 export function estoqueInsumos(dados) {
   const mapa = new Map();
-  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0, qtdComPreco: 0 });
+  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0, qtdComPreco: 0, ajuste: 0, qtdComCusto: 0, valorAjuste: 0 });
   for (const e of dados.insumo_entradas) {
     const x = mapa.get(e.insumo_id);
     if (!x) continue;
     x.entrada += n(e.quantidade);
     if (n(e.valor) > 0) { x.valorEntrada += n(e.valor); x.qtdComPreco += n(e.quantidade); }
   }
+  // Quantidade que já existia quando o produto foi cadastrado (não é compra).
+  for (const x of mapa.values()) {
+    const q = n(x.insumo.estoque_inicial);
+    x.ajuste += q;
+    if (q > 0 && n(x.insumo.custo_inicial) > 0) {
+      x.qtdComCusto += q;
+      x.valorAjuste += q * n(x.insumo.custo_inicial);
+    }
+  }
+  // Balanço: ajusta o saldo, mas não é compra (não entra nas despesas).
+  for (const a of dados.insumo_ajustes ?? []) {
+    const x = mapa.get(a.insumo_id);
+    if (!x) continue;
+    x.ajuste += n(a.quantidade);
+    if (n(a.quantidade) > 0 && n(a.custo_unitario) > 0) {
+      x.qtdComCusto += n(a.quantidade);
+      x.valorAjuste += n(a.quantidade) * n(a.custo_unitario);
+    }
+  }
   for (const a of dados.aplicacoes) {
     const x = mapa.get(a.insumo_id);
     if (x) x.saida += n(a.quantidade);
   }
   return [...mapa.values()].map((x) => {
-    const custoMedio = x.qtdComPreco ? x.valorEntrada / x.qtdComPreco : 0;
-    const saldo = x.entrada - x.saida;
+    const baseQtd = x.qtdComPreco + x.qtdComCusto;
+    const custoMedio = baseQtd ? (x.valorEntrada + x.valorAjuste) / baseQtd : 0;
+    const saldo = x.entrada + x.ajuste - x.saida;
     const minimo = n(x.insumo.estoque_minimo);
     return {
       ...x, saldo, custoMedio, valorEstoque: Math.max(0, saldo) * custoMedio,

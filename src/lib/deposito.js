@@ -37,7 +37,7 @@ const plural = (qtd, palavra) => {
  */
 export function emEmbalagens(insumo, quantidade) {
   const q = Math.abs(n(quantidade));
-  const tam = n(insumo?.embalagem);
+  const tam = n(insumo?.tamanho_embalagem);
   const un = insumo?.unidade || "";
   const tipo = insumo?.embalagem_tipo || "embalagem";
   if (!tam) return { cheias: 0, resto: q, texto: `${numero(q)} ${un}`, fala: `${numero(q)} ${un}` };

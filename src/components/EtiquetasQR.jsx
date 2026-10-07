@@ -12,12 +12,13 @@ export function QR({ texto }) {
   return <div className="qr" dangerouslySetInnerHTML={{ __html: qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true }) }} />;
 }
 
-export function Etiqueta({ titulo, subtitulo, endereco, foto, figura }) {
+export function Etiqueta({ titulo, subtitulo, endereco, foto, fotoUrl, figura }) {
   return (
     <div className="etiqueta">
       <div className="etiqueta-topo">
-        {foto ? <Foto caminho={foto} className="etiqueta-foto" reserva={<span className="etiqueta-figura">{figura}</span>} />
-          : <span className="etiqueta-figura">{figura}</span>}
+        {fotoUrl ? <img src={fotoUrl} alt="" className="etiqueta-foto" />
+          : foto ? <Foto caminho={foto} className="etiqueta-foto" reserva={<span className="etiqueta-figura">{figura}</span>} />
+            : <span className="etiqueta-figura">{figura}</span>}
         <div><b>{titulo}</b><small>{subtitulo}</small></div>
       </div>
       <QR texto={endereco} />
@@ -65,8 +66,8 @@ export function EtiquetasDeposito({ dados }) {
         <p className="descricao" style={{ margin: 0, flex: 1 }}>
           Cole os dois cartazes na entrada do depósito: <b>QR-1 Saída</b> abre as pulverizações para separar e
           <b> QR-2 Entrada</b> lança produto novo ou sobra. Cole cada etiqueta de produto na prateleira, bem na frente
-          dele: na separação, o tratorista confere o produto lendo esta etiqueta. A foto do produto se cadastra em
-          Químicos → Produtos.
+          dele: na separação, o tratorista confere o produto lendo esta etiqueta. A foto do produto é a primeira
+          foto do rótulo, em Químicos → Produtos.
         </p>
         <button className="btn primario" onClick={() => window.print()}>🖨️ Imprimir</button>
       </div>
@@ -86,8 +87,8 @@ export function EtiquetasDeposito({ dados }) {
       </div>
       <div className="etiquetas">
         {produtos.map((i) => (
-          <Etiqueta key={i.id} titulo={i.nome} subtitulo={[i.embalagem_tipo, i.embalagem ? `${i.embalagem} ${i.unidade}` : null].filter(Boolean).join(" de ") || "Produto"}
-            endereco={enderecoProduto(i.id)} foto={i.foto} figura="🧴" />
+          <Etiqueta key={i.id} titulo={i.nome} subtitulo={[i.embalagem_tipo, i.tamanho_embalagem ? `${i.tamanho_embalagem} ${i.unidade}` : null].filter(Boolean).join(" de ") || "Produto"}
+            endereco={enderecoProduto(i.id)} fotoUrl={i.fotos_rotulo?.[0]} figura="🧴" />
         ))}
       </div>
       {!produtos.length && <div className="vazio">Cadastre os produtos em Químicos → Produtos.</div>}

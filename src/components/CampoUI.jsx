@@ -136,8 +136,8 @@ export function EscolherPessoa({ pessoas, marcado, aoEscolher }) {
   );
 }
 
-/** Foto do produto químico; sem foto, um frasco. */
+/** Foto do produto químico: a primeira foto do rótulo do cadastro; sem foto, um frasco. */
 export function FotoProduto({ insumo, className = "foto" }) {
-  const reserva = <span className="figura">🧴</span>;
-  return insumo?.foto ? <Foto caminho={insumo.foto} alt={insumo.nome} className={className} reserva={reserva} /> : reserva;
+  const foto = insumo?.fotos_rotulo?.[0];
+  return foto ? <img src={foto} alt={insumo.nome} className={className} draggable={false} /> : <span className="figura">🧴</span>;
 }

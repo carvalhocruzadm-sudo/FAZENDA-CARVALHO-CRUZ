@@ -10,7 +10,7 @@ import { SEED } from "../src/lib/seed.js";
 
 const TIPO_SQL = {
   texto: "text", textoLongo: "text", sugestao: "text", opcoes: "text",
-  numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid", foto: "text",
+  numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid", fotos: "jsonb", itens: "jsonb", foto: "text",
 };
 
 const lit = (v) => (v == null ? "null" : typeof v === "number" || typeof v === "boolean" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
@@ -24,15 +24,23 @@ let sql = `-- ══════════════════════
 -- falta, acrescenta colunas novas e não apaga nada.
 -- ════════════════════════════════════════════════════════════════════════
 
--- Conta do Modo Campo: um usuário com perfil "campo" (o celular dos
--- tratoristas) só vê os cadastros e só lança abastecimento, horímetro e
--- as saídas/entradas do depósito de químicos.
--- Para marcar um usuário como campo (troque o e-mail):
+-- Conta do Modo Campo (o celular dos tratoristas): só vê os cadastros e só
+-- lança abastecimento, horímetro e as saídas/entradas do depósito de químicos.
+-- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
+-- aqui (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
 --   where email = 'campo@fazenda.com';
+-- security definer: lê a tabela de usuários sem passar pelas regras dela.
 create or replace function public.eh_campo() returns boolean
-  language sql stable
-  as $$ select coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '') = 'campo' $$;
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '') = 'campo' then return true; end if;
+  if to_regclass('public.usuarios') is null then return false; end if;
+  return exists (
+    select 1 from public.usuarios u
+    where lower(u.email) = lower(auth.jwt() ->> 'email') and u.perfil = 'campo' and coalesce(u.ativo, true)
+  );
+end $$;
 
 `;
 
@@ -46,12 +54,12 @@ for (const [tabela, def] of Object.entries(ESQUEMA)) {
   sql += `alter table public.${tabela} enable row level security;
 drop policy if exists "equipe acessa ${tabela}" on public.${tabela};
 create policy "equipe acessa ${tabela}" on public.${tabela}
-  for all to authenticated using (not public.eh_campo()) with check (not public.eh_campo());
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
 drop policy if exists "campo le ${tabela}" on public.${tabela};
 drop policy if exists "campo lanca ${tabela}" on public.${tabela};
 drop policy if exists "campo corrige ${tabela}" on public.${tabela};\n`;
   // campoSql: as linhas que a conta de campo pode ver e corrigir (ex.: só as que ela lançou).
-  const linhas = def.campoSql ? `public.eh_campo() and ${def.campoSql}` : "public.eh_campo()";
+  const linhas = def.campoSql ? `(select public.eh_campo()) and ${def.campoSql}` : "(select public.eh_campo())";
   if (def.campo) {
     sql += `create policy "campo le ${tabela}" on public.${tabela}
   for select to authenticated using (${linhas});\n`;
@@ -79,10 +87,96 @@ create policy "equipe troca fotos" on storage.objects
   for update to authenticated using (bucket_id = 'fotos') with check (bucket_id = 'fotos');
 drop policy if exists "escritorio apaga fotos" on storage.objects;
 create policy "escritorio apaga fotos" on storage.objects
-  for delete to authenticated using (bucket_id = 'fotos' and not public.eh_campo());
+  for delete to authenticated using (bucket_id = 'fotos' and not (select public.eh_campo()));
 
 `;
 
+sql += `-- ─── Link do agrônomo (acesso sem login, só ao estoque de químicos) ────────
+-- O agrônomo não tem senha: abre o link com o código. Estas funções conferem o
+-- código e devolvem SÓ o estoque (sem preços, vendas ou financeiro). As tabelas
+-- continuam fechadas para quem não está logado.
+create or replace function public.agronomo_confere(p_token text) returns uuid
+language sql security definer set search_path = public stable as $$
+  select id from public.links_agronomo where token = p_token and coalesce(ativo, true) limit 1;
+$$;
+revoke all on function public.agronomo_confere(text) from public, anon, authenticated;
+
+create or replace function public.agronomo_estoque(p_token text) returns jsonb
+language plpgsql security definer set search_path = public stable as $$
+declare v_link uuid := public.agronomo_confere(p_token);
+begin
+  if v_link is null then raise exception 'Link inválido ou desativado'; end if;
+  return jsonb_build_object(
+    'agronomo', (select nome from public.links_agronomo where id = v_link),
+    'gerado_em', now(),
+    'produtos', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', i.id, 'nome', i.nome, 'fabricante', i.fabricante, 'tipo', i.tipo,
+        'principio_ativo', i.principio_ativo, 'unidade', i.unidade,
+        'estoque_minimo', i.estoque_minimo, 'ativo', i.ativo, 'observacao', i.observacao,
+        'tem_fotos', case when jsonb_typeof(i.fotos_rotulo) = 'array' then jsonb_array_length(i.fotos_rotulo) > 0 else false end,
+        'validade', i.validade, 'estoque_inicial', coalesce(i.estoque_inicial, 0),
+        'entrou', coalesce((select sum(e.quantidade) from public.insumo_entradas e where e.insumo_id = i.id), 0)
+                + coalesce(i.estoque_inicial, 0)
+                + coalesce((select sum(j.quantidade) from public.insumo_ajustes j where j.insumo_id = i.id), 0),
+        'aplicado', coalesce((select sum(a.quantidade) from public.aplicacoes a where a.insumo_id = i.id), 0)
+      )) from public.insumos i), '[]'::jsonb),
+    'lotes', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'insumo_id', e.insumo_id, 'data', e.data, 'quantidade', e.quantidade, 'lote', e.lote, 'validade', e.validade
+      )) from public.insumo_entradas e where e.lote is not null or e.validade is not null), '[]'::jsonb),
+    'talhoes', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', t.id, 'nome', t.nome, 'area_ha', t.area_ha, 'cultura_id', t.cultura_id,
+        'fazenda', (select f.nome from public.fazendas f where f.id = t.fazenda_id)
+      )) from public.talhoes t where coalesce(t.ativo, true)), '[]'::jsonb),
+    'culturas', coalesce((
+      select jsonb_agg(jsonb_build_object('id', c.id, 'nome', c.nome)) from public.culturas c where coalesce(c.ativo, true)), '[]'::jsonb),
+    'minhas', coalesce((
+      select jsonb_agg(to_jsonb(r) order by r.criado_em desc) from (
+        select id, criado_em, data, agronomo, talhao_id, cultura_id, area_ha, alvo, calda_l_ha, itens, observacao, situacao
+        from public.recomendacoes where link_id = v_link order by criado_em desc limit 50) r), '[]'::jsonb)
+  );
+end $$;
+
+create or replace function public.agronomo_fotos(p_token text, p_insumo uuid) returns jsonb
+language plpgsql security definer set search_path = public stable as $$
+begin
+  if public.agronomo_confere(p_token) is null then raise exception 'Link inválido ou desativado'; end if;
+  return coalesce((select fotos_rotulo from public.insumos where id = p_insumo), '[]'::jsonb);
+end $$;
+
+create or replace function public.agronomo_enviar(p_token text, p_dados jsonb) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  v_link uuid := public.agronomo_confere(p_token);
+  v_id uuid := gen_random_uuid();
+  v_itens jsonb := coalesce(p_dados -> 'itens', '[]'::jsonb);
+begin
+  if v_link is null then raise exception 'Link inválido ou desativado'; end if;
+  if jsonb_typeof(v_itens) <> 'array' or jsonb_array_length(v_itens) = 0 or jsonb_array_length(v_itens) > 40 then
+    raise exception 'Escolha de 1 a 40 produtos';
+  end if;
+  insert into public.recomendacoes (id, atualizado_em, data, agronomo, talhao_id, cultura_id, area_ha, alvo, calda_l_ha, itens, observacao, situacao, link_id)
+  values (
+    v_id, now(),
+    coalesce(nullif(p_dados ->> 'data', '')::date, current_date),
+    left(p_dados ->> 'agronomo', 120),
+    nullif(p_dados ->> 'talhao_id', '')::uuid,
+    nullif(p_dados ->> 'cultura_id', '')::uuid,
+    nullif(p_dados ->> 'area_ha', '')::numeric,
+    left(p_dados ->> 'alvo', 200),
+    nullif(p_dados ->> 'calda_l_ha', '')::numeric,
+    v_itens,
+    left(p_dados ->> 'observacao', 2000),
+    'nova', v_link
+  );
+  return v_id;
+end $$;
+
+grant execute on function public.agronomo_estoque(text), public.agronomo_fotos(text, uuid), public.agronomo_enviar(text, jsonb) to anon, authenticated;
+
+`;
 sql += `-- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────\n`;
 for (const [tabela, itens] of Object.entries(SEED)) {
   for (const item of itens) {

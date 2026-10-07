@@ -54,6 +54,20 @@ export async function atualizarContadores() {
 
 // ─── Envio ──────────────────────────────────────────────────────────────────
 
+const LIMITE_PAYLOAD_GRANDE = 300_000; // caracteres (~300 KB)
+
+function erroDeRede(err) {
+  return err instanceof TypeError || /load failed|failed to fetch|network/i.test(String(err?.message ?? err));
+}
+
+function tamanhoDoPayload(op) {
+  try {
+    return JSON.stringify(op.payload).length;
+  } catch {
+    return 0;
+  }
+}
+
 async function executarOp(op) {
   if (op.acao === "foto") {
     await enviarFoto(op.payload.id);
@@ -85,7 +99,12 @@ export async function enviarFila() {
       await apagarOp(op.id);
       enviadas++;
     } catch (err) {
-      const tentativas = op.tentativas + 1;
+      // Sinal fraco ("Load failed" no iPhone, "Failed to fetch" nos outros) não
+      // é culpa do lançamento: não gasta tentativa, senão o sinal ruim marca
+      // tudo como erro definitivo. Registro muito grande (com fotos) conta,
+      // porque pode ser ele mesmo que não passa.
+      const soRede = erroDeRede(err) && tamanhoDoPayload(op) < LIMITE_PAYLOAD_GRANDE;
+      const tentativas = soRede ? op.tentativas : op.tentativas + 1;
       await atualizarOp({ ...op, tentativas, erro: String(err?.message ?? err) });
       await atualizarContadores();
       // Interrompe esta rodada: a próxima operação pode depender desta.

@@ -66,11 +66,10 @@ sem escolher, para o tratorista ouvir antes de tocar.
 1. Rode de novo o [`supabase/schema.sql`](supabase/schema.sql) no **SQL Editor** (cria o lugar das fotos
    e as regras da conta de campo).
 2. Em **Authentication → Users → Add user**, crie um usuário para os celulares dos tratoristas, por
-   exemplo `campo@fazendacarvalhocruz.com`, e rode no SQL Editor (trocando o e-mail):
-   ```sql
-   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
-   where email = 'campo@fazendacarvalhocruz.com';
-   ```
+   exemplo `campo@fazendacarvalhocruz.com`. Depois, no sistema, em **Usuários → Novo**, coloque o mesmo
+   e-mail com o perfil **Tratorista (só o Modo Campo, no celular)**. (Também vale o comando antigo no
+   SQL Editor: `update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
+   where email = '…';`.)
    Essa conta só abre o Modo Campo: não vê financeiro, vendas nem compras, e não apaga nada.
 3. No celular de cada tratorista, abra o site, entre com essa conta **uma vez** e use **Adicionar à
    tela inicial**. Depois é só ler os QR codes.
@@ -83,8 +82,8 @@ O Modo Campo abre com três botões grandes: **⛽ Abastecer trator**, **📤 Ti
 **📥 Guardar no depósito**.
 
 **No escritório**
-- **Químicos → Produtos**: foto da embalagem, tipo e tamanho da embalagem (ex.: Galão de 5 L) e, se
-  tiver, o código de barras. Com a embalagem, o tratorista vê "pegue 2 galões de 5 L e mais 3,2 L".
+- **Químicos → Produtos**: fotos do rótulo (a primeira é a que o tratorista vê), tipo e tamanho da
+  embalagem (ex.: Galão de 5 L) e, se tiver, o código de barras. Com a embalagem, o tratorista vê "pegue 2 galões de 5 L e mais 3,2 L".
 - **Químicos → Ordens de pulverização**: o gerente cria a ordem com talhão (a área vem sozinha),
   trator e produtos com a dose por ha. O total é dose × área. Dá para **copiar os produtos do
   Planejamento da safra**.
@@ -139,6 +138,35 @@ Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas gu
 3. Em **Authentication → Users → Add user**, crie o login (e-mail e senha) de cada pessoa que vai usar.
 4. Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
    (**Project Settings → Data API / API Keys**).
+
+## 👨‍🌾 Link do agrônomo
+
+Em **Químicos e insumos → Link do agrônomo**, escreva o nome do agrônomo e clique em **Criar link**. Copie o
+link (ou use **Enviar pelo WhatsApp**). Quem abre o link **não precisa de senha** e vê **só o estoque de
+químicos** (sem preços, vendas ou financeiro). Ele pode:
+
+- ver o estoque **por produto, fabricante, tipo, princípio ativo ou validade**, com busca e foto do rótulo;
+- marcar os produtos, clicar em **Criar aplicação** (talhão, área, alvo, dose por hectare) e **enviar para a
+  fazenda** e/ou **baixar o PDF**.
+
+A aplicação enviada aparece em **Químicos e insumos → Aplicações do agrônomo**, onde você baixa o PDF, aprova ou
+**dá baixa no estoque** (isso lança as saídas no talhão). Para desligar o acesso, desative ou apague o link.
+
+Para funcionar, rode de novo o `supabase/schema.sql` no SQL Editor (ele cria as funções do link).
+Para o agrônomo ver a **validade**, lance a data de validade nas **Entradas / compras**.
+
+## 🤖 Consulta de produto (uso, dose e substitutos)
+
+No cadastro de um produto, o botão **Consultar uso, dose e substitutos** pesquisa pelo nome comercial e
+fabricante. Para funcionar, uma vez só (precisa do [Supabase CLI](https://supabase.com/docs/guides/cli)):
+
+```bash
+supabase functions deploy consultar-produto
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic.com
+```
+
+A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
+tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
 
 ## 📥 Histórico das planilhas
 
