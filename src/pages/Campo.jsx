@@ -5,6 +5,7 @@ import {
 } from "../components/CampoUI";
 import { useDados } from "../hooks/useDados";
 import { Entrada, Saida } from "./CampoDeposito";
+import CampoTicket from "./CampoTicket";
 import {
   falar, lancamentosDoPA, maquinasDoPA, operadores, paraNumero, servicoPorNome, servicos, vibrar,
 } from "../lib/campo";
@@ -18,6 +19,7 @@ import { numero } from "../lib/formato";
  *   /campo/abastecer            → escolher o trator
  *   /campo/abastecer/<máquina>  → abastecimento no PA
  *   /campo/saida, /campo/entrada → depósito de químicos (CampoDeposito.jsx)
+ *   /campo/ticket               → ticket da balança (venda) (CampoTicket.jsx)
  *
  * Uma pergunta por tela, figura grande, poucas palavras e o botão 🔊 que lê
  * a pergunta em voz alta.
@@ -332,7 +334,7 @@ function EscolherTrator({ dados, irPara }) {
   );
 }
 
-const FALA_INICIO = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, ou guardar produto no depósito.";
+const FALA_INICIO = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, guardar produto no depósito, ou lançar o ticket da balança.";
 
 function Inicio({ irPara, sair, voltarAoSistema }) {
   useEffect(() => { falar(FALA_INICIO); }, []);
@@ -340,6 +342,7 @@ function Inicio({ irPara, sair, voltarAoSistema }) {
     ["/campo/abastecer", "⛽", "Abastecer trator"],
     ["/campo/saida", "📤", "Tirar do depósito (pulverização)"],
     ["/campo/entrada", "📥", "Guardar no depósito"],
+    ["/campo/ticket", "🧾", "Ticket da balança (venda)"],
   ];
   return (
     <div className="campo-app">
@@ -390,6 +393,8 @@ export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema }) {
       return <Saida key={caminho} {...props} />;
     case "entrada":
       return <Entrada key={caminho} {...props} />;
+    case "ticket":
+      return <CampoTicket key={caminho} {...props} />;
     default:
       return <Inicio irPara={irPara} sair={sair} voltarAoSistema={voltarAoSistema} />;
   }

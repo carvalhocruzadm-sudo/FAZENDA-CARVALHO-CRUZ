@@ -8,7 +8,8 @@
 -- ════════════════════════════════════════════════════════════════════════
 
 -- Conta do Modo Campo (o celular dos tratoristas): só vê os cadastros e só
--- lança abastecimento, horímetro e as saídas/entradas do depósito de químicos.
+-- lança abastecimento, horímetro, as saídas/entradas do depósito de químicos e
+-- o ticket da balança (só vê os tickets que ainda faltam completar, sem preço).
 -- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
 -- aqui (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
@@ -39,6 +40,7 @@ alter table public.culturas add column if not exists peso_saca numeric;
 alter table public.culturas add column if not exists produtividade text;
 alter table public.culturas add column if not exists turma_colheita boolean;
 alter table public.culturas add column if not exists custo_turma_ton numeric;
+alter table public.culturas add column if not exists turmas text;
 alter table public.culturas add column if not exists ativo boolean;
 alter table public.culturas add column if not exists observacao text;
 alter table public.culturas enable row level security;
@@ -650,6 +652,8 @@ alter table public.vendas add column if not exists motorista_id uuid;
 alter table public.vendas add column if not exists caminhao_id uuid;
 alter table public.vendas add column if not exists vencimento date;
 alter table public.vendas add column if not exists nota_fiscal text;
+alter table public.vendas add column if not exists a_conferir boolean;
+alter table public.vendas add column if not exists foto_ticket text;
 alter table public.vendas add column if not exists observacao text;
 create index if not exists vendas_data_idx on public.vendas (data);
 alter table public.vendas enable row level security;
@@ -659,6 +663,12 @@ create policy "equipe acessa vendas" on public.vendas
 drop policy if exists "campo le vendas" on public.vendas;
 drop policy if exists "campo lanca vendas" on public.vendas;
 drop policy if exists "campo corrige vendas" on public.vendas;
+create policy "campo le vendas" on public.vendas
+  for select to authenticated using ((select public.eh_campo()) and a_conferir = true);
+create policy "campo lanca vendas" on public.vendas
+  for insert to authenticated with check ((select public.eh_campo()) and a_conferir = true);
+create policy "campo corrige vendas" on public.vendas
+  for update to authenticated using ((select public.eh_campo()) and a_conferir = true) with check ((select public.eh_campo()) and a_conferir = true);
 
 -- Recebimentos
 create table if not exists public.recebimentos (

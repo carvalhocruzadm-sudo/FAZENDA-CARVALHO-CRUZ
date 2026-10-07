@@ -26,7 +26,8 @@ let sql = `-- ══════════════════════
 -- ════════════════════════════════════════════════════════════════════════
 
 -- Conta do Modo Campo (o celular dos tratoristas): só vê os cadastros e só
--- lança abastecimento, horímetro e as saídas/entradas do depósito de químicos.
+-- lança abastecimento, horímetro, as saídas/entradas do depósito de químicos e
+-- o ticket da balança (só vê os tickets que ainda faltam completar, sem preço).
 -- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
 -- aqui (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
