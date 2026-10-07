@@ -7,7 +7,8 @@ import {
   noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
 } from "../lib/calculos";
 import { ESQUEMA, hoje } from "../lib/esquema";
-import { baixarCSV, brl, data, nomeRef, numero } from "../lib/formato";
+import { brl, data, nomeRef, numero } from "../lib/formato";
+import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
@@ -155,24 +156,29 @@ export function Diesel(props) {
 function EstoqueQuimicos({ dados }) {
   const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false || x.saldo);
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
-  const exportar = () => {
-    const cab = ["Produto", "Tipo", "Princípio ativo", "Unidade", "Entrou", "Aplicado", "Saldo", "Estoque mínimo", "Situação", "Custo médio (R$)", "Valor em estoque (R$)", "Fotos do rótulo", "Observação"];
-    const corpo = lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => [
-      x.insumo.nome, tipos[x.insumo.tipo] ?? "", x.insumo.principio_ativo ?? "", x.insumo.unidade,
-      x.entrada, x.saida, x.saldo, x.insumo.estoque_minimo ?? "",
-      x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
-      Number(x.custoMedio.toFixed(2)), Number(x.valorEstoque.toFixed(2)),
-      x.insumo.fotos_rotulo?.length ?? 0, x.insumo.observacao ?? "",
-    ]);
-    baixarCSV(`estoque-agronomo-${hoje()}.csv`, [cab, ...corpo]);
+  const [exportando, setExportando] = useState(false);
+  const exportar = async () => {
+    setExportando(true);
+    try {
+      const linhas = [...lista].sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({
+        produto: x.insumo.nome, tipo: tipos[x.insumo.tipo] ?? "", principio: x.insumo.principio_ativo ?? "",
+        unidade: x.insumo.unidade, entrou: x.entrada, aplicado: x.saida, saldo: x.saldo,
+        minimo: x.insumo.estoque_minimo ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
+        custo: Number(x.custoMedio.toFixed(2)), valor: Number(x.valorEstoque.toFixed(2)),
+        observacao: x.insumo.observacao ?? "", fotos: x.insumo.fotos_rotulo ?? [],
+      }));
+      await gerarPlanilhaAgronomo(`estoque-agronomo-${hoje()}.xlsx`, linhas);
+    } finally {
+      setExportando(false);
+    }
   };
   return (
     <div className="cartao">
       <div className="barra">
         <p className="descricao" style={{ margin: 0 }}>Saldo = entradas − aplicações. O custo médio vem das entradas.</p>
         <span className="espaco" />
-        <button className="btn" onClick={exportar} disabled={!lista.length} title="Baixar planilha do estoque para o agrônomo">
-          <Icone nome="exportar" /> Planilha para o agrônomo
+        <button className="btn" onClick={exportar} disabled={!lista.length || exportando} title="Baixar planilha do estoque para o agrônomo">
+          <Icone nome="exportar" /> {exportando ? "Gerando…" : "Planilha para o agrônomo"}
         </button>
       </div>
       <TabelaSimples
