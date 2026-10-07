@@ -13,19 +13,19 @@ function sugestoesDoCampo(campo, dados) {
   return [...new Set([...fixas, ...usadas])].sort((a, b) => String(a).localeCompare(String(b)));
 }
 
-/** Reduz a foto (lado maior 1000 px, JPEG) para caber no registro e sincronizar rápido. */
+/** Reduz a foto (lado maior 800 px, JPEG) para caber no registro e sincronizar rápido. */
 function reduzirFoto(arquivo) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(arquivo);
     const img = new Image();
     img.onload = () => {
-      const escala = Math.min(1, 1000 / Math.max(img.width, img.height));
+      const escala = Math.min(1, 800 / Math.max(img.width, img.height));
       const tela = document.createElement("canvas");
       tela.width = Math.round(img.width * escala);
       tela.height = Math.round(img.height * escala);
       tela.getContext("2d").drawImage(img, 0, 0, tela.width, tela.height);
       URL.revokeObjectURL(url);
-      resolve(tela.toDataURL("image/jpeg", 0.7));
+      resolve(tela.toDataURL("image/jpeg", 0.6));
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não consegui abrir essa foto.")); };
     img.src = url;
@@ -73,6 +73,7 @@ function Fotos({ valor, aoMudar }) {
 
 function Campo({ chave, campo, reg, dados, aoMudar }) {
   const id = useId();
+  const [achar, setAchar] = useState("");
   const valor = reg[chave];
   const obrig = campoObrigatorio(campo, reg);
   const largo = campo.tipo === "textoLongo" || campo.tipo === "fotos";
@@ -115,14 +116,25 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
       break;
     case "ref": {
       const def = ESQUEMA[campo.colecao];
+      const deProduto = campo.colecao === "insumos";
+      const termo = achar.trim().toLowerCase();
       const opcoes = (dados[campo.colecao] ?? [])
         .filter((x) => x.id === valor || (x.ativo !== false && (!campo.filtro || campo.filtro(x))))
+        // Produto: dá para achar pelo nome, fabricante, tipo ou princípio ativo.
+        .filter((x) => !deProduto || !termo || x.id === valor
+          || [x.nome, x.fabricante, x.tipo, x.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(termo)))
         .sort(def.ordem ?? (() => 0));
+      const rotuloOpcao = (x) => `${def.resumo?.(x) ?? x.nome}${deProduto && x.fabricante ? ` — ${x.fabricante}` : ""}`;
       controle = (
-        <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
-          <option value="">{opcoes.length ? "— escolha —" : `Nenhum ${def.singular} cadastrado`}</option>
-          {opcoes.map((x) => <option key={x.id} value={x.id}>{def.resumo?.(x) ?? x.nome}</option>)}
-        </select>
+        <>
+          {deProduto && (
+            <input type="search" placeholder="Buscar produto ou fabricante…" value={achar} onChange={(e) => setAchar(e.target.value)} aria-label="Buscar produto" autoComplete="off" />
+          )}
+          <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
+            <option value="">{opcoes.length ? "— escolha —" : termo ? "Nenhum produto encontrado" : `Nenhum ${def.singular} cadastrado`}</option>
+            {opcoes.map((x) => <option key={x.id} value={x.id}>{rotuloOpcao(x)}</option>)}
+          </select>
+        </>
       );
       break;
     }

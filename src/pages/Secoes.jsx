@@ -6,9 +6,10 @@ import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
   noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
 } from "../lib/calculos";
-import { ESQUEMA, hoje } from "../lib/esquema";
+import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
+import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
@@ -153,8 +154,28 @@ export function Diesel(props) {
 
 // ─── Químicos ───────────────────────────────────────────────────────────────
 
+/** Selo de validade: vencido, vencendo (60 dias) ou em dia. */
+function SeloValidade({ validade }) {
+  if (!validade) return "—";
+  const dias = Math.ceil((new Date(`${String(validade).slice(0, 10)}T12:00:00`) - new Date()) / 86400000);
+  const cls = dias < 0 ? "ruim" : dias <= 60 ? "atencao" : "ok";
+  const txt = dias < 0 ? "Vencido" : dias <= 60 ? `Vence em ${dias} d` : null;
+  return <span><span className={`selo ${cls}`}>{txt ?? "Em dia"}</span> {data(validade)}</span>;
+}
+
+/** Campo de busca por produto, fabricante, tipo ou princípio ativo. */
+function CampoBuscaProduto({ valor, aoMudar }) {
+  return <input className="entrada busca" placeholder="Buscar produto ou fabricante…" value={valor} onChange={(e) => aoMudar(e.target.value)} aria-label="Buscar" />;
+}
+
+const achaProduto = (insumo, termo) => {
+  const t = termo.trim().toLowerCase();
+  return !t || [insumo.nome, insumo.fabricante, insumo.tipo, insumo.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(t));
+};
+
 function EstoqueQuimicos({ dados }) {
-  const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false || x.saldo);
+  const [busca, setBusca] = useState("");
+  const lista = estoqueInsumos(dados).filter((x) => (x.insumo.ativo !== false || x.saldo) && achaProduto(x.insumo, busca));
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
   const [exportando, setExportando] = useState(false);
   const exportar = async () => {
@@ -162,8 +183,8 @@ function EstoqueQuimicos({ dados }) {
     try {
       const linhas = [...lista].sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({
         produto: x.insumo.nome, fabricante: x.insumo.fabricante ?? "", tipo: tipos[x.insumo.tipo] ?? "", principio: x.insumo.principio_ativo ?? "",
-        unidade: x.insumo.unidade, entrou: x.entrada, aplicado: x.saida, saldo: x.saldo,
-        minimo: x.insumo.estoque_minimo ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
+        unidade: x.insumo.unidade, entrou: x.entrada + x.ajuste, aplicado: x.saida, saldo: x.saldo,
+        minimo: x.insumo.estoque_minimo ?? "", validade: x.insumo.validade ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
         custo: Number(x.custoMedio.toFixed(2)), valor: Number(x.valorEstoque.toFixed(2)),
         observacao: x.insumo.observacao ?? "", fotos: x.insumo.fotos_rotulo ?? [],
       }));
@@ -175,7 +196,8 @@ function EstoqueQuimicos({ dados }) {
   return (
     <div className="cartao">
       <div className="barra">
-        <p className="descricao" style={{ margin: 0 }}>Saldo = entradas − aplicações. O custo médio vem das entradas.</p>
+        <CampoBuscaProduto valor={busca} aoMudar={setBusca} />
+        <p className="descricao" style={{ margin: 0 }}>Saldo = quantidade inicial + entradas − aplicações. O custo médio vem das entradas.</p>
         <span className="espaco" />
         <button className="btn" onClick={exportar} disabled={!lista.length || exportando} title="Baixar planilha do estoque para o agrônomo">
           <Icone nome="exportar" /> {exportando ? "Gerando…" : "Planilha para o agrônomo"}
@@ -189,22 +211,113 @@ function EstoqueQuimicos({ dados }) {
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "Tipo", valor: (x) => tipos[x.insumo.tipo] ?? "—" },
           { rotulo: "Entrou", num: true, valor: (x) => numero(x.entrada) },
+          { rotulo: "Inicial / balanço", num: true, valor: (x) => (x.ajuste ? numero(x.ajuste) : "—") },
           { rotulo: "Aplicado", num: true, valor: (x) => numero(x.saida) },
           { rotulo: "Saldo", num: true, valor: (x) => <b className={x.saldo < 0 ? "negativo" : ""}>{numero(x.saldo)} {x.insumo.unidade}</b> },
+          { rotulo: "Validade", valor: (x) => <SeloValidade validade={x.insumo.validade} /> },
           { rotulo: "Situação", valor: (x) => (x.negativo ? <span className="selo ruim">Negativo</span> : x.baixo ? <span className="selo atencao">Baixo</span> : <span className="selo ok">OK</span>) },
           { rotulo: "Custo médio", num: true, valor: (x) => (x.custoMedio ? `${brl(x.custoMedio)}/${x.insumo.unidade}` : "—") },
           { rotulo: "Valor em estoque", num: true, valor: (x) => brl(x.valorEstoque) },
         ]}
-        rodape={["Total", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
+        rodape={["Total", "", "", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
+      />
+    </div>
+  );
+}
+
+const lerNumero = (t) => {
+  const v = Number(String(t).trim().replace(",", "."));
+  return String(t).trim() === "" || Number.isNaN(v) ? null : v;
+};
+
+/** Conferência: o usuário informa quanto TEM de cada produto; o sistema grava a diferença. */
+function BalancoEstoque({ dados, salvar }) {
+  const [busca, setBusca] = useState("");
+  const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false && achaProduto(x.insumo, busca))
+    .sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome));
+  const [dataBalanco, setDataBalanco] = useState(hoje());
+  const [contagem, setContagem] = useState({});
+  const [custos, setCustos] = useState({});
+  const [gravando, setGravando] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const linhas = lista.map((x) => {
+    const contado = lerNumero(contagem[x.insumo.id] ?? "");
+    const dif = contado == null ? null : +(contado - x.saldo).toFixed(3);
+    return { ...x, id: x.insumo.id, contado, dif };
+  });
+  const pendentes = linhas.filter((x) => x.dif);
+
+  const gravar = async () => {
+    setGravando(true);
+    setMsg(null);
+    try {
+      for (const x of pendentes) {
+        const { reg, erro } = prepararRegistro("insumo_ajustes", {
+          data: dataBalanco, insumo_id: x.insumo.id, contado: x.contado, quantidade: x.dif,
+          custo_unitario: x.dif > 0 ? lerNumero(custos[x.insumo.id] ?? "") : null,
+          observacao: "Balanço de estoque",
+        });
+        if (erro) { setMsg(erro); return; }
+        await salvar("insumo_ajustes", reg);
+      }
+      setContagem({});
+      setCustos({});
+      setMsg(`Balanço gravado: ${pendentes.length} produto(s) ajustado(s).`);
+    } finally {
+      setGravando(false);
+    }
+  };
+
+  return (
+    <div className="cartao">
+      <p className="descricao">
+        Digite em “Contagem” quanto você tem hoje de cada produto. Deixe em branco o que não quiser mexer.
+        Use esta aba para conferir o estoque depois (a quantidade inicial já se informa ao cadastrar o produto). O sistema grava só a diferença — isso não conta como compra nem como despesa.
+        As próximas compras entram pela aba “Entradas / compras”.
+      </p>
+      <div className="barra">
+        <CampoBuscaProduto valor={busca} aoMudar={setBusca} />
+        <label className="campo" style={{ maxWidth: 180 }}><span>Data do balanço</span>
+          <input type="date" value={dataBalanco} onChange={(e) => setDataBalanco(e.target.value)} />
+        </label>
+        <span className="espaco" />
+        <button className="btn primario" onClick={gravar} disabled={!pendentes.length || gravando || !dataBalanco}>
+          {gravando ? "Gravando…" : `Gravar balanço (${pendentes.length})`}
+        </button>
+      </div>
+      {msg && <div className="aviso">{msg}</div>}
+      <TabelaSimples
+        vazio="Cadastre os produtos na aba Produtos primeiro."
+        linhas={linhas}
+        colunas={[
+          { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
+          { rotulo: "No sistema", num: true, valor: (x) => `${numero(x.saldo)} ${x.insumo.unidade}` },
+          { rotulo: "Contagem", valor: (x) => (
+            <input inputMode="decimal" style={{ width: 110 }} placeholder={x.insumo.unidade}
+              value={contagem[x.insumo.id] ?? ""} onChange={(e) => setContagem((c) => ({ ...c, [x.insumo.id]: e.target.value }))} />
+          ) },
+          { rotulo: "Diferença", num: true, valor: (x) => (x.dif == null ? "—" : <b className={x.dif < 0 ? "negativo" : ""}>{x.dif > 0 ? "+" : ""}{numero(x.dif)}</b>) },
+          { rotulo: "Custo por unidade (opcional)", valor: (x) => (x.dif > 0 ? (
+            <input inputMode="decimal" style={{ width: 110 }} placeholder="R$"
+              value={custos[x.insumo.id] ?? ""} onChange={(e) => setCustos((c) => ({ ...c, [x.insumo.id]: e.target.value }))} />
+          ) : "—") },
+        ]}
       />
     </div>
   );
 }
 
 export function Quimicos(props) {
+  const novas = props.dados.recomendacoes.filter((r) => r.situacao === "nova").length;
   return (
     <Secao props={props} abas={[
       ["estoque", "Estoque", EstoqueQuimicos],
+      ["agronomo", `Aplicações do agrônomo${novas ? ` (${novas} ${novas === 1 ? "nova" : "novas"})` : ""}`, AplicacoesAgronomo],
+      ["link", "Link do agrônomo", LinkAgronomo],
+      ["balanco", "Balanço / conferência", BalancoEstoque],
+      ["insumo_ajustes", "Histórico de balanços"],
       ["aplicacoes", "Aplicações / saídas"],
       ["insumo_entradas", "Entradas / compras"],
       ["insumos", "Produtos"],
