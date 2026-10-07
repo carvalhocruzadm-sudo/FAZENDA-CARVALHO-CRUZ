@@ -192,3 +192,10 @@ table { border-collapse: collapse; }
 .sync i.erro { background: var(--vermelho); }
 .girando { animation: girar 1s linear infinite; }
 @keyframes girar { to { transform: rotate(360deg); } }
+
+/* Fotos do rótulo */
+.fotos { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+.foto { position: relative; }
+.foto img { display: block; width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid #e3e3d8; }
+.foto .btn { position: absolute; top: 4px; right: 4px; background: #fff; }
+.foto-nova { cursor: pointer; align-self: center; }

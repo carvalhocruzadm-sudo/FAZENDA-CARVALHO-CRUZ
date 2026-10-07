@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
-import { Abas, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
+import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
   noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
 } from "../lib/calculos";
-import { ESQUEMA } from "../lib/esquema";
-import { brl, data, nomeRef, numero } from "../lib/formato";
+import { ESQUEMA, hoje } from "../lib/esquema";
+import { baixarCSV, brl, data, nomeRef, numero } from "../lib/formato";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
@@ -155,9 +155,26 @@ export function Diesel(props) {
 function EstoqueQuimicos({ dados }) {
   const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false || x.saldo);
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
+  const exportar = () => {
+    const cab = ["Produto", "Tipo", "Princípio ativo", "Unidade", "Entrou", "Aplicado", "Saldo", "Estoque mínimo", "Situação", "Custo médio (R$)", "Valor em estoque (R$)", "Fotos do rótulo", "Observação"];
+    const corpo = lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => [
+      x.insumo.nome, tipos[x.insumo.tipo] ?? "", x.insumo.principio_ativo ?? "", x.insumo.unidade,
+      x.entrada, x.saida, x.saldo, x.insumo.estoque_minimo ?? "",
+      x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
+      Number(x.custoMedio.toFixed(2)), Number(x.valorEstoque.toFixed(2)),
+      x.insumo.fotos_rotulo?.length ?? 0, x.insumo.observacao ?? "",
+    ]);
+    baixarCSV(`estoque-agronomo-${hoje()}.csv`, [cab, ...corpo]);
+  };
   return (
     <div className="cartao">
-      <p className="descricao">Saldo = entradas − aplicações. O custo médio vem das entradas e é o que vai para o custo do talhão.</p>
+      <div className="barra">
+        <p className="descricao" style={{ margin: 0 }}>Saldo = entradas − aplicações. O custo médio vem das entradas.</p>
+        <span className="espaco" />
+        <button className="btn" onClick={exportar} disabled={!lista.length} title="Baixar planilha do estoque para o agrônomo">
+          <Icone nome="exportar" /> Planilha para o agrônomo
+        </button>
+      </div>
       <TabelaSimples
         vazio="Cadastre os produtos na aba Produtos e lance as entradas."
         linhas={lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({ ...x, id: x.insumo.id }))}

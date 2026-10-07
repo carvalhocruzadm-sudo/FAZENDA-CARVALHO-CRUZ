@@ -118,6 +118,7 @@ alter table public.insumos add column if not exists principio_ativo text;
 alter table public.insumos add column if not exists unidade text;
 alter table public.insumos add column if not exists estoque_minimo numeric;
 alter table public.insumos add column if not exists ativo boolean;
+alter table public.insumos add column if not exists fotos_rotulo jsonb;
 alter table public.insumos add column if not exists observacao text;
 alter table public.insumos enable row level security;
 drop policy if exists "equipe acessa insumos" on public.insumos;

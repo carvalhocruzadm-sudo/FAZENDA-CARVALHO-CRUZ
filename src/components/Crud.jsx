@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
-import { exibir, numero } from "../lib/formato";
+import { baixarCSV, exibir, numero } from "../lib/formato";
 import Formulario from "./Formulario";
 import { Icone, Modal, SeletorPeriodo } from "./ui";
 
@@ -26,20 +26,13 @@ function referencias(dados, colecao, id) {
 }
 
 function exportarCSV(nome, colunas, def, linhas, dados) {
-  const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const cab = colunas.map((c) => esc(def.campos[c].rotulo)).join(";");
   const corpo = linhas.map((l) => colunas.map((c) => {
     const campo = def.campos[c];
     const v = l[c];
-    if (["numero", "dinheiro"].includes(campo.tipo)) return v == null ? "" : String(v).replace(".", ",");
-    return esc(exibir(campo, v, dados));
-  }).join(";"));
-  const blob = new Blob(["﻿" + [cab, ...corpo].join("\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${nome}-${hoje()}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+    if (["numero", "dinheiro"].includes(campo.tipo)) return v == null ? "" : Number(v);
+    return exibir(campo, v, dados);
+  }));
+  baixarCSV(`${nome}-${hoje()}.csv`, [colunas.map((c) => def.campos[c].rotulo), ...corpo]);
 }
 
 /**
