@@ -162,8 +162,19 @@ function SeloValidade({ validade }) {
   return <span><span className={`selo ${cls}`}>{txt ?? "Em dia"}</span> {data(validade)}</span>;
 }
 
+/** Campo de busca por produto, fabricante, tipo ou princípio ativo. */
+function CampoBuscaProduto({ valor, aoMudar }) {
+  return <input className="entrada busca" placeholder="Buscar produto ou fabricante…" value={valor} onChange={(e) => aoMudar(e.target.value)} aria-label="Buscar" />;
+}
+
+const achaProduto = (insumo, termo) => {
+  const t = termo.trim().toLowerCase();
+  return !t || [insumo.nome, insumo.fabricante, insumo.tipo, insumo.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(t));
+};
+
 function EstoqueQuimicos({ dados }) {
-  const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false || x.saldo);
+  const [busca, setBusca] = useState("");
+  const lista = estoqueInsumos(dados).filter((x) => (x.insumo.ativo !== false || x.saldo) && achaProduto(x.insumo, busca));
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
   const [exportando, setExportando] = useState(false);
   const exportar = async () => {
@@ -184,6 +195,7 @@ function EstoqueQuimicos({ dados }) {
   return (
     <div className="cartao">
       <div className="barra">
+        <CampoBuscaProduto valor={busca} aoMudar={setBusca} />
         <p className="descricao" style={{ margin: 0 }}>Saldo = quantidade inicial + entradas − aplicações. O custo médio vem das entradas.</p>
         <span className="espaco" />
         <button className="btn" onClick={exportar} disabled={!lista.length || exportando} title="Baixar planilha do estoque para o agrônomo">
@@ -219,7 +231,8 @@ const lerNumero = (t) => {
 
 /** Conferência: o usuário informa quanto TEM de cada produto; o sistema grava a diferença. */
 function BalancoEstoque({ dados, salvar }) {
-  const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false)
+  const [busca, setBusca] = useState("");
+  const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false && achaProduto(x.insumo, busca))
     .sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome));
   const [dataBalanco, setDataBalanco] = useState(hoje());
   const [contagem, setContagem] = useState({});
@@ -263,6 +276,7 @@ function BalancoEstoque({ dados, salvar }) {
         As próximas compras entram pela aba “Entradas / compras”.
       </p>
       <div className="barra">
+        <CampoBuscaProduto valor={busca} aoMudar={setBusca} />
         <label className="campo" style={{ maxWidth: 180 }}><span>Data do balanço</span>
           <input type="date" value={dataBalanco} onChange={(e) => setDataBalanco(e.target.value)} />
         </label>
@@ -277,6 +291,7 @@ function BalancoEstoque({ dados, salvar }) {
         linhas={linhas}
         colunas={[
           { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "No sistema", num: true, valor: (x) => `${numero(x.saldo)} ${x.insumo.unidade}` },
           { rotulo: "Contagem", valor: (x) => (
             <input inputMode="decimal" style={{ width: 110 }} placeholder={x.insumo.unidade}
