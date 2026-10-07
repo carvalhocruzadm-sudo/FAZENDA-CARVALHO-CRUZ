@@ -63,7 +63,10 @@ begin
         'principio_ativo', i.principio_ativo, 'unidade', i.unidade,
         'estoque_minimo', i.estoque_minimo, 'ativo', i.ativo, 'observacao', i.observacao,
         'tem_fotos', case when jsonb_typeof(i.fotos_rotulo) = 'array' then jsonb_array_length(i.fotos_rotulo) > 0 else false end,
-        'entrou', coalesce((select sum(e.quantidade) from public.insumo_entradas e where e.insumo_id = i.id), 0),
+        'validade', i.validade, 'estoque_inicial', coalesce(i.estoque_inicial, 0),
+        'entrou', coalesce((select sum(e.quantidade) from public.insumo_entradas e where e.insumo_id = i.id), 0)
+                + coalesce(i.estoque_inicial, 0)
+                + coalesce((select sum(j.quantidade) from public.insumo_ajustes j where j.insumo_id = i.id), 0),
         'aplicado', coalesce((select sum(a.quantidade) from public.aplicacoes a where a.insumo_id = i.id), 0)
       )) from public.insumos i), '[]'::jsonb),
     'lotes', coalesce((

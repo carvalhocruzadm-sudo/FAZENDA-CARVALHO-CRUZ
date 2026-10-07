@@ -57,7 +57,7 @@ function prepararProdutos(bruto) {
   return (bruto.produtos ?? []).map((p) => {
     const saldo = Number(p.entrou) - Number(p.aplicado);
     const minimo = Number(p.estoque_minimo) || 0;
-    const validades = (lotesDe.get(p.id) ?? []).map((l) => l.validade).filter(Boolean).sort();
+    const validades = [...(lotesDe.get(p.id) ?? []).map((l) => l.validade), p.validade].filter(Boolean).sort();
     return {
       ...p, saldo, validade: validades[0] ?? null,
       baixo: minimo > 0 && saldo <= minimo, negativo: saldo < 0,
@@ -241,10 +241,14 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
     { rotulo: "Rótulo", valor: (p) => (p.tem_fotos ? <button className="btn" onClick={() => setRotulo(p)}>Ver</button> : "—") },
   ];
 
+  // Compras com validade + a validade anotada no próprio cadastro do produto.
+  const doCadastro = produtos.filter((p) => p.validade).map((p) => ({ insumo_id: p.id, validade: p.validade, quantidade: p.estoque_inicial, lote: "Estoque do cadastro" }));
+  const todosLotes = [...(base.lotes ?? []), ...doCadastro];
+
   let corpo;
   if (visao === "validade") {
     const porId = new Map(produtos.map((p) => [p.id, p]));
-    const lotes = (base.lotes ?? [])
+    const lotes = todosLotes
       .map((l, i) => ({ ...l, id: `${l.insumo_id}-${i}`, p: porId.get(l.insumo_id) }))
       .filter((l) => l.p && visiveis.includes(l.p))
       .sort((a, b) => (a.validade ? 0 : 1) - (b.validade ? 0 : 1) || String(a.validade).localeCompare(String(b.validade)));
@@ -286,7 +290,7 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
   }
 
   const comSaldo = produtos.filter((p) => p.saldo > 0);
-  const vencendo = (base.lotes ?? []).filter((l) => { const d = diasAte(l.validade); return d != null && d <= DIAS_ALERTA && produtos.find((p) => p.id === l.insumo_id)?.saldo > 0; }).length;
+  const vencendo = todosLotes.filter((l) => { const d = diasAte(l.validade); return d != null && d <= DIAS_ALERTA && produtos.find((p) => p.id === l.insumo_id)?.saldo > 0; }).length;
 
   return (
     <>

@@ -13,19 +13,19 @@ function sugestoesDoCampo(campo, dados) {
   return [...new Set([...fixas, ...usadas])].sort((a, b) => String(a).localeCompare(String(b)));
 }
 
-/** Reduz a foto (lado maior 1000 px, JPEG) para caber no registro e sincronizar rápido. */
+/** Reduz a foto (lado maior 800 px, JPEG) para caber no registro e sincronizar rápido. */
 function reduzirFoto(arquivo) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(arquivo);
     const img = new Image();
     img.onload = () => {
-      const escala = Math.min(1, 1000 / Math.max(img.width, img.height));
+      const escala = Math.min(1, 800 / Math.max(img.width, img.height));
       const tela = document.createElement("canvas");
       tela.width = Math.round(img.width * escala);
       tela.height = Math.round(img.height * escala);
       tela.getContext("2d").drawImage(img, 0, 0, tela.width, tela.height);
       URL.revokeObjectURL(url);
-      resolve(tela.toDataURL("image/jpeg", 0.7));
+      resolve(tela.toDataURL("image/jpeg", 0.6));
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não consegui abrir essa foto.")); };
     img.src = url;

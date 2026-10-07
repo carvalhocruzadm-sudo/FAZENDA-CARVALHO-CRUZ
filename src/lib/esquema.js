@@ -81,6 +81,8 @@ function novoToken() {
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+const totalEmbalagens = (r) => +(num(r.qtd_embalagens) * (num(r.tamanho_embalagem) || 1)).toFixed(3);
+
 export const ESQUEMA = {
   // ─── Cadastros ────────────────────────────────────────────────────────────
   culturas: {
@@ -188,19 +190,29 @@ export const ESQUEMA = {
 
   insumos: {
     titulo: "Produtos químicos e insumos", singular: "produto", icone: "frasco",
-    descricao: "Defensivos, adubos, sementes, ração… O estoque é a conta: entradas − aplicações.",
+    descricao: "Defensivos, adubos, sementes, ração… O estoque é a conta: quantidade inicial + entradas − aplicações.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome comercial", obrigatorio: true },
       fabricante: { tipo: "texto", rotulo: "Fabricante" },
       tipo: { tipo: "opcoes", rotulo: "Tipo", opcoes: TIPOS_INSUMO, padrao: "herbicida" },
       principio_ativo: { tipo: "texto", rotulo: "Princípio ativo" },
       unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: ["L", "kg", "saco", "t", "unidade", "dose"], padrao: "L", obrigatorio: true },
+      tamanho_embalagem: { tipo: "numero", rotulo: "Tamanho da embalagem", casas: 2, dica: "Quanto vem em cada embalagem, na unidade acima. Ex.: galão de 20 L → 20. Se a unidade já é a embalagem (saco, caixa), deixe vazio." },
+      qtd_embalagens: { tipo: "numero", rotulo: "Quantas embalagens você tem hoje", casas: 2, dica: "As próximas compras entram pela aba Entradas / compras. Pode corrigir depois." },
+      estoque_inicial: { tipo: "numero", rotulo: "Quantidade em estoque hoje (total)", casas: 2, dica: "Calculado sozinho (tamanho × embalagens), mas você pode corrigir o total. Ex.: 5 galões de 20 L, mas um está pela metade → 90." },
+      validade: { tipo: "data", rotulo: "Validade", dica: "Se as embalagens têm validades diferentes, coloque a mais próxima de vencer." },
+      custo_inicial: { tipo: "dinheiro", rotulo: "Custo por unidade do produto (opcional)", dica: "Preço de 1 L / 1 kg / 1 unidade do que já está em estoque. Serve para o valor do estoque." },
       estoque_minimo: { tipo: "numero", rotulo: "Estoque mínimo", casas: 2 },
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
       fotos_rotulo: { tipo: "fotos", rotulo: "Fotos do rótulo", dica: "Tire foto da frente, do verso e da bula, se tiver." },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "fabricante", "tipo", "principio_ativo", "unidade", "estoque_minimo"],
+    // Ao mexer no tamanho ou nas embalagens o total é refeito; depois dá para corrigir o total à mão.
+    aoMudar: {
+      tamanho_embalagem: (r) => (r.qtd_embalagens == null || r.qtd_embalagens === "" ? {} : { estoque_inicial: totalEmbalagens(r) }),
+      qtd_embalagens: (r) => ({ estoque_inicial: r.qtd_embalagens === "" || r.qtd_embalagens == null ? null : totalEmbalagens(r) }),
+    },
+    colunas: ["nome", "fabricante", "tipo", "principio_ativo", "unidade", "estoque_inicial", "validade", "estoque_minimo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => `${r.nome} (${r.unidade})`,
   },
@@ -338,6 +350,20 @@ export const ESQUEMA = {
       validade: { tipo: "data", rotulo: "Validade", dica: "Está na embalagem. O agrônomo vê pela validade." },
     },
     colunas: ["data", "insumo_id", "quantidade", "valor", "validade", "fornecedor"],
+  },
+
+  insumo_ajustes: {
+    titulo: "Balanço / conferência de estoque", singular: "ajuste", icone: "lista", lancamento: true,
+    descricao: "Contagem do que existe de fato no estoque. Guarda só a diferença (+ entra / − sai) e não conta como compra nem como despesa.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
+      contado: { tipo: "numero", rotulo: "Quantidade contada", casas: 2 },
+      quantidade: { tipo: "numero", rotulo: "Diferença (+ entra / − sai)", casas: 2, obrigatorio: true },
+      custo_unitario: { tipo: "dinheiro", rotulo: "Custo por unidade (opcional)", dica: "Usado no custo médio e no valor em estoque quando a diferença é positiva." },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["data", "insumo_id", "contado", "quantidade", "custo_unitario", "observacao"],
   },
 
   aplicacoes: {
