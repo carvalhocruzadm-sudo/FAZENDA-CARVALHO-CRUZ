@@ -245,6 +245,13 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
   const doCadastro = produtos.filter((p) => p.validade).map((p) => ({ insumo_id: p.id, validade: p.validade, quantidade: p.estoque_inicial, lote: "Estoque do cadastro" }));
   const todosLotes = [...(base.lotes ?? []), ...doCadastro];
 
+  const escondidos = produtos.length - visiveis.length;
+  const vazioMsg = produtos.length === 0
+    ? "Nenhum produto cadastrado na fazenda ainda."
+    : soSaldo && !termo
+      ? `Nenhum produto com saldo (${produtos.length} cadastrados, todos com saldo zerado). Desmarque “Só com saldo” para ver todos. Se o estoque deveria aparecer, peça para a fazenda rodar de novo o schema.sql no Supabase.`
+      : "Nenhum produto encontrado.";
+
   let corpo;
   if (visao === "validade") {
     const porId = new Map(produtos.map((p) => [p.id, p]));
@@ -271,7 +278,7 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
       </>
     );
   } else if (visao === "produto") {
-    corpo = <TabelaSimples vazio="Nenhum produto encontrado." linhas={visiveis} colunas={colunas} />;
+    corpo = <TabelaSimples vazio={vazioMsg} linhas={visiveis} colunas={colunas} />;
   } else {
     const grupos = new Map();
     for (const p of visiveis) {
@@ -295,7 +302,7 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
   return (
     <>
       <div className="grade">
-        <Stat rotulo="Produtos com saldo" valor={comSaldo.length} />
+        <Stat rotulo="Produtos com saldo" valor={comSaldo.length} sub={`${produtos.length} cadastrados`} />
         <Stat rotulo="Estoque baixo" valor={produtos.filter((p) => p.baixo && p.saldo > 0).length} cor="laranja" />
         <Stat rotulo={`Lotes vencidos ou a vencer em ${DIAS_ALERTA} dias`} valor={vencendo} cor={vencendo ? "vermelho" : "cinza"} />
       </div>
@@ -305,7 +312,7 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
             {VISOES.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
           </select>
           <input className="entrada busca" placeholder="Buscar produto, fabricante, princípio ativo…" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar" />
-          <label className="marcar"><input type="checkbox" checked={soSaldo} onChange={(e) => setSoSaldo(e.target.checked)} /> Só com saldo</label>
+          <label className="marcar"><input type="checkbox" checked={soSaldo} onChange={(e) => setSoSaldo(e.target.checked)} /> Só com saldo{soSaldo && escondidos > 0 ? ` (${escondidos} escondidos)` : ""}</label>
         </div>
         {corpo}
       </div>
