@@ -294,6 +294,20 @@ export const ESQUEMA = {
     colunas: ["data", "insumo_id", "quantidade", "valor", "cultura_id", "fornecedor"],
   },
 
+  insumo_ajustes: {
+    titulo: "Balanço / conferência de estoque", singular: "ajuste", icone: "lista", lancamento: true,
+    descricao: "Contagem do que existe de fato no estoque. Guarda só a diferença (+ entra / − sai) e não conta como compra nem como despesa.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
+      contado: { tipo: "numero", rotulo: "Quantidade contada", casas: 2 },
+      quantidade: { tipo: "numero", rotulo: "Diferença (+ entra / − sai)", casas: 2, obrigatorio: true },
+      custo_unitario: { tipo: "dinheiro", rotulo: "Custo por unidade (opcional)", dica: "Usado no custo médio e no valor em estoque quando a diferença é positiva." },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["data", "insumo_id", "contado", "quantidade", "custo_unitario", "observacao"],
+  },
+
   aplicacoes: {
     titulo: "Aplicações / saídas", singular: "aplicação", icone: "spray", lancamento: true,
     descricao: "Produto que saiu do estoque para um talhão. Vira custo do talhão e da cultura.",

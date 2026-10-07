@@ -6,7 +6,7 @@ import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
   noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
 } from "../lib/calculos";
-import { ESQUEMA, hoje } from "../lib/esquema";
+import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 
@@ -162,7 +162,7 @@ function EstoqueQuimicos({ dados }) {
     try {
       const linhas = [...lista].sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({
         produto: x.insumo.nome, fabricante: x.insumo.fabricante ?? "", tipo: tipos[x.insumo.tipo] ?? "", principio: x.insumo.principio_ativo ?? "",
-        unidade: x.insumo.unidade, entrou: x.entrada, aplicado: x.saida, saldo: x.saldo,
+        unidade: x.insumo.unidade, entrou: x.entrada + x.ajuste, aplicado: x.saida, saldo: x.saldo,
         minimo: x.insumo.estoque_minimo ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
         custo: Number(x.custoMedio.toFixed(2)), valor: Number(x.valorEstoque.toFixed(2)),
         observacao: x.insumo.observacao ?? "", fotos: x.insumo.fotos_rotulo ?? [],
@@ -189,13 +189,95 @@ function EstoqueQuimicos({ dados }) {
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "Tipo", valor: (x) => tipos[x.insumo.tipo] ?? "—" },
           { rotulo: "Entrou", num: true, valor: (x) => numero(x.entrada) },
+          { rotulo: "Balanço", num: true, valor: (x) => (x.ajuste ? numero(x.ajuste) : "—") },
           { rotulo: "Aplicado", num: true, valor: (x) => numero(x.saida) },
           { rotulo: "Saldo", num: true, valor: (x) => <b className={x.saldo < 0 ? "negativo" : ""}>{numero(x.saldo)} {x.insumo.unidade}</b> },
           { rotulo: "Situação", valor: (x) => (x.negativo ? <span className="selo ruim">Negativo</span> : x.baixo ? <span className="selo atencao">Baixo</span> : <span className="selo ok">OK</span>) },
           { rotulo: "Custo médio", num: true, valor: (x) => (x.custoMedio ? `${brl(x.custoMedio)}/${x.insumo.unidade}` : "—") },
           { rotulo: "Valor em estoque", num: true, valor: (x) => brl(x.valorEstoque) },
         ]}
-        rodape={["Total", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
+        rodape={["Total", "", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
+      />
+    </div>
+  );
+}
+
+const lerNumero = (t) => {
+  const v = Number(String(t).trim().replace(",", "."));
+  return String(t).trim() === "" || Number.isNaN(v) ? null : v;
+};
+
+/** Conferência: o usuário informa quanto TEM de cada produto; o sistema grava a diferença. */
+function BalancoEstoque({ dados, salvar }) {
+  const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false)
+    .sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome));
+  const [dataBalanco, setDataBalanco] = useState(hoje());
+  const [contagem, setContagem] = useState({});
+  const [custos, setCustos] = useState({});
+  const [gravando, setGravando] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const linhas = lista.map((x) => {
+    const contado = lerNumero(contagem[x.insumo.id] ?? "");
+    const dif = contado == null ? null : +(contado - x.saldo).toFixed(3);
+    return { ...x, id: x.insumo.id, contado, dif };
+  });
+  const pendentes = linhas.filter((x) => x.dif);
+
+  const gravar = async () => {
+    setGravando(true);
+    setMsg(null);
+    try {
+      for (const x of pendentes) {
+        const { reg, erro } = prepararRegistro("insumo_ajustes", {
+          data: dataBalanco, insumo_id: x.insumo.id, contado: x.contado, quantidade: x.dif,
+          custo_unitario: x.dif > 0 ? lerNumero(custos[x.insumo.id] ?? "") : null,
+          observacao: "Balanço de estoque",
+        });
+        if (erro) { setMsg(erro); return; }
+        await salvar("insumo_ajustes", reg);
+      }
+      setContagem({});
+      setCustos({});
+      setMsg(`Balanço gravado: ${pendentes.length} produto(s) ajustado(s).`);
+    } finally {
+      setGravando(false);
+    }
+  };
+
+  return (
+    <div className="cartao">
+      <p className="descricao">
+        Digite em “Contagem” quanto você tem hoje de cada produto. Deixe em branco o que não quiser mexer.
+        O sistema grava só a diferença — isso não conta como compra nem como despesa.
+        As próximas compras entram pela aba “Entradas / compras”.
+      </p>
+      <div className="barra">
+        <label className="campo" style={{ maxWidth: 180 }}><span>Data do balanço</span>
+          <input type="date" value={dataBalanco} onChange={(e) => setDataBalanco(e.target.value)} />
+        </label>
+        <span className="espaco" />
+        <button className="btn primario" onClick={gravar} disabled={!pendentes.length || gravando || !dataBalanco}>
+          {gravando ? "Gravando…" : `Gravar balanço (${pendentes.length})`}
+        </button>
+      </div>
+      {msg && <div className="aviso">{msg}</div>}
+      <TabelaSimples
+        vazio="Cadastre os produtos na aba Produtos primeiro."
+        linhas={linhas}
+        colunas={[
+          { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          { rotulo: "No sistema", num: true, valor: (x) => `${numero(x.saldo)} ${x.insumo.unidade}` },
+          { rotulo: "Contagem", valor: (x) => (
+            <input inputMode="decimal" style={{ width: 110 }} placeholder={x.insumo.unidade}
+              value={contagem[x.insumo.id] ?? ""} onChange={(e) => setContagem((c) => ({ ...c, [x.insumo.id]: e.target.value }))} />
+          ) },
+          { rotulo: "Diferença", num: true, valor: (x) => (x.dif == null ? "—" : <b className={x.dif < 0 ? "negativo" : ""}>{x.dif > 0 ? "+" : ""}{numero(x.dif)}</b>) },
+          { rotulo: "Custo por unidade (opcional)", valor: (x) => (x.dif > 0 ? (
+            <input inputMode="decimal" style={{ width: 110 }} placeholder="R$"
+              value={custos[x.insumo.id] ?? ""} onChange={(e) => setCustos((c) => ({ ...c, [x.insumo.id]: e.target.value }))} />
+          ) : "—") },
+        ]}
       />
     </div>
   );
@@ -205,6 +287,8 @@ export function Quimicos(props) {
   return (
     <Secao props={props} abas={[
       ["estoque", "Estoque", EstoqueQuimicos],
+      ["balanco", "Balanço / conferência", BalancoEstoque],
+      ["insumo_ajustes", "Histórico de balanços"],
       ["aplicacoes", "Aplicações / saídas"],
       ["insumo_entradas", "Entradas / compras"],
       ["insumos", "Produtos"],

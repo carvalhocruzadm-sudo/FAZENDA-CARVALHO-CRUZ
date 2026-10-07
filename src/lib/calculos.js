@@ -104,18 +104,29 @@ export function consumoPorMaquina(dados, periodo) {
 
 export function estoqueInsumos(dados) {
   const mapa = new Map();
-  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0 });
+  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0, ajuste: 0, qtdComCusto: 0, valorAjuste: 0 });
   for (const e of dados.insumo_entradas) {
     const x = mapa.get(e.insumo_id);
     if (x) { x.entrada += n(e.quantidade); x.valorEntrada += n(e.valor); }
+  }
+  // Balanço: ajusta o saldo, mas não é compra (não entra nas despesas).
+  for (const a of dados.insumo_ajustes ?? []) {
+    const x = mapa.get(a.insumo_id);
+    if (!x) continue;
+    x.ajuste += n(a.quantidade);
+    if (n(a.quantidade) > 0 && n(a.custo_unitario) > 0) {
+      x.qtdComCusto += n(a.quantidade);
+      x.valorAjuste += n(a.quantidade) * n(a.custo_unitario);
+    }
   }
   for (const a of dados.aplicacoes) {
     const x = mapa.get(a.insumo_id);
     if (x) x.saida += n(a.quantidade);
   }
   return [...mapa.values()].map((x) => {
-    const custoMedio = x.entrada ? x.valorEntrada / x.entrada : 0;
-    const saldo = x.entrada - x.saida;
+    const baseQtd = x.entrada + x.qtdComCusto;
+    const custoMedio = baseQtd ? (x.valorEntrada + x.valorAjuste) / baseQtd : 0;
+    const saldo = x.entrada + x.ajuste - x.saida;
     const minimo = n(x.insumo.estoque_minimo);
     return {
       ...x, saldo, custoMedio, valorEstoque: Math.max(0, saldo) * custoMedio,
