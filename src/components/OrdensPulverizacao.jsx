@@ -16,8 +16,8 @@ const SELO = { aberta: ["atencao", "Esperando separar"], separada: ["ok", "Separ
  * Ordens de pulverização (escritório): o gerente escolhe a cultura, marca as
  * fazendas e os talhões (marcar a fazenda marca todos os talhões dela), o
  * trator e os produtos com a dose por ha. O total de cada produto é dose ×
- * soma das áreas. O tratorista vê a ordem no depósito pelo QR-1 e confere
- * produto por produto.
+ * soma das áreas. O tratorista vê a ordem no depósito (Modo Campo → Tirar do
+ * depósito) e separa produto por produto, conferindo pela foto.
  */
 export default function OrdensPulverizacao({ dados, salvar, remover }) {
   const [filtro, setFiltro] = useState("ativas");

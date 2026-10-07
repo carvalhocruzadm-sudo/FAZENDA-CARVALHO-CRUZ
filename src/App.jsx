@@ -26,7 +26,7 @@ const MENU = [
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],
   ["fretes", "Caminhões e fretes", "caminhao", Fretes],
   ["equipe", "Funcionários", "pessoas", Equipe],
-  ["campo", "Modo Campo (QR)", "trator", CadastrosCampo],
+  ["campo", "Modo Campo", "trator", CadastrosCampo],
   ["usuarios", "Usuários", "pessoas", Usuarios],
   ["sync", "Sincronização", "nuvem", Sincronizacao],
 ];
@@ -72,7 +72,7 @@ function useCaminho() {
 }
 
 /**
- * O QR code abre /campo/…: as telas simples dos tratoristas. A conta com
+ * /campo/…: as telas simples dos tratoristas. A conta com
  * perfil "campo" só enxerga essas telas; as outras contas também podem abrir
  * (para testar) e voltar ao sistema completo.
  */

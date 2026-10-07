@@ -1,6 +1,6 @@
 /**
  * Regras do Modo Campo — as telas com foto e botão grande que os tratoristas
- * usam pelo QR code. Aqui fica só a conta; as telas estão em pages/Campo.jsx.
+ * usam no celular. Aqui fica só a conta; as telas estão em pages/Campo.jsx.
  */
 
 import { ultimaLeitura } from "./calculos";
@@ -97,7 +97,7 @@ export function lancamentosDoPA(dados, r, data) {
 
   const partesLitros = dividirPorArea(litros, talhoes);
   const base = { data, maquina_id: maquina.id, operador_id: r.operador_id };
-  const obs = ["Lançado no PA (QR code)", talhoes.length > 1 ? `dividido entre ${talhoes.map((t) => t.nome).join(", ")} pela área` : null, aviso]
+  const obs = ["Lançado no PA (Modo Campo)", talhoes.length > 1 ? `dividido entre ${talhoes.map((t) => t.nome).join(", ")} pela área` : null, aviso]
     .filter(Boolean).join(" · ");
 
   const abastecimentos = talhoes.map((t, i) => ({

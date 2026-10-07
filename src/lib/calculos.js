@@ -337,4 +337,51 @@ export function produtividade(cultura, talhao, kg) {
   }
 }
 
+// ─── Por fazenda / talhão ───────────────────────────────────────────────────
+
+/**
+ * Tudo o que aconteceu em cada lugar, uma linha por lançamento: despesas,
+ * químicos aplicados, diesel, operações de máquina, colheitas e vendas.
+ * A fazenda vem do próprio lançamento (despesa) ou do talhão dele. Custo dos
+ * químicos e do diesel do tanque pelo custo médio, como em `custos`.
+ * O que não tem talhão nem fazenda (revisão, despesa geral sem fazenda) fica
+ * de fora — está em Financeiro.
+ */
+export function lancamentosPorLocal(dados, periodo) {
+  const custoMedio = new Map(estoqueInsumos(dados).map((x) => [x.insumo.id, x.custoMedio]));
+  const { precoMedio } = diesel(dados);
+  const talhaoPorId = new Map(dados.talhoes.map((t) => [t.id, t]));
+  const linha = (tipo, colecao, r, extra) => ({
+    id: `${colecao}:${r.id}`, tipo, colecao, reg: r, data: r.data,
+    talhao_id: r.talhao_id ?? null,
+    fazenda_id: r.fazenda_id ?? talhaoPorId.get(r.talhao_id)?.fazenda_id ?? null,
+    custo: 0, receita: 0, ...extra,
+  });
+  const linhas = [
+    ...noPeriodo(dados.despesas, periodo).map((d) => linha("Despesa", "despesas", { ...d, talhao_id: d.centro === "talhao" ? d.talhao_id : null }, { custo: n(d.valor) })),
+    ...noPeriodo(dados.aplicacoes, periodo).map((a) => linha("Aplicação", "aplicacoes", a, { custo: n(a.quantidade) * (custoMedio.get(a.insumo_id) ?? 0) })),
+    ...noPeriodo(dados.abastecimentos, periodo).filter((a) => a.talhao_id).map((a) => linha("Diesel", "abastecimentos", a, { custo: custoAbastecimento(a, precoMedio) })),
+    ...noPeriodo(dados.operacoes, periodo).filter((o) => o.talhao_id).map((o) => linha("Operação", "operacoes", o)),
+    ...noPeriodo(dados.colheitas, periodo).map((c) => linha("Colheita", "colheitas", c)),
+    ...noPeriodo(dados.vendas, periodo).filter((v) => v.talhao_id).map((v) => linha("Venda", "vendas", v, { receita: n(v.valor) })),
+  ];
+  return linhas
+    .filter((l) => l.fazenda_id || l.talhao_id)
+    .sort((a, b) => String(b.data ?? "").localeCompare(String(a.data ?? "")));
+}
+
+/** Totais de um conjunto de lançamentos (de uma fazenda ou de um talhão). */
+export function totaisLocal(linhas) {
+  const colhido = linhas.filter((l) => l.colecao === "colheitas");
+  const ops = linhas.filter((l) => l.colecao === "operacoes");
+  const custo = soma(linhas, (l) => l.custo);
+  const receita = soma(linhas, (l) => l.receita);
+  return {
+    custo, receita, resultado: receita - custo,
+    producao: soma(colhido, (l) => l.reg.quantidade), unidade: colhido[0]?.reg.unidade ?? null,
+    horas: soma(ops, (l) => l.reg.trabalhado), operacoes: ops.length,
+    ultima: linhas[0]?.data ?? null,
+  };
+}
+
 export { soma };

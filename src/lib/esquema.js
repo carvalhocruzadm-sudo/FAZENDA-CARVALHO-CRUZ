@@ -204,18 +204,43 @@ export const ESQUEMA = {
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
       area_ha: { tipo: "numero", rotulo: "Área (ha)", casas: 2 },
       cultura_id: { ...refCultura, rotulo: "Cultura atual" },
-      variedade: { tipo: "texto", rotulo: "Variedade / híbrido" },
       pes: { tipo: "numero", rotulo: "Nº de pés (pomar)", casas: 0 },
-      safra: { tipo: "texto", rotulo: "Safra", dica: "Ex.: 2026/27" },
-      data_plantio: { tipo: "data", rotulo: "Data de plantio" },
-      previsao_colheita: { tipo: "data", rotulo: "Previsão de colheita" },
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "foto", "fazenda_id", "area_ha", "cultura_id", "pes", "safra", "data_plantio"],
-    filtros: ["fazenda_id", "cultura_id", "safra", "variedade", "ativo"],
+    colunas: ["nome", "foto", "fazenda_id", "area_ha", "cultura_id", "pes", "ativo"],
+    filtros: ["fazenda_id", "cultura_id", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }),
     resumo: (r) => r.nome,
+  },
+
+  // Variedade, plantio e previsão de colheita mudam a cada safra: ficam aqui, não no talhão.
+  safras: {
+    titulo: "Safras", singular: "safra", icone: "cultura",
+    descricao: "O que foi plantado em cada talhão em cada safra: variedade/híbrido, área plantada, data de plantio e previsão de colheita.",
+    campos: {
+      safra: { tipo: "sugestao", rotulo: "Safra", obrigatorio: true, dica: "Ex.: Milho 2026/27", sugestoesDe: ["safras", "safra"] },
+      talhao_id: { ...refTalhao, obrigatorio: true },
+      fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda", somenteLeitura: true },
+      cultura_id: { ...refCultura, obrigatorio: true },
+      variedade: { tipo: "sugestao", rotulo: "Variedade / híbrido", sugestoesDe: ["safras", "variedade"] },
+      area_ha: { tipo: "numero", rotulo: "Área plantada (ha)", casas: 2 },
+      data_plantio: { tipo: "data", rotulo: "Data de plantio" },
+      previsao_colheita: { tipo: "data", rotulo: "Previsão de colheita" },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    aoMudar: {
+      // Escolher o talhão traz a fazenda, a cultura e a área dele.
+      talhao_id: (reg, dados) => {
+        const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
+        return t ? { fazenda_id: t.fazenda_id ?? null, cultura_id: t.cultura_id ?? reg.cultura_id, area_ha: t.area_ha ?? reg.area_ha } : {};
+      },
+    },
+    calcular: (r, dados) => ({ fazenda_id: dados?.talhoes.find((t) => t.id === r.talhao_id)?.fazenda_id ?? r.fazenda_id ?? null }),
+    colunas: ["safra", "talhao_id", "fazenda_id", "cultura_id", "variedade", "area_ha", "data_plantio", "previsao_colheita"],
+    filtros: ["safra", "fazenda_id", "cultura_id", "variedade"],
+    ordem: (a, b) => (b.safra || "").localeCompare(a.safra || "", "pt-BR", { numeric: true }) || (b.data_plantio || "").localeCompare(a.data_plantio || ""),
+    resumo: (r) => r.safra,
   },
 
   funcionarios: {
@@ -266,7 +291,7 @@ export const ESQUEMA = {
     descricao: "Inventário de tratores, implementos, caminhões e veículos. Tratores e colheitadeiras marcam horímetro; caminhões marcam km.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome / identificação", obrigatorio: true, dica: "Ex.: Trator MF 4292" },
-      foto: { tipo: "foto", rotulo: "Foto (vai na etiqueta QR do PA)" },
+      foto: { tipo: "foto", rotulo: "Foto (o tratorista acha o trator por ela)" },
       categoria: { tipo: "opcoes", rotulo: "Categoria", padrao: "trator", opcoes: [
         ["trator", "Trator"], ["colheitadeira", "Colheitadeira"], ["pulverizador", "Pulverizador autopropelido"],
         ["implemento", "Implemento"], ["caminhao", "Caminhão"], ["veiculo", "Carro / moto"], ["outro", "Outro"],
@@ -319,7 +344,6 @@ export const ESQUEMA = {
       unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: ["L", "kg", "saco", "t", "unidade", "dose"], padrao: "L", obrigatorio: true },
       tamanho_embalagem: { tipo: "numero", rotulo: "Tamanho da embalagem", casas: 2, dica: "Quanto vem em cada embalagem, na unidade acima. Ex.: galão de 20 L → 20. Se a unidade já é a embalagem (saco, caixa), deixe vazio." },
       embalagem_tipo: { tipo: "sugestao", rotulo: "Tipo de embalagem", sugestoes: ["Galão", "Bombona", "Frasco", "Balde", "Saco", "Caixa", "Tambor"], padrao: "Galão" },
-      codigo_barras: { tipo: "texto", rotulo: "Código de barras (se tiver)", dica: "Os números embaixo das barras. Sem código, use a etiqueta QR do sistema (Químicos → QR codes do depósito)." },
       qtd_embalagens: { tipo: "numero", rotulo: "Quantas embalagens você tem hoje", casas: 2, dica: "As próximas compras entram pela aba Entradas / compras. Pode corrigir depois." },
       estoque_inicial: { tipo: "numero", rotulo: "Quantidade em estoque hoje (total)", casas: 2, dica: "Calculado sozinho (tamanho × embalagens), mas você pode corrigir o total. Ex.: 5 galões de 20 L, mas um está pela metade → 90." },
       validade: { tipo: "data", rotulo: "Validade", dica: "Se as embalagens têm validades diferentes, coloque a mais próxima de vencer." },
@@ -439,7 +463,7 @@ export const ESQUEMA = {
 
   abastecimentos: {
     titulo: "Abastecimentos", singular: "abastecimento", icone: "combustivel", lancamento: true, campo: "grava",
-    descricao: "Saída do tanque da fazenda ou abastecimento em posto. Os lançados pelo QR code do PA vêm com a foto do horímetro e da bomba.",
+    descricao: "Saída do tanque da fazenda ou abastecimento em posto. Os lançados no Modo Campo vêm com a foto do horímetro e da bomba.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       origem: { tipo: "opcoes", rotulo: "Onde abasteceu", padrao: "tanque", opcoes: [["tanque", "Tanque da fazenda"], ["posto", "Posto"]] },
@@ -465,7 +489,7 @@ export const ESQUEMA = {
   insumo_entradas: {
     titulo: "Entradas de químicos/insumos", singular: "entrada", icone: "caixa", lancamento: true,
     campo: "grava", campoSql: "a_conferir = true",
-    descricao: "Compras que entram no estoque. O custo médio sai daqui. As lançadas no depósito pelo QR code chegam sem preço e marcadas \"Falta conferir\": complete o valor e a nota e desmarque.",
+    descricao: "Compras que entram no estoque. O custo médio sai daqui. As lançadas no depósito pelo Modo Campo chegam sem preço e marcadas \"Falta conferir\": complete o valor e a nota e desmarque.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
@@ -520,7 +544,7 @@ export const ESQUEMA = {
 
   pulverizacoes: {
     titulo: "Ordens de pulverização", singular: "ordem de pulverização", icone: "spray", lancamento: true, campo: "grava",
-    descricao: "O gerente cria a ordem: primeiro a cultura, depois marca as fazendas e os talhões (marcar a fazenda já marca todos os talhões dela), o trator e os produtos com a dose por ha. No depósito, o tratorista lê o QR de SAÍDA, vê a ordem com as fotos dos produtos e confere cada um pelo QR code. A saída de cada produto é dividida entre os talhões pela área.",
+    descricao: "O gerente cria a ordem: primeiro a cultura, depois marca as fazendas e os talhões (marcar a fazenda já marca todos os talhões dela), o trator e os produtos com a dose por ha. No depósito, o tratorista abre o Modo Campo → Tirar do depósito, vê a ordem com as fotos dos produtos e separa um por um, conferindo pela foto. A saída de cada produto é dividida entre os talhões pela área.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       cultura_id: refCultura,
