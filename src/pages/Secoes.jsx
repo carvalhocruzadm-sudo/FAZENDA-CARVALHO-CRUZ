@@ -434,3 +434,7 @@ export function Financeiro(props) {
 export function Equipe(props) {
   return <Crud colecao="funcionarios" {...props} />;
 }
+
+export function Usuarios(props) {
+  return <Crud colecao="usuarios" {...props} />;
+}

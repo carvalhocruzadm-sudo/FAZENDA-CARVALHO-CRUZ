@@ -7,7 +7,7 @@ import { useSync } from "./hooks/useSync";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Login from "./pages/Login";
 import Painel from "./pages/Painel";
-import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
+import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Usuarios, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 
 const MENU = [
@@ -20,6 +20,7 @@ const MENU = [
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],
   ["fretes", "Caminhões e fretes", "caminhao", Fretes],
   ["equipe", "Funcionários", "pessoas", Equipe],
+  ["usuarios", "Usuários", "pessoas", Usuarios],
   ["sync", "Sincronização", "nuvem", Sincronizacao],
 ];
 

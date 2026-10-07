@@ -148,6 +148,22 @@ export const ESQUEMA = {
     resumo: (r) => r.nome,
   },
 
+  usuarios: {
+    titulo: "Usuários", singular: "usuário", icone: "pessoas",
+    descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users).",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
+      email: { tipo: "texto", rotulo: "E-mail de acesso", obrigatorio: true },
+      perfil: { tipo: "opcoes", rotulo: "Perfil", padrao: "operador", opcoes: [["admin", "Administrador (tudo)"], ["gerente", "Gerente"], ["operador", "Operador (lança dados)"], ["consulta", "Só consulta"]] },
+      telefone: { tipo: "texto", rotulo: "Telefone" },
+      ativo: { tipo: "booleano", rotulo: "Acesso liberado", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["nome", "email", "perfil", "telefone", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.nome,
+  },
+
   maquinas: {
     titulo: "Máquinas e veículos", singular: "máquina", icone: "trator",
     descricao: "Inventário de tratores, implementos, caminhões e veículos. Tratores e colheitadeiras marcam horímetro; caminhões marcam km.",
