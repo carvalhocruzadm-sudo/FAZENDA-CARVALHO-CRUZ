@@ -1,7 +1,7 @@
-import { Component, useEffect, useState } from "react";
+import { Component, useCallback, useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
-import { Icone } from "./components/ui";
+import { Icone, Modal } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
@@ -47,12 +47,69 @@ function AvisoAtualizacao() {
   );
 }
 
+function TrocarSenha({ email, aoFechar }) {
+  const [atual, setAtual] = useState("");
+  const [nova, setNova] = useState("");
+  const [repetida, setRepetida] = useState("");
+  const [erro, setErro] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const [pronto, setPronto] = useState(false);
+
+  const salvar = async (e) => {
+    e.preventDefault();
+    setErro(null);
+    if (nova.length < 6) { setErro("A nova senha precisa ter pelo menos 6 caracteres."); return; }
+    if (nova !== repetida) { setErro("As duas senhas novas não são iguais."); return; }
+    setSalvando(true);
+    // Confere a senha atual antes de trocar.
+    const { error: erroAtual } = await supabase.auth.signInWithPassword({ email, password: atual });
+    if (erroAtual) {
+      setSalvando(false);
+      setErro("A senha atual está incorreta.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: nova });
+    setSalvando(false);
+    if (error) setErro(error.message);
+    else setPronto(true);
+  };
+
+  return (
+    <Modal titulo="Trocar senha" aoFechar={aoFechar}>
+      {pronto ? (
+        <>
+          <p>Senha trocada com sucesso.</p>
+          <button className="btn primario" onClick={aoFechar}>Fechar</button>
+        </>
+      ) : (
+        <form onSubmit={salvar} style={{ display: "grid", gap: 12 }}>
+          {erro && <div className="aviso">{erro}</div>}
+          <label className="campo"><span>Senha atual</span>
+            <input type="password" autoComplete="current-password" value={atual} onChange={(e) => setAtual(e.target.value)} required />
+          </label>
+          <label className="campo"><span>Nova senha</span>
+            <input type="password" autoComplete="new-password" value={nova} onChange={(e) => setNova(e.target.value)} required />
+          </label>
+          <label className="campo"><span>Repita a nova senha</span>
+            <input type="password" autoComplete="new-password" value={repetida} onChange={(e) => setRepetida(e.target.value)} required />
+          </label>
+          <button className="btn primario" style={{ justifyContent: "center" }} disabled={salvando}>
+            {salvando ? "Salvando…" : "Salvar nova senha"}
+          </button>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 function Sistema({ sair, email }) {
   const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
   const [tela, setTela] = useState(() => {
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
   });
   const [menuAberto, setMenuAberto] = useState(false);
+  const [trocandoSenha, setTrocandoSenha] = useState(false);
+  const fecharTrocaSenha = useCallback(() => setTrocandoSenha(false), []);
 
   const irPara = (id) => {
     setTela(id);
@@ -80,6 +137,11 @@ function Sistema({ sair, email }) {
         </nav>
         <div className="rodape">
           {email && <div style={{ marginBottom: 8, wordBreak: "break-all" }}>{email}</div>}
+          {sair && email && (
+            <button className="btn" style={{ marginBottom: 8 }} onClick={() => { setTrocandoSenha(true); setMenuAberto(false); }}>
+              <Icone nome="chave" /> Trocar senha
+            </button>
+          )}
           {sair && <button className="btn" onClick={sair}><Icone nome="sair" /> Sair</button>}
         </div>
       </aside>
@@ -97,6 +159,7 @@ function Sistema({ sair, email }) {
           )}
         </div>
       </main>
+      {trocandoSenha && <TrocarSenha email={email} aoFechar={fecharTrocaSenha} />}
     </div>
   );
 }
