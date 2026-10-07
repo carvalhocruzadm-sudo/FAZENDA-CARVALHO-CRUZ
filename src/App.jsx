@@ -4,7 +4,9 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import { Icone } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
+import { desligarModoCampo, ligarModoCampo, modoCampoLigado } from "./lib/aparelho";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
+import Campo from "./pages/Campo";
 import Login from "./pages/Login";
 import Painel from "./pages/Painel";
 import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
@@ -47,7 +49,7 @@ function AvisoAtualizacao() {
   );
 }
 
-function Sistema({ sair, email }) {
+function Sistema({ sair, email, virarCampo }) {
   const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
   const [tela, setTela] = useState(() => {
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
@@ -80,6 +82,10 @@ function Sistema({ sair, email }) {
         </nav>
         <div className="rodape">
           {email && <div style={{ marginBottom: 8, wordBreak: "break-all" }}>{email}</div>}
+          <button className="btn" style={{ marginBottom: 8 }} onClick={virarCampo}
+            title="Para o celular do motorista ou tratorista: sem senha, só escolher o nome">
+            <Icone nome="trator" /> Virar celular de campo
+          </button>
           {sair && <button className="btn" onClick={sair}><Icone nome="sair" /> Sair</button>}
         </div>
       </aside>
@@ -101,9 +107,14 @@ function Sistema({ sair, email }) {
   );
 }
 
-/** Com Supabase, só entra quem tem login. Sem ele, modo demonstração. */
+/**
+ * Com Supabase, só entra quem tem login. Sem ele, modo demonstração.
+ * No celular de campo (motorista/tratorista) o administrador entra uma vez e
+ * liga o modo campo: daí em diante ninguém digita senha, só escolhe o nome.
+ */
 function Portao() {
   const [sessao, setSessao] = useState(undefined);
+  const [campo, setCampo] = useState(modoCampoLigado);
 
   useEffect(() => {
     if (!supabaseConfigurado) return undefined;
@@ -112,10 +123,26 @@ function Portao() {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  if (!supabaseConfigurado) return <Sistema />;
-  if (sessao === undefined) return <div className="vazio">Verificando acesso…</div>;
-  if (!sessao) return <Login />;
-  return <Sistema email={sessao.user.email} sair={() => supabase.auth.signOut()} />;
+  const virarCampo = () => {
+    if (!window.confirm("Transformar este aparelho em celular de campo?\n\nQuem usar vai só escolher o nome (sem senha) e só vai ver horímetro, abastecimento e fretes. Para voltar ao sistema completo vai precisar da senha.")) return;
+    ligarModoCampo();
+    setCampo(true);
+  };
+
+  // Sair do modo campo encerra o login: para voltar ao sistema completo,
+  // só com a senha do administrador.
+  const sairDoCampo = () => {
+    if (!window.confirm("Sair do modo campo? Para entrar de novo vai precisar do e-mail e da senha do administrador.")) return;
+    desligarModoCampo();
+    setCampo(false);
+    if (supabaseConfigurado) supabase.auth.signOut();
+  };
+
+  if (supabaseConfigurado && sessao === undefined) return <div className="vazio">Verificando acesso…</div>;
+  if (supabaseConfigurado && !sessao) return <Login />;
+  if (campo) return <Campo indicador={<IndicadorSync />} sair={sairDoCampo} />;
+  if (!supabaseConfigurado) return <Sistema virarCampo={virarCampo} />;
+  return <Sistema email={sessao.user.email} sair={() => supabase.auth.signOut()} virarCampo={virarCampo} />;
 }
 
 class ProtecaoErro extends Component {
