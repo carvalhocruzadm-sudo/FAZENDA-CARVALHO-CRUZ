@@ -16,7 +16,7 @@ banco próprio.
 | **Lavoura e talhões** | Fazendas, talhões/sítios (área, cultura, nº de pés), culturas (dá para **adicionar culturas novas**; cada uma diz o tipo — citros, grãos, hortaliças, forragem, pecuária —, em que é colhida e vendida, o peso da saca, a medida de produtividade — t/ha, sc/ha, kg/pé, cx/pé — e se a colheita é por turma), colheitas e **planejamento da safra** por fase (dessecação, plantio, coberturas, pulverizações), com dose/ha × hectares × preço, como na aba PLANEJAMENTO. |
 | **Ticket da balança** | Tela rápida para lançar os tickets que o gerente manda no grupo do WhatsApp: venda de quê, data, peso, talhão e, na laranja, a turma de colheita e o valor dela por tonelada. Abre direto pelo link **`/ticket`** (fixe no grupo). A carga entra em Vendas sem comprador e sem preço, para completar depois. |
 | **Vendas** | Uma linha por **carga**, como nas planilhas de milho, laranja e silagem: tara, peso bruto e líquido, placa, sítio, tipo (BOA/SUKITA/CASQUINOL), desconto em kg, preço por t, saca, arroba ou saco, custo/ton, frete, comissão e juros. **Recebimentos** separados e o **saldo a receber de cada comprador**. |
-| **Financeiro** | Despesas nas categorias da planilha FINANCEIRO (Alimentação, Produtos químicos, Adubos, Peças, Serviços, Combustíveis, Salários, Taxas, Benfeitorias, Investimentos, Arrendamentos, Empréstimos, Retiradas…), com forma de pagamento, favorecido e **centro de custo** (geral, cultura ou talhão). Outras entradas (aditivo dos sócios, empréstimos). **Custo por cultura e por talhão** (R$/ha). |
+| **Financeiro** | Despesas nas categorias da planilha FINANCEIRO (Alimentação, Produtos químicos, Adubos, Peças, Serviços, Combustíveis, Salários, Taxas, Benfeitorias, Investimentos, Arrendamentos, Empréstimos, Retiradas…), com forma de pagamento, favorecido e **centro de custo** (geral, cultura ou talhão). Outras entradas (aditivo dos sócios, empréstimos). **Custo por cultura e por talhão** (R$/ha). **Comprovante** anexado em cada despesa (foto ou PDF). |
 | **Máquinas e horímetro** | Inventário de tratores, implementos, caminhões e veículos. Lançamento de **horímetro por operação** (máquina, operador, talhão, horas). Revisões feitas e **aviso de revisão** pelo intervalo em horas ou km. Consumo em L/h ou km/L. |
 | **Diesel** | O **tanque da fazenda**: compras (entrada) e abastecimentos (saída), com saldo em litros e preço médio. Abastecimentos em **posto** também. |
 | **Químicos e insumos** | Produtos, entradas (compras) e aplicações por talhão. **Estoque** = entradas − aplicações, com custo médio, estoque mínimo e valor em estoque. |
@@ -29,6 +29,18 @@ Excel) e **repetir lançamento** (o botão `+` da linha), bom para lançar vári
 
 O cadastro inicial já vem com as culturas, as fazendas e os sítios da laranja com área e nº de pés
 (tirados da aba CADASTROS da planilha VENDAS_LARANJA).
+
+### 📎 Lançar despesa pelo comprovante do banco
+No **Android**, com o app instalado na tela inicial ("Adicionar à tela inicial" / "Instalar app" no
+Chrome): no app do banco, toque em **Compartilhar** no comprovante e escolha **Fazenda CC**. O app abre
+com o comprovante na tela; é só tocar na **categoria**, escrever a **descrição**, conferir o valor e
+**Salvar despesa**. Funciona sem internet: o comprovante sobe para a nuvem na próxima sincronização.
+
+No **iPhone** o sistema não deixa app de navegador aparecer no Compartilhar: lance a despesa em
+Financeiro → Despesas → Novo e use **Anexar foto ou PDF** no campo Comprovante.
+
+Os arquivos ficam no Storage do Supabase, numa pasta privada (`comprovantes`) criada pelo
+`supabase/schema.sql` — rode o SQL de novo depois de atualizar.
 
 ### Próximas etapas
 - **Emissão de NF-e** (por enquanto a venda guarda só o número da nota).

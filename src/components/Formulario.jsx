@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 
 import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
+import { CampoArquivo } from "./Comprovante";
 import ConsultaProduto from "./ConsultaProduto";
 import { Icone } from "./ui";
 
@@ -71,12 +72,12 @@ function Fotos({ valor, aoMudar }) {
   );
 }
 
-function Campo({ chave, campo, reg, dados, aoMudar }) {
+function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
   const id = useId();
   const [achar, setAchar] = useState("");
   const valor = reg[chave];
   const obrig = campoObrigatorio(campo, reg);
-  const largo = campo.tipo === "textoLongo" || campo.tipo === "fotos";
+  const largo = campo.tipo === "textoLongo" || campo.tipo === "fotos" || campo.tipo === "arquivo";
   const set = (v) => aoMudar(chave, v);
 
   if (campo.tipo === "booleano") {
@@ -138,6 +139,9 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
       );
       break;
     }
+    case "arquivo":
+      controle = <CampoArquivo id={id} colecao={colecao} valor={valor} set={set} />;
+      break;
     case "sugestao": {
       const lista = sugestoesDoCampo(campo, dados);
       controle = (
@@ -164,9 +168,10 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
 /**
  * Formulário gerado do esquema. `reg` é o rascunho; cada mudança passa pelos
  * `aoMudar` do esquema (que completam outros campos) e os campos calculados
- * são refeitos para aparecer já preenchidos.
+ * são refeitos para aparecer já preenchidos. `somente` mostra só esses campos,
+ * nessa ordem.
  */
-export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
+export default function Formulario({ colecao, reg, setReg, dados, contexto, somente }) {
   const def = ESQUEMA[colecao];
 
   const aoMudar = (chave, v) => {
@@ -178,12 +183,15 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
     });
   };
 
-  const campos = useMemo(() => Object.entries(def.campos), [def]);
+  const campos = useMemo(
+    () => (somente ? somente.map((c) => [c, def.campos[c]]) : Object.entries(def.campos)),
+    [def, somente]
+  );
 
   return (
     <div className="form">
       {campos.filter(([, c]) => campoVisivel(c, reg)).map(([chave, campo]) => (
-        <Campo key={chave} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />
+        <Campo key={chave} colecao={colecao} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />
       ))}
       {colecao === "insumos" && <div className="largo"><ConsultaProduto reg={reg} setReg={setReg} /></div>}
     </div>

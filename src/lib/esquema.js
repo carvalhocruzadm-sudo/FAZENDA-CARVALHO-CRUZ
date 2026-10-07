@@ -12,6 +12,7 @@
  *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
  *   sugestao → texto livre com sugestões (dá para criar uma categoria nova)
  *   ref      → aponta para outra coleção (`colecao`, `filtro` opcional)
+ *   arquivo  → foto ou PDF anexado (guarda o caminho; ver lib/arquivos.js)
  *   itens    → lista guardada como JSON (sem campo na tela padrão: tem tela própria)
  *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
@@ -477,12 +478,13 @@ export const ESQUEMA = {
       vencimento: { tipo: "data", rotulo: "Vencimento" },
       pago: { tipo: "booleano", rotulo: "Pago", padrao: true },
       nota: { tipo: "texto", rotulo: "Nota / documento" },
+      comprovante: { tipo: "arquivo", rotulo: "Comprovante", dica: "Foto ou PDF do comprovante do banco" },
     },
     aoMudar: {
       ...culturaDoTalhao,
       centro: (r) => (r.centro === "geral" ? { cultura_id: null, talhao_id: null } : r.centro === "cultura" ? { talhao_id: null } : {}),
     },
-    colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago"],
+    colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago", "comprovante"],
   },
 
   entradas: {
