@@ -77,7 +77,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   const fechar = useCallback(() => setRascunho(null), []);
 
   const gravar = async () => {
-    const { reg, erro: e } = prepararRegistro(colecao, rascunho);
+    const { reg, erro: e } = prepararRegistro(colecao, rascunho, dados);
     if (e) { setErro(e); return; }
     setSalvando(true);
     try {

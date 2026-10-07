@@ -32,8 +32,13 @@ create table if not exists public.culturas (
   atualizado_em timestamptz
 );
 alter table public.culturas add column if not exists nome text;
+alter table public.culturas add column if not exists grupo text;
 alter table public.culturas add column if not exists tipo text;
 alter table public.culturas add column if not exists unidade text;
+alter table public.culturas add column if not exists peso_saca numeric;
+alter table public.culturas add column if not exists produtividade text;
+alter table public.culturas add column if not exists turma_colheita boolean;
+alter table public.culturas add column if not exists custo_turma_ton numeric;
 alter table public.culturas add column if not exists ativo boolean;
 alter table public.culturas add column if not exists observacao text;
 alter table public.culturas enable row level security;
@@ -616,6 +621,7 @@ alter table public.vendas add column if not exists quantidade numeric;
 alter table public.vendas add column if not exists preco_unitario numeric;
 alter table public.vendas add column if not exists valor_bruto numeric;
 alter table public.vendas add column if not exists valor_desconto numeric;
+alter table public.vendas add column if not exists turma text;
 alter table public.vendas add column if not exists custo_ton numeric;
 alter table public.vendas add column if not exists frete_cobrado numeric;
 alter table public.vendas add column if not exists frete numeric;
@@ -819,13 +825,13 @@ end $$;
 grant execute on function public.agronomo_estoque(text), public.agronomo_fotos(text, uuid), public.agronomo_enviar(text, jsonb) to anon, authenticated;
 
 -- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────
-insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000001', 'Milho', 'agricola', 'sc60', true, null) on conflict (id) do nothing;
-insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000002', 'Laranja', 'agricola', 't', true, null) on conflict (id) do nothing;
-insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000003', 'Abóbora', 'agricola', 'kg', true, null) on conflict (id) do nothing;
-insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000004', 'Amendoim', 'agricola', 'sc60', true, null) on conflict (id) do nothing;
-insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000005', 'Silagem', 'agricola', 'saco', true, null) on conflict (id) do nothing;
-insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000006', 'Milho verde', 'agricola', 'unidade', true, null) on conflict (id) do nothing;
-insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000007', 'Confinamento', 'pecuaria', 'arroba', true, null) on conflict (id) do nothing;
+insert into public.culturas (id, nome, grupo, tipo, unidade, peso_saca, produtividade, turma_colheita, custo_turma_ton, ativo, observacao) values ('00000000-0000-4000-8000-000000000001', 'Milho', 'graos', 'agricola', 'sc60', null, 'sc_ha', false, null, true, null) on conflict (id) do nothing;
+insert into public.culturas (id, nome, grupo, tipo, unidade, peso_saca, produtividade, turma_colheita, custo_turma_ton, ativo, observacao) values ('00000000-0000-4000-8000-000000000002', 'Laranja', 'citros', 'agricola', 't', null, 'kg_pe', true, null, true, null) on conflict (id) do nothing;
+insert into public.culturas (id, nome, grupo, tipo, unidade, peso_saca, produtividade, turma_colheita, custo_turma_ton, ativo, observacao) values ('00000000-0000-4000-8000-000000000003', 'Abóbora', 'hortalicas', 'agricola', 'kg', null, 't_ha', false, null, true, null) on conflict (id) do nothing;
+insert into public.culturas (id, nome, grupo, tipo, unidade, peso_saca, produtividade, turma_colheita, custo_turma_ton, ativo, observacao) values ('00000000-0000-4000-8000-000000000004', 'Amendoim', 'graos', 'agricola', 'sc60', null, 'sc_ha', false, null, true, null) on conflict (id) do nothing;
+insert into public.culturas (id, nome, grupo, tipo, unidade, peso_saca, produtividade, turma_colheita, custo_turma_ton, ativo, observacao) values ('00000000-0000-4000-8000-000000000005', 'Silagem', 'forragem', 'agricola', 'saco', null, 't_ha', false, null, true, null) on conflict (id) do nothing;
+insert into public.culturas (id, nome, grupo, tipo, unidade, peso_saca, produtividade, turma_colheita, custo_turma_ton, ativo, observacao) values ('00000000-0000-4000-8000-000000000006', 'Milho verde', 'hortalicas', 'agricola', 'unidade', null, 'nenhuma', false, null, true, null) on conflict (id) do nothing;
+insert into public.culturas (id, nome, grupo, tipo, unidade, peso_saca, produtividade, turma_colheita, custo_turma_ton, ativo, observacao) values ('00000000-0000-4000-8000-000000000007', 'Confinamento', 'pecuaria', 'pecuaria', 'arroba', null, 'nenhuma', false, null, true, null) on conflict (id) do nothing;
 insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, observacao) values ('00000000-0000-4000-8100-000000000001', 'São Raimundo', 'propria', null, null, null, true, null) on conflict (id) do nothing;
 insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, observacao) values ('00000000-0000-4000-8100-000000000002', 'Murtinha', 'propria', null, null, null, true, null) on conflict (id) do nothing;
 insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, observacao) values ('00000000-0000-4000-8100-000000000003', 'Triunfo / Juerana', 'propria', null, null, null, true, null) on conflict (id) do nothing;
@@ -858,3 +864,12 @@ insert into public.servicos (id, nome, figura, foto, ativo, observacao) values (
 insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000011', 'Distribuição de ração', '🐄', null, true, null) on conflict (id) do nothing;
 insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000012', 'Terraplanagem', '🏗️', null, true, null) on conflict (id) do nothing;
 insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000013', 'Serviço geral', '🔧', null, true, null) on conflict (id) do nothing;
+
+-- ─── Tipo de cultura, medida de produtividade e turma nas culturas antigas ─
+update public.culturas set grupo = 'graos', unidade = 'sc60', peso_saca = null, produtividade = 'sc_ha', turma_colheita = false where id = '00000000-0000-4000-8000-000000000001' and grupo is null;
+update public.culturas set grupo = 'citros', unidade = 't', peso_saca = null, produtividade = 'kg_pe', turma_colheita = true where id = '00000000-0000-4000-8000-000000000002' and grupo is null;
+update public.culturas set grupo = 'hortalicas', unidade = 'kg', peso_saca = null, produtividade = 't_ha', turma_colheita = false where id = '00000000-0000-4000-8000-000000000003' and grupo is null;
+update public.culturas set grupo = 'graos', unidade = 'sc60', peso_saca = null, produtividade = 'sc_ha', turma_colheita = false where id = '00000000-0000-4000-8000-000000000004' and grupo is null;
+update public.culturas set grupo = 'forragem', unidade = 'saco', peso_saca = null, produtividade = 't_ha', turma_colheita = false where id = '00000000-0000-4000-8000-000000000005' and grupo is null;
+update public.culturas set grupo = 'hortalicas', unidade = 'unidade', peso_saca = null, produtividade = 'nenhuma', turma_colheita = false where id = '00000000-0000-4000-8000-000000000006' and grupo is null;
+update public.culturas set grupo = 'pecuaria', unidade = 'arroba', peso_saca = null, produtividade = 'nenhuma', turma_colheita = false where id = '00000000-0000-4000-8000-000000000007' and grupo is null;

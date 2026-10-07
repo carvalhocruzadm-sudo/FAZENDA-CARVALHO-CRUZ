@@ -421,6 +421,19 @@ span.figura.mini, .mini .figura { font-size: 30px; }
 }
 
 
+/* ─── Ticket da balança ─────────────────────────────────────────────────── */
+.ticket { display: grid; gap: 16px; max-width: 760px; }
+.ticket .descricao { margin: 0; }
+.ticket .aviso { margin: 0; }
+.escolhas { display: flex; flex-wrap: wrap; gap: 8px; }
+.escolhas button {
+  border: 1px solid var(--linha); background: var(--cartao); border-radius: 22px; padding: 10px 16px;
+  cursor: pointer; font-weight: 600;
+}
+.escolhas button.ativa { background: var(--verde); border-color: var(--verde); color: #fff; }
+.btn.grande { justify-content: center; padding: 13px; font-size: 15px; font-weight: 700; }
+.link-ticket { background: var(--fundo); border-radius: 8px; padding: 8px 10px; font-size: 13px; word-break: break-all; flex: 1; min-width: 0; }
+
 /* Comprovantes */
 .previa-comprovante { display: block; max-width: 100%; max-height: 360px; border-radius: 10px; border: 1px solid var(--linha); margin-top: 8px; }
 .fichas { display: flex; flex-wrap: wrap; gap: 6px; }
