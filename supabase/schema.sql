@@ -540,6 +540,7 @@ alter table public.despesas add column if not exists litros numeric;
 alter table public.despesas add column if not exists vencimento date;
 alter table public.despesas add column if not exists pago boolean;
 alter table public.despesas add column if not exists nota text;
+alter table public.despesas add column if not exists comprovante text;
 create index if not exists despesas_data_idx on public.despesas (data);
 alter table public.despesas enable row level security;
 drop policy if exists "equipe acessa despesas" on public.despesas;
@@ -722,6 +723,15 @@ create policy "equipe troca fotos" on storage.objects
 drop policy if exists "escritorio apaga fotos" on storage.objects;
 create policy "escritorio apaga fotos" on storage.objects
   for delete to authenticated using (bucket_id = 'fotos' and not (select public.eh_campo()));
+
+-- ─── Comprovantes (fotos e PDFs anexados às despesas) ──────────────────────
+-- Pasta privada no Storage: só quem tem login no app vê e envia (a conta do
+-- Modo Campo não vê os comprovantes).
+insert into storage.buckets (id, name, public) values ('comprovantes', 'comprovantes', false) on conflict (id) do nothing;
+drop policy if exists "equipe acessa comprovantes" on storage.objects;
+create policy "equipe acessa comprovantes" on storage.objects
+  for all to authenticated using (bucket_id = 'comprovantes' and not (select public.eh_campo()))
+  with check (bucket_id = 'comprovantes' and not (select public.eh_campo()));
 
 -- ─── Link do agrônomo (acesso sem login, só ao estoque de químicos) ────────
 -- O agrônomo não tem senha: abre o link com o código. Estas funções conferem o
