@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 
+import useEscolhaTalhoes from "../hooks/useEscolhaTalhoes";
 import { anexar, valorDoTexto } from "../lib/arquivos";
-import { CATEGORIAS_DESPESA, prepararRegistro, registroNovo } from "../lib/esquema";
+import { CATEGORIAS_DESPESA, registroNovo } from "../lib/esquema";
 import { PreviaComprovante } from "./Comprovante";
 import Formulario from "./Formulario";
 import { Icone, Modal } from "./ui";
@@ -25,17 +26,18 @@ export default function LancarComprovante({ compartilhado, dados, salvar, aoFech
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [tudo, setTudo] = useState(false);
+  const escolha = useEscolhaTalhoes("despesas", dados);
 
   const fechar = useCallback(() => {
     if (window.confirm("Descartar este comprovante sem lançar?")) aoFechar();
   }, [aoFechar]);
 
   const gravar = async () => {
-    const { reg: pronto, erro: e } = prepararRegistro("despesas", reg);
+    const { regs, erro: e } = escolha.montar(reg);
     if (e) { setErro(e); return; }
     setSalvando(true);
     try {
-      await salvar("despesas", pronto);
+      for (const pronto of regs) await salvar("despesas", pronto);
       aoSalvar();
     } catch (err) {
       setErro(String(err?.message ?? err));
@@ -75,7 +77,7 @@ export default function LancarComprovante({ compartilhado, dados, salvar, aoFech
       </div>
 
       {erro && <div className="aviso">{erro}</div>}
-      <Formulario colecao="despesas" reg={reg} setReg={setReg} dados={dados} somente={tudo ? undefined : ESSENCIAIS} />
+      <Formulario colecao="despesas" reg={reg} setReg={setReg} dados={dados} somente={tudo ? undefined : ESSENCIAIS} escolha={escolha} />
       {!tudo && <button type="button" className="btn" style={{ marginTop: 14 }} onClick={() => setTudo(true)}>Mais campos</button>}
     </Modal>
   );

@@ -23,6 +23,11 @@
  *   arquivo  → foto ou PDF anexado (guarda o caminho; ver lib/arquivos.js)
  *   itens    → lista guardada como JSON (sem campo na tela padrão: tem tela própria)
  *
+ * `porTalhao` diz como um lançamento com vários talhões se divide (um
+ * registro por talhão): `dividir` os campos repartidos pela área, `area` o
+ * campo que recebe a área do talhão, `leituras` emenda o horímetro, `zerar`
+ * os campos que não fazem sentido repartir. Ver lib/talhoes.js.
+ *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
  * outro enquanto se digita (escolher o talhão já traz a cultura dele).
@@ -397,6 +402,8 @@ export const ESQUEMA = {
     },
     calcular: (r) => ({ trabalhado: Math.max(0, num(r.leitura_final) - num(r.leitura_inicial)) }),
     validar: (r) => (num(r.leitura_final) < num(r.leitura_inicial) ? "A leitura final não pode ser menor que a inicial." : null),
+    // Vários talhões: as horas são divididas pela área, uma leitura emendando na outra.
+    porTalhao: { leituras: true },
     colunas: ["data", "maquina_id", "operador_id", "operacao", "talhao_id", "leitura_inicial", "leitura_final", "trabalhado"],
   },
 
@@ -451,6 +458,7 @@ export const ESQUEMA = {
     },
     aoMudar: culturaDoTalhao,
     calcular: (r) => ({ valor: r.origem === "posto" ? +(num(r.litros) * num(r.preco_litro)).toFixed(2) : null }),
+    porTalhao: { dividir: ["litros"] },
     colunas: ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "talhao_id", "valor"],
   },
 
@@ -506,6 +514,7 @@ export const ESQUEMA = {
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
     aoMudar: culturaDoTalhao,
+    porTalhao: { dividir: ["quantidade"], area: "area_aplicada" },
     colunas: ["data", "insumo_id", "quantidade", "talhao_id", "cultura_id", "dose_ha", "responsavel_id"],
   },
 
@@ -567,6 +576,7 @@ export const ESQUEMA = {
       ...culturaDoTalhao,
       centro: (r) => (r.centro === "geral" ? { cultura_id: null, talhao_id: null } : r.centro === "cultura" ? { talhao_id: null } : {}),
     },
+    porTalhao: { dividir: ["valor", "litros"] },
     colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago", "comprovante"],
   },
 
@@ -601,7 +611,12 @@ export const ESQUEMA = {
         const c = t && dados.culturas.find((x) => x.id === t.cultura_id);
         return c ? { cultura_id: c.id, unidade: c.unidade || reg.unidade } : {};
       },
+      cultura_id: (reg, dados) => {
+        const c = dados.culturas.find((x) => x.id === reg.cultura_id);
+        return c?.unidade ? { unidade: c.unidade } : {};
+      },
     },
+    porTalhao: { dividir: ["quantidade"] },
     colunas: ["data", "talhao_id", "cultura_id", "quantidade", "unidade", "responsavel_id"],
   },
 
@@ -671,6 +686,8 @@ export const ESQUEMA = {
       };
     },
     validar: (r) => (r.quantidade == null && r.peso_liquido == null ? "Informe o peso ou a quantidade." : null),
+    // Carga de vários talhões: peso, quantidade e custos divididos pela área (entrada/saída vão para a observação).
+    porTalhao: { dividir: ["peso_liquido", "volumes", "desconto_kg", "quantidade", "frete_cobrado", "frete", "comissao", "juros"], zerar: ["peso_entrada", "peso_saida"] },
     colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "turma", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor"],
   },
 

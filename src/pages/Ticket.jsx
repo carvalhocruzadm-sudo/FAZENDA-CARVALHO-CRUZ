@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 
+import EscolhaTalhoes from "../components/EscolhaTalhoes";
 import { Icone, TabelaSimples } from "../components/ui";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
+import { dividirPorTalhoes, fazendaDoTalhao } from "../lib/talhoes";
 
 /**
  * Lançamento rápido do ticket da balança que o Sinvaldo manda no grupo do
@@ -12,7 +14,7 @@ import { brl, data, nomeRef, numero } from "../lib/formato";
 
 export const LINK_TICKET = "/ticket";
 
-const vazio = () => ({ data: hoje(), cultura_id: null, peso: "", talhao_id: null, turma: "", custo_ton: "", observacao: "" });
+const vazio = () => ({ data: hoje(), cultura_id: null, peso: "", turma: "", custo_ton: "", observacao: "" });
 
 export default function Ticket({ dados, salvar }) {
   const [f, setF] = useState(vazio);
@@ -20,6 +22,7 @@ export default function Ticket({ dados, salvar }) {
   const [salvo, setSalvo] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [areas, setAreas] = useState({}); // talhões marcados → área (divide o peso quando são vários)
 
   const set = (chave, v) => { setSalvo(null); setErro(null); setF((a) => ({ ...a, [chave]: v })); };
 
@@ -31,12 +34,11 @@ export default function Ticket({ dados, salvar }) {
   // Turma e valor por tonelada só aparecem se o cadastro da cultura disser que a colheita é por turma.
   const porTurma = Boolean(cultura?.turma_colheita);
 
-  // Os talhões da cultura escolhida; se nenhum estiver marcado com ela, todos.
-  const talhoes = useMemo(() => {
-    const ativos = dados.talhoes.filter((t) => t.ativo !== false).sort(ESQUEMA.talhoes.ordem);
-    const daCultura = ativos.filter((t) => t.cultura_id === f.cultura_id);
-    return daCultura.length ? daCultura : ativos;
-  }, [dados.talhoes, f.cultura_id]);
+  // Os talhões da cultura escolhida, por fazenda (marcar a fazenda marca todos os talhões dela).
+  const ativos = useMemo(() => dados.talhoes.filter((t) => t.ativo !== false), [dados.talhoes]);
+  const talhoes = ativos.filter((t) => f.cultura_id && t.cultura_id === f.cultura_id);
+  const marcados = talhoes.filter((t) => t.id in areas)
+    .sort((a, b) => fazendaDoTalhao(dados)(a).localeCompare(fazendaDoTalhao(dados)(b), "pt-BR") || ESQUEMA.talhoes.ordem(a, b));
 
   const turmas = useMemo(
     () => [...new Set(dados.vendas.map((v) => v.turma).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -50,12 +52,8 @@ export default function Ticket({ dados, salvar }) {
 
   const escolherCultura = (id) => {
     setSalvo(null); setErro(null);
-    setF((a) => (a.cultura_id === id ? a : {
-      ...a,
-      cultura_id: id,
-      talhao_id: dados.talhoes.some((t) => t.id === a.talhao_id && t.cultura_id === id) ? a.talhao_id : null,
-      custo_ton: padraoDaCultura(id),
-    }));
+    if (f.cultura_id !== id) setAreas({});
+    setF((a) => (a.cultura_id === id ? a : { ...a, cultura_id: id, custo_ton: padraoDaCultura(id) }));
   };
 
   // A turma já usada antes traz o último valor por tonelada que ela cobrou;
@@ -75,7 +73,7 @@ export default function Ticket({ dados, salvar }) {
     e.preventDefault();
     if (!cultura) { setErro("Escolha a venda de quê."); return; }
     if (!(Number(f.peso) > 0)) { setErro("Preencha o peso do ticket."); return; }
-    if (talhoes.length && !f.talhao_id) { setErro("Escolha o talhão."); return; }
+    if (talhoes.length && !marcados.length) { setErro("Marque o talhão (ou os talhões) desta carga."); return; }
     if (porTurma && !f.turma.trim()) { setErro("Preencha a turma de colheita."); return; }
 
     const { reg, erro: e2 } = prepararRegistro("vendas", {
@@ -83,18 +81,24 @@ export default function Ticket({ dados, salvar }) {
       data: f.data,
       cultura_id: cultura.id,
       unidade: cultura.unidade || "t",
-      talhao_id: f.talhao_id,
+      talhao_id: marcados[0]?.id ?? null,
       peso_liquido: f.peso,
       turma: porTurma ? f.turma : null,
       custo_ton: porTurma ? f.custo_ton : null,
       observacao: f.observacao,
     }, dados);
     if (e2) { setErro(e2); return; }
+    // Carga de vários talhões: uma venda por talhão, com o peso dividido pela área.
+    const partes = marcados.length > 1
+      ? dividirPorTalhoes(ESQUEMA.vendas, reg, marcados.map((t) => ({ talhao: t, area_ha: Number(areas[t.id]) || 0 }))).map((p) => prepararRegistro("vendas", p, dados))
+      : [{ reg }];
+    const e3 = partes.find((p) => p.erro)?.erro;
+    if (e3) { setErro(e3); return; }
 
     setSalvando(true);
     try {
-      await salvar("vendas", reg);
-      setSalvo(reg);
+      for (const p of partes) await salvar("vendas", p.reg);
+      setSalvo({ ...reg, talhoes: marcados.map((t) => t.nome).join(", ") });
       // Mantém data, cultura, talhão e turma: o normal é lançar vários tickets do mesmo dia.
       setF((a) => ({ ...a, peso: "", observacao: "" }));
       window.scrollTo(0, 0);
@@ -129,7 +133,7 @@ export default function Ticket({ dados, salvar }) {
         {salvo && (
           <div className="aviso ok">
             Ticket salvo: {nomeRef(dados, "culturas", salvo.cultura_id)} · {numero(salvo.peso_liquido / 1000, 3)} t
-            {salvo.talhao_id && <> · {nomeRef(dados, "talhoes", salvo.talhao_id)}</>}. Pode lançar o próximo.
+            {salvo.talhoes && <> · {salvo.talhoes}</>}. Pode lançar o próximo.
           </div>
         )}
         {erro && <div className="aviso">{erro}</div>}
@@ -153,12 +157,9 @@ export default function Ticket({ dados, salvar }) {
             <input type="number" inputMode="decimal" step="any" min="0" value={f.peso} onChange={(e) => set("peso", e.target.value)} />
             {toneladas > 0 && <small>= {numero(toneladas, 3)} toneladas</small>}
           </label>
-          <label className="campo"><span>Talhão {talhoes.length > 0 && <em>*</em>}</span>
-            <select value={f.talhao_id ?? ""} onChange={(e) => set("talhao_id", e.target.value || null)}>
-              <option value="">{talhoes.length ? "— escolha —" : "Nenhum talhão cadastrado"}</option>
-              {talhoes.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-            </select>
-          </label>
+          <EscolhaTalhoes culturas={dados.culturas} talhoes={ativos} nomeFazenda={fazendaDoTalhao(dados)}
+            cultura={f.cultura_id ?? ""} aoMudarCultura={() => {}} areas={areas} setAreas={(x) => { setSalvo(null); setAreas(x); }}
+            obrigatorio={talhoes.length > 0} mostrarCultura={false} />
 
           {porTurma && (
             <>

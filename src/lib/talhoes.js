@@ -3,6 +3,8 @@
  * pega vários talhões (cada talhão fica com a parte dele, pela área).
  */
 
+import { numero } from "./formato";
+
 const n = (v) => Number(v) || 0;
 
 export const ordenarNome = (a, b) => String(a).localeCompare(String(b), "pt-BR", { numeric: true });
@@ -42,6 +44,38 @@ export function dividirQuantidade(total, partes, casas = 3) {
     if (i === pesos.length - 1) return +resto.toFixed(casas);
     const parte = +((n(total) * p) / soma).toFixed(casas);
     resto -= parte;
+    return parte;
+  });
+}
+
+/**
+ * Um lançamento que pegou vários talhões vira um por talhão, com os números
+ * divididos pela área (o `porTalhao` do esquema diz quais). `reg` já passou
+ * pelo prepararRegistro (as contas estão feitas); cada parte passa de novo.
+ * `partes` = [{ talhao, area_ha }]. Devolve os registros brutos.
+ */
+export function dividirPorTalhoes(def, reg, partes) {
+  const regra = def.porTalhao ?? {};
+  const nomes = partes.map((x) => x.talhao.nome).join(", ");
+  const divididos = Object.fromEntries((regra.dividir ?? []).map((c) => [c, reg[c] == null ? null : dividirQuantidade(reg[c], partes, def.campos[c]?.casas ?? 2)]));
+  const horas = regra.leituras ? dividirQuantidade(n(reg.leitura_final) - n(reg.leitura_inicial), partes, 1) : null;
+  let leitura = n(reg.leitura_inicial);
+  const extras = regra.zerar?.some((c) => reg[c] != null)
+    ? ` (${regra.zerar.filter((c) => reg[c] != null).map((c) => `${def.campos[c].rotulo}: ${numero(reg[c], 1)}`).join(", ")})` : "";
+  const nota = `Dividido entre ${nomes} pela área${extras}`;
+
+  return partes.map((x, i) => {
+    const parte = { ...reg, id: undefined, talhao_id: x.talhao.id, cultura_id: x.talhao.cultura_id ?? reg.cultura_id ?? null };
+    for (const [c, valores] of Object.entries(divididos)) parte[c] = valores?.[i] ?? null;
+    for (const c of regra.zerar ?? []) parte[c] = null;
+    if (regra.area) parte[regra.area] = x.area_ha || null;
+    if (horas) {
+      const fim = i === partes.length - 1 ? n(reg.leitura_final) : +(leitura + horas[i]).toFixed(1);
+      parte.leitura_inicial = leitura;
+      parte.leitura_final = fim;
+      leitura = fim;
+    }
+    if ("observacao" in def.campos) parte.observacao = [reg.observacao, nota].filter(Boolean).join(" · ");
     return parte;
   });
 }
