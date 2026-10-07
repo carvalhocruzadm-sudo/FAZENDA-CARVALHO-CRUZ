@@ -5,7 +5,7 @@ import { Icone } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
-import Login from "./pages/Login";
+import Login, { NovaSenha } from "./pages/Login";
 import Painel from "./pages/Painel";
 import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
@@ -104,16 +104,21 @@ function Sistema({ sair, email }) {
 /** Com Supabase, só entra quem tem login. Sem ele, modo demonstração. */
 function Portao() {
   const [sessao, setSessao] = useState(undefined);
+  const [recuperando, setRecuperando] = useState(false);
 
   useEffect(() => {
     if (!supabaseConfigurado) return undefined;
     supabase.auth.getSession().then(({ data }) => setSessao(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSessao(s));
+    const { data } = supabase.auth.onAuthStateChange((evento, s) => {
+      if (evento === "PASSWORD_RECOVERY") setRecuperando(true);
+      setSessao(s);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
   if (!supabaseConfigurado) return <Sistema />;
   if (sessao === undefined) return <div className="vazio">Verificando acesso…</div>;
+  if (recuperando && sessao) return <NovaSenha aoConcluir={() => setRecuperando(false)} />;
   if (!sessao) return <Login />;
   return <Sistema email={sessao.user.email} sair={() => supabase.auth.signOut()} />;
 }
