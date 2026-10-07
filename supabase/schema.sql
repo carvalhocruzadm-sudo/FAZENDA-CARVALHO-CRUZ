@@ -85,11 +85,7 @@ alter table public.talhoes add column if not exists foto text;
 alter table public.talhoes add column if not exists fazenda_id uuid;
 alter table public.talhoes add column if not exists area_ha numeric;
 alter table public.talhoes add column if not exists cultura_id uuid;
-alter table public.talhoes add column if not exists variedade text;
 alter table public.talhoes add column if not exists pes numeric;
-alter table public.talhoes add column if not exists safra text;
-alter table public.talhoes add column if not exists data_plantio date;
-alter table public.talhoes add column if not exists previsao_colheita date;
 alter table public.talhoes add column if not exists ativo boolean;
 alter table public.talhoes add column if not exists observacao text;
 alter table public.talhoes enable row level security;
@@ -101,6 +97,29 @@ drop policy if exists "campo lanca talhoes" on public.talhoes;
 drop policy if exists "campo corrige talhoes" on public.talhoes;
 create policy "campo le talhoes" on public.talhoes
   for select to authenticated using ((select public.eh_campo()));
+
+-- Safras
+create table if not exists public.safras (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.safras add column if not exists safra text;
+alter table public.safras add column if not exists talhao_id uuid;
+alter table public.safras add column if not exists fazenda_id uuid;
+alter table public.safras add column if not exists cultura_id uuid;
+alter table public.safras add column if not exists variedade text;
+alter table public.safras add column if not exists area_ha numeric;
+alter table public.safras add column if not exists data_plantio date;
+alter table public.safras add column if not exists previsao_colheita date;
+alter table public.safras add column if not exists observacao text;
+alter table public.safras enable row level security;
+drop policy if exists "equipe acessa safras" on public.safras;
+create policy "equipe acessa safras" on public.safras
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le safras" on public.safras;
+drop policy if exists "campo lanca safras" on public.safras;
+drop policy if exists "campo corrige safras" on public.safras;
 
 -- Funcionários
 create table if not exists public.funcionarios (
@@ -835,21 +854,21 @@ insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, 
 insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, observacao) values ('00000000-0000-4000-8100-000000000002', 'Murtinha', 'propria', null, null, null, true, null) on conflict (id) do nothing;
 insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, observacao) values ('00000000-0000-4000-8100-000000000003', 'Triunfo / Juerana', 'propria', null, null, null, true, null) on conflict (id) do nothing;
 insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, observacao) values ('00000000-0000-4000-8100-000000000004', 'Águas Claras', 'sociedade', 'Gilberto', 25, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000001', 'Galpão', '00000000-0000-4000-8100-000000000001', 6.6, 4059, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000002', 'Meio', '00000000-0000-4000-8100-000000000001', 5.8, 3567, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000003', 'Gilton', '00000000-0000-4000-8100-000000000001', 24.2, 14883, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000004', 'Faria', '00000000-0000-4000-8100-000000000001', 8.5, 5227, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000005', 'Barragem', '00000000-0000-4000-8100-000000000001', 8, 4920, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000006', 'Coqueiro', '00000000-0000-4000-8100-000000000001', 8.9, 5473, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000007', 'Espinho', '00000000-0000-4000-8100-000000000002', 12, 7380, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000008', 'Murta', '00000000-0000-4000-8100-000000000002', 3.4, 2091, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000009', 'Tanque', '00000000-0000-4000-8100-000000000002', 5.9, 3628, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000010', 'Canabrava', '00000000-0000-4000-8100-000000000002', 6.5, 3997, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000011', 'George', '00000000-0000-4000-8100-000000000002', 32.76, 20147, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000012', 'Triunfo', '00000000-0000-4000-8100-000000000003', 28.2, 16000, '00000000-0000-4000-8000-000000000002', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000013', 'Gameleira', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000014', 'Juerana', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
-insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, variedade, safra, data_plantio, previsao_colheita, ativo, observacao) values ('00000000-0000-4000-8200-000000000015', 'Águas Claras', '00000000-0000-4000-8100-000000000004', 25, null, '00000000-0000-4000-8000-000000000001', null, null, null, null, true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000001', 'Galpão', '00000000-0000-4000-8100-000000000001', 6.6, 4059, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000002', 'Meio', '00000000-0000-4000-8100-000000000001', 5.8, 3567, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000003', 'Gilton', '00000000-0000-4000-8100-000000000001', 24.2, 14883, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000004', 'Faria', '00000000-0000-4000-8100-000000000001', 8.5, 5227, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000005', 'Barragem', '00000000-0000-4000-8100-000000000001', 8, 4920, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000006', 'Coqueiro', '00000000-0000-4000-8100-000000000001', 8.9, 5473, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000007', 'Espinho', '00000000-0000-4000-8100-000000000002', 12, 7380, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000008', 'Murta', '00000000-0000-4000-8100-000000000002', 3.4, 2091, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000009', 'Tanque', '00000000-0000-4000-8100-000000000002', 5.9, 3628, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000010', 'Canabrava', '00000000-0000-4000-8100-000000000002', 6.5, 3997, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000011', 'George', '00000000-0000-4000-8100-000000000002', 32.76, 20147, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000012', 'Triunfo', '00000000-0000-4000-8100-000000000003', 28.2, 16000, '00000000-0000-4000-8000-000000000002', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000013', 'Gameleira', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000014', 'Juerana', '00000000-0000-4000-8100-000000000003', null, null, '00000000-0000-4000-8000-000000000001', true, null) on conflict (id) do nothing;
+insert into public.talhoes (id, nome, fazenda_id, area_ha, pes, cultura_id, ativo, observacao) values ('00000000-0000-4000-8200-000000000015', 'Águas Claras', '00000000-0000-4000-8100-000000000004', 25, null, '00000000-0000-4000-8000-000000000001', true, null) on conflict (id) do nothing;
 insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000001', 'Gradagem', '🚜', null, true, null) on conflict (id) do nothing;
 insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000002', 'Aração', '⛏️', null, true, null) on conflict (id) do nothing;
 insert into public.servicos (id, nome, figura, foto, ativo, observacao) values ('00000000-0000-4000-8300-000000000003', 'Subsolagem', '🪨', null, true, null) on conflict (id) do nothing;

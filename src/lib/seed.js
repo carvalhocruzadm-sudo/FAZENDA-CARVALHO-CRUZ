@@ -53,7 +53,7 @@ export const TALHOES = [
   ["Águas Claras", AGUAS_CLARAS, 25, null, MILHO],
 ].map(([nome, fazenda_id, area_ha, pes, cultura_id], i) => ({
   id: id("8200", i + 1), nome, fazenda_id, area_ha, pes, cultura_id,
-  variedade: null, safra: null, data_plantio: null, previsao_colheita: null, ativo: true, observacao: null,
+  ativo: true, observacao: null,
 }));
 
 export const SERVICOS = OPERACOES.map((nome, i) => ({

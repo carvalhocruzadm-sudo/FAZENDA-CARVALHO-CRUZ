@@ -211,6 +211,7 @@ export function Lavoura(props) {
     <Secao props={props} abas={[
       ["porfazenda", "Por fazenda / talhão", PorFazenda],
       ["talhoes", "Talhões / sítios"],
+      ["safras", "Safras"],
       ["colheitas", "Colheitas"],
       ["planejamento", "Planejamento da safra", Planejamento],
       ["fazendas", "Cadastro de fazendas"],
