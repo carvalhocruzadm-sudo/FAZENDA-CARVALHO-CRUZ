@@ -4,10 +4,10 @@ import Crud from "../components/Crud";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
-  noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
+  lancamentosPorLocal, noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma, totaisLocal,
 } from "../lib/calculos";
 import { ESQUEMA, hoje } from "../lib/esquema";
-import { brl, data, nomeRef, numero } from "../lib/formato";
+import { baixarCSV, brl, data, exibir, nomeRef, numero } from "../lib/formato";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 
 /**
@@ -33,6 +33,159 @@ const unidadeDe = (m) => (m.medidor === "km" ? "km" : "h");
 
 // ─── Lavoura ────────────────────────────────────────────────────────────────
 
+/** Texto de uma linha de `lancamentosPorLocal` para a lista. */
+function descreverLancamento(l, dados) {
+  const r = l.reg;
+  const un = (colecao, v) => exibir(ESQUEMA[colecao].campos.unidade, v, dados);
+  switch (l.colecao) {
+    case "despesas": return [r.categoria, r.descricao, r.favorecido].filter(Boolean).join(" · ");
+    case "aplicacoes": {
+      const i = dados.insumos.find((x) => x.id === r.insumo_id);
+      return `${nomeRef(dados, "insumos", r.insumo_id)} · ${numero(r.quantidade)} ${i?.unidade ?? ""}${r.dose_ha ? ` (${numero(r.dose_ha, 3)}/ha)` : ""}`;
+    }
+    case "abastecimentos": return `${nomeRef(dados, "maquinas", r.maquina_id)} · ${numero(r.litros, 1)} L (${r.origem === "posto" ? "posto" : "tanque"})`;
+    case "operacoes": return [r.operacao, nomeRef(dados, "maquinas", r.maquina_id), r.operador_id && nomeRef(dados, "funcionarios", r.operador_id), r.trabalhado != null && `${numero(r.trabalhado, 1)} h/km`].filter(Boolean).join(" · ");
+    case "colheitas": return `${numero(r.quantidade)} ${un("colheitas", r.unidade)} de ${nomeRef(dados, "culturas", r.cultura_id)}`;
+    case "vendas": return [r.comprador, nomeRef(dados, "culturas", r.cultura_id), r.quantidade != null && `${numero(r.quantidade, 1)} ${un("vendas", r.unidade)}`].filter(Boolean).join(" · ");
+    default: return "";
+  }
+}
+
+const TIPOS_LANCAMENTO = ["Despesa", "Aplicação", "Diesel", "Operação", "Colheita", "Venda"];
+
+/**
+ * Tudo de uma fazenda ou de um talhão num lugar só: receita, custo,
+ * resultado, cada talhão com seus números e a lista de lançamentos com data.
+ */
+function PorFazenda({ dados }) {
+  const [periodo, setPeriodo] = useState("ano");
+  const [fazendaId, setFazendaId] = useState("");
+  const [talhaoId, setTalhaoId] = useState("");
+  const [tipo, setTipo] = useState("");
+
+  const todas = useMemo(() => lancamentosPorLocal(dados, periodo), [dados, periodo]);
+  const fazendas = [...dados.fazendas].sort((a, b) => a.nome.localeCompare(b.nome));
+  const talhoesDaFazenda = dados.talhoes
+    .filter((t) => !fazendaId || t.fazenda_id === fazendaId)
+    .sort(ESQUEMA.talhoes.ordem);
+  const talhao = dados.talhoes.find((t) => t.id === talhaoId);
+  const fazenda = dados.fazendas.find((f) => f.id === (talhao?.fazenda_id ?? fazendaId));
+
+  const doLocal = todas.filter((l) => (talhaoId ? l.talhao_id === talhaoId : !fazendaId || l.fazenda_id === fazendaId));
+  const t = totaisLocal(doLocal);
+  const area = talhao ? Number(talhao.area_ha) || 0
+    : fazendaId ? Number(fazenda?.area_ha) || soma(talhoesDaFazenda, (x) => x.area_ha)
+      : soma(dados.talhoes, (x) => x.area_ha);
+  const lista = tipo ? doLocal.filter((l) => l.tipo === tipo) : doLocal;
+
+  // Uma linha por talhão (e uma para o que é da fazenda sem talhão).
+  const porTalhao = talhaoId ? [] : [
+    ...talhoesDaFazenda.map((x) => ({ id: x.id, talhao: x, ...totaisLocal(doLocal.filter((l) => l.talhao_id === x.id)) })),
+    { id: "sem", talhao: null, ...totaisLocal(doLocal.filter((l) => !l.talhao_id)) },
+  ].filter((x) => (x.talhao && x.talhao.ativo !== false) || x.custo || x.receita || x.operacoes);
+
+  const trocarFazenda = (id) => { setFazendaId(id); setTalhaoId(""); };
+  const titulo = talhao ? `Talhão ${talhao.nome}` : fazenda ? fazenda.nome : "Todas as fazendas";
+
+  const exportar = () => baixarCSV(`lancamentos-${titulo.toLowerCase().replace(/\s+/g, "-")}-${hoje()}.csv`, [
+    ["Data", "Tipo", "Fazenda", "Talhão", "Descrição", "Custo", "Receita"],
+    ...lista.map((l) => [data(l.data), l.tipo, nomeRef(dados, "fazendas", l.fazenda_id), nomeRef(dados, "talhoes", l.talhao_id), descreverLancamento(l, dados), l.custo || "", l.receita || ""]),
+  ]);
+
+  return (
+    <>
+      <div className="barra">
+        <select className="entrada" style={{ width: "auto" }} value={fazendaId} onChange={(e) => trocarFazenda(e.target.value)} aria-label="Fazenda">
+          <option value="">Todas as fazendas</option>
+          {fazendas.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+        </select>
+        <select className="entrada" style={{ width: "auto" }} value={talhaoId} onChange={(e) => setTalhaoId(e.target.value)} aria-label="Talhão">
+          <option value="">Todos os talhões</option>
+          {talhoesDaFazenda.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
+        </select>
+        <SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} />
+      </div>
+
+      {(fazenda || talhao) && (
+        <p className="descricao">
+          <b>{titulo}</b>
+          {talhao && fazenda && ` · ${fazenda.nome}`}
+          {area ? ` · ${numero(area)} ha` : ""}
+          {talhao?.cultura_id && ` · ${nomeRef(dados, "culturas", talhao.cultura_id)}`}
+          {talhao?.variedade && ` (${talhao.variedade})`}
+          {talhao?.safra && ` · safra ${talhao.safra}`}
+          {talhao?.data_plantio && ` · plantio ${data(talhao.data_plantio)}`}
+          {talhao?.previsao_colheita && ` · colheita prevista ${data(talhao.previsao_colheita)}`}
+          {!talhao && fazenda?.posse && ` · ${exibir(ESQUEMA.fazendas.campos.posse, fazenda.posse)}`}
+          {!talhao && fazenda?.socio && ` (${fazenda.socio})`}
+        </p>
+      )}
+
+      <div className="grade">
+        <Stat rotulo="Receita (vendas)" valor={brl(t.receita)} />
+        <Stat rotulo="Custos" valor={brl(t.custo)} cor="vermelho" sub={area ? `${brl(t.custo / area)}/ha` : undefined} />
+        <Stat rotulo="Resultado" valor={brl(t.resultado)} cor={t.resultado < 0 ? "vermelho" : ""} sub={area ? `${brl(t.resultado / area)}/ha` : undefined} />
+        <Stat rotulo="Operações de máquina" valor={t.operacoes} cor="cinza" sub={t.horas ? `${numero(t.horas, 1)} h/km trabalhados` : undefined} />
+        <Stat rotulo="Colhido" valor={t.producao ? `${numero(t.producao)} ${exibir(ESQUEMA.colheitas.campos.unidade, t.unidade)}` : "—"} cor="cinza"
+          sub={t.producao && area ? `${numero(t.producao / area)} por ha` : undefined} />
+      </div>
+
+      {porTalhao.length > 0 && (
+        <div className="cartao">
+          <h2>Por talhão</h2>
+          <TabelaSimples
+            vazio="Nenhum talhão cadastrado nesta fazenda."
+            linhas={porTalhao}
+            colunas={[
+              { rotulo: "Talhão", valor: (x) => (x.talhao ? <button className="link" onClick={() => setTalhaoId(x.talhao.id)}>{x.talhao.nome}</button> : "Geral (sem talhão)") },
+              ...(fazendaId ? [] : [{ rotulo: "Fazenda", valor: (x) => (x.talhao ? nomeRef(dados, "fazendas", x.talhao.fazenda_id) : "—") }]),
+              { rotulo: "Cultura", valor: (x) => (x.talhao ? nomeRef(dados, "culturas", x.talhao.cultura_id) : "—") },
+              { rotulo: "Área", num: true, valor: (x) => (x.talhao?.area_ha ? `${numero(x.talhao.area_ha)} ha` : "—") },
+              { rotulo: "Custo", num: true, valor: (x) => brl(x.custo) },
+              { rotulo: "Custo/ha", num: true, valor: (x) => (x.talhao?.area_ha ? brl(x.custo / x.talhao.area_ha) : "—") },
+              { rotulo: "Receita", num: true, valor: (x) => brl(x.receita) },
+              { rotulo: "Resultado", num: true, valor: (x) => <b className={x.resultado < 0 ? "negativo" : "positivo"}>{brl(x.resultado)}</b> },
+              { rotulo: "Colhido", num: true, valor: (x) => (x.producao ? numero(x.producao) : "—") },
+              { rotulo: "Último lançamento", valor: (x) => data(x.ultima) },
+            ]}
+            rodape={["Total", ...(fazendaId ? [] : [""]), "", area ? `${numero(area)} ha` : "", brl(t.custo), area ? brl(t.custo / area) : "", brl(t.receita), brl(t.resultado), "", ""]}
+          />
+        </div>
+      )}
+
+      <div className="cartao">
+        <div className="barra">
+          <h2 style={{ margin: 0 }}>Lançamentos — {titulo}</h2>
+          <span className="espaco" />
+          <select className="entrada" style={{ width: "auto" }} value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Tipo de lançamento">
+            <option value="">Tudo</option>
+            {TIPOS_LANCAMENTO.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+          <button className="btn" onClick={exportar} disabled={!lista.length} title="Baixar planilha (CSV)"><Icone nome="exportar" /> Planilha</button>
+        </div>
+        <TabelaSimples
+          vazio="Nenhum lançamento com esta fazenda/talhão no período."
+          linhas={lista.slice(0, 500)}
+          colunas={[
+            { rotulo: "Data", valor: (l) => data(l.data) },
+            { rotulo: "Tipo", valor: (l) => l.tipo },
+            ...(talhaoId ? [] : [{ rotulo: "Talhão", valor: (l) => (l.talhao_id ? nomeRef(dados, "talhoes", l.talhao_id) : "Geral") }]),
+            ...(fazendaId || talhaoId ? [] : [{ rotulo: "Fazenda", valor: (l) => nomeRef(dados, "fazendas", l.fazenda_id) }]),
+            { rotulo: "Descrição", valor: (l) => descreverLancamento(l, dados) || "—" },
+            { rotulo: "Custo", num: true, valor: (l) => (l.custo ? <span className="negativo">{brl(l.custo)}</span> : "—") },
+            { rotulo: "Receita", num: true, valor: (l) => (l.receita ? <span className="positivo">{brl(l.receita)}</span> : "—") },
+          ]}
+        />
+        {lista.length > 500 && <p className="descricao" style={{ marginTop: 10 }}>Mostrando os 500 mais recentes de {lista.length}. A planilha traz todos.</p>}
+      </div>
+      <p className="descricao">
+        Custos: despesas lançadas com a fazenda ou o talhão, químicos aplicados (a custo médio) e diesel dos abastecimentos
+        com talhão. Receita: vendas com talhão. Revisões de máquina e despesas gerais sem fazenda ficam só no Financeiro.
+      </p>
+    </>
+  );
+}
+
 function Planejamento(props) {
   const { dados } = props;
   const resumo = resumoPlanejamento(dados);
@@ -54,10 +207,11 @@ function Planejamento(props) {
 export function Lavoura(props) {
   return (
     <Secao props={props} abas={[
+      ["porfazenda", "Por fazenda / talhão", PorFazenda],
       ["talhoes", "Talhões / sítios"],
       ["colheitas", "Colheitas"],
       ["planejamento", "Planejamento da safra", Planejamento],
-      ["fazendas", "Fazendas"],
+      ["fazendas", "Cadastro de fazendas"],
       ["culturas", "Culturas"],
     ]} />
   );

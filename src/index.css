@@ -172,6 +172,7 @@ table { border-collapse: collapse; }
 
 .positivo { color: var(--verde); }
 .negativo { color: var(--vermelho); }
+.link { background: none; border: 0; padding: 0; color: var(--verde); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
 
 .lista-alertas { list-style: none; margin: 0; padding: 0; }
 .lista-alertas li { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid #f0f0ea; }
