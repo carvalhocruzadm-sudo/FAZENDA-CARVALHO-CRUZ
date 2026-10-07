@@ -280,3 +280,8 @@ table { border-collapse: collapse; }
 .mot-salvo span { font-size: 120px; }
 .mot-salvo b { font-size: 36px; color: var(--verde); }
 .mot-salvo small { font-size: 18px; color: var(--texto-2); max-width: 320px; }
+a.btn { text-decoration: none; color: inherit; }
+@media (max-width: 500px) {
+  .mot-rota { flex-direction: column; gap: 4px; }
+  .mot-rota .seta { transform: rotate(90deg); }
+}
