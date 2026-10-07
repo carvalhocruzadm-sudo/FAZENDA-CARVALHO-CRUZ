@@ -100,6 +100,19 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
   const [estado, setEstado] = useState({ enviando: false, erro: null, enviada: false });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
 
+  // Cultura primeiro (citros não mostra área de grão), depois a fazenda e o talhão.
+  const SEM_CULTURA = "__sem";
+  const chaveCultura = (t) => t.cultura_id || SEM_CULTURA;
+  const nomeFazenda = (t) => t.fazenda || "Sem fazenda";
+  const culturasComTalhao = [
+    ...base.culturas.filter((c) => base.talhoes.some((t) => t.cultura_id === c.id)).sort((a, b) => ordenar(a.nome, b.nome)),
+    ...(base.talhoes.some((t) => !t.cultura_id) ? [{ id: SEM_CULTURA, nome: "Sem cultura definida" }] : []),
+  ];
+  const [culturaSel, setCulturaSel] = useState(culturasComTalhao.length === 1 ? culturasComTalhao[0].id : "");
+  const talhoesDaCultura = base.talhoes.filter((t) => culturaSel && chaveCultura(t) === culturaSel);
+  const fazendas = [...new Set(talhoesDaCultura.map(nomeFazenda))].sort(ordenar);
+  const [fazenda, setFazenda] = useState("");
+  const talhoesDaFazenda = talhoesDaCultura.filter((t) => nomeFazenda(t) === fazenda).sort((a, b) => ordenar(a.nome, b.nome));
   const talhao = base.talhoes.find((t) => t.id === f.talhao_id);
   const cultura = base.culturas.find((c) => c.id === talhao?.cultura_id);
   const area = Number(f.area_ha) || 0;
@@ -125,6 +138,8 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
   });
 
   const validar = () => {
+    if (!culturaSel) return "Escolha a cultura.";
+    if (!fazenda) return "Escolha a fazenda.";
     if (!f.talhao_id) return "Escolha o talhão.";
     if (area <= 0) return "Informe a área a aplicar (ha).";
     if (itens.some((i) => i.dose_ha <= 0)) return "Informe a dose por hectare de todos os produtos.";
@@ -175,14 +190,27 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
         <div className="campo"><span><label>Agrônomo</label></span><input value={f.agronomo} onChange={(e) => set("agronomo", e.target.value)} /></div>
         <div className="campo"><span><label>Data</label></span><input type="date" value={f.data} onChange={(e) => set("data", e.target.value)} /></div>
         <div className="campo largo">
+          <span><label>Cultura da aplicação</label><em> *</em></span>
+          <select value={culturaSel} onChange={(e) => { setCulturaSel(e.target.value); setFazenda(""); setF((x) => ({ ...x, talhao_id: "", area_ha: "" })); }}>
+            <option value="">— escolha a cultura —</option>
+            {culturasComTalhao.map((c) => <option key={c.id} value={c.id}>{c.nome} ({base.talhoes.filter((t) => chaveCultura(t) === c.id).length} talhões)</option>)}
+          </select>
+        </div>
+        <div className="campo largo">
+          <span><label>Fazenda</label><em> *</em></span>
+          <select value={fazenda} onChange={(e) => { setFazenda(e.target.value); setF((x) => ({ ...x, talhao_id: "", area_ha: "" })); }} disabled={!culturaSel}>
+            <option value="">{culturaSel ? "— escolha a fazenda —" : "Escolha a cultura primeiro"}</option>
+            {fazendas.map((n) => <option key={n} value={n}>{n} ({talhoesDaCultura.filter((t) => nomeFazenda(t) === n).length} talhões)</option>)}
+          </select>
+        </div>
+        <div className="campo largo">
           <span><label>Talhão</label><em> *</em></span>
-          <select value={f.talhao_id} onChange={(e) => escolherTalhao(e.target.value)}>
-            <option value="">— escolha —</option>
-            {[...base.talhoes].sort((a, b) => ordenar(a.fazenda, b.fazenda) || ordenar(a.nome, b.nome)).map((t) => (
-              <option key={t.id} value={t.id}>{[t.fazenda, t.nome].filter(Boolean).join(" · ")}{t.area_ha ? ` (${numero(t.area_ha)} ha)` : ""}</option>
+          <select value={f.talhao_id} onChange={(e) => escolherTalhao(e.target.value)} disabled={!fazenda}>
+            <option value="">{fazenda ? "— escolha o talhão —" : "Escolha a fazenda primeiro"}</option>
+            {talhoesDaFazenda.map((t) => (
+              <option key={t.id} value={t.id}>{t.nome}{t.area_ha ? ` (${numero(t.area_ha)} ha)` : ""}</option>
             ))}
           </select>
-          {cultura && <small>Cultura: {cultura.nome}</small>}
         </div>
         <div className="campo"><span><label>Área a aplicar (ha)</label><em> *</em></span><input type="number" inputMode="decimal" step="any" value={f.area_ha} onChange={(e) => set("area_ha", e.target.value)} /></div>
         <div className="campo"><span><label>Calda (L/ha)</label></span><input type="number" inputMode="decimal" step="any" value={f.calda_l_ha} onChange={(e) => set("calda_l_ha", e.target.value)} /></div>
@@ -245,6 +273,13 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
   const doCadastro = produtos.filter((p) => p.validade).map((p) => ({ insumo_id: p.id, validade: p.validade, quantidade: p.estoque_inicial, lote: "Estoque do cadastro" }));
   const todosLotes = [...(base.lotes ?? []), ...doCadastro];
 
+  const escondidos = produtos.length - visiveis.length;
+  const vazioMsg = produtos.length === 0
+    ? "Nenhum produto cadastrado na fazenda ainda."
+    : soSaldo && !termo
+      ? `Nenhum produto com saldo (${produtos.length} cadastrados, todos com saldo zerado). Desmarque “Só com saldo” para ver todos. Se o estoque deveria aparecer, peça para a fazenda rodar de novo o schema.sql no Supabase.`
+      : "Nenhum produto encontrado.";
+
   let corpo;
   if (visao === "validade") {
     const porId = new Map(produtos.map((p) => [p.id, p]));
@@ -271,7 +306,7 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
       </>
     );
   } else if (visao === "produto") {
-    corpo = <TabelaSimples vazio="Nenhum produto encontrado." linhas={visiveis} colunas={colunas} />;
+    corpo = <TabelaSimples vazio={vazioMsg} linhas={visiveis} colunas={colunas} />;
   } else {
     const grupos = new Map();
     for (const p of visiveis) {
@@ -295,7 +330,7 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
   return (
     <>
       <div className="grade">
-        <Stat rotulo="Produtos com saldo" valor={comSaldo.length} />
+        <Stat rotulo="Produtos com saldo" valor={comSaldo.length} sub={`${produtos.length} cadastrados`} />
         <Stat rotulo="Estoque baixo" valor={produtos.filter((p) => p.baixo && p.saldo > 0).length} cor="laranja" />
         <Stat rotulo={`Lotes vencidos ou a vencer em ${DIAS_ALERTA} dias`} valor={vencendo} cor={vencendo ? "vermelho" : "cinza"} />
       </div>
@@ -305,7 +340,7 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
             {VISOES.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
           </select>
           <input className="entrada busca" placeholder="Buscar produto, fabricante, princípio ativo…" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar" />
-          <label className="marcar"><input type="checkbox" checked={soSaldo} onChange={(e) => setSoSaldo(e.target.checked)} /> Só com saldo</label>
+          <label className="marcar"><input type="checkbox" checked={soSaldo} onChange={(e) => setSoSaldo(e.target.checked)} /> Só com saldo{soSaldo && escondidos > 0 ? ` (${escondidos} escondidos)` : ""}</label>
         </div>
         {corpo}
       </div>
