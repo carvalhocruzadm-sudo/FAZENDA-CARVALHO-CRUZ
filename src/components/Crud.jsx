@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
-import { exibir, numero } from "../lib/formato";
+import { baixarCSV, exibir, numero } from "../lib/formato";
 import Formulario from "./Formulario";
 import { Icone, Modal, SeletorPeriodo } from "./ui";
 
@@ -26,20 +26,13 @@ function referencias(dados, colecao, id) {
 }
 
 function exportarCSV(nome, colunas, def, linhas, dados) {
-  const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const cab = colunas.map((c) => esc(def.campos[c].rotulo)).join(";");
   const corpo = linhas.map((l) => colunas.map((c) => {
     const campo = def.campos[c];
     const v = l[c];
-    if (["numero", "dinheiro"].includes(campo.tipo)) return v == null ? "" : String(v).replace(".", ",");
-    return esc(exibir(campo, v, dados));
-  }).join(";"));
-  const blob = new Blob(["﻿" + [cab, ...corpo].join("\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${nome}-${hoje()}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+    if (["numero", "dinheiro"].includes(campo.tipo)) return v == null ? "" : Number(v);
+    return exibir(campo, v, dados);
+  }));
+  baixarCSV(`${nome}-${hoje()}.csv`, [colunas.map((c) => def.campos[c].rotulo), ...corpo]);
 }
 
 /**
@@ -65,7 +58,14 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
     if (def.lancamento) lista = noPeriodo(lista, periodo);
     const termo = busca.trim().toLowerCase();
     if (termo) {
-      lista = lista.filter((l) => colunas.some((c) => String(exibir(def.campos[c], l[c], dados)).toLowerCase().includes(termo)));
+      // Linhas que apontam para um produto também são achadas pelo fabricante e pelo princípio ativo dele.
+      const insumos = new Map((dados.insumos ?? []).map((i) => [i.id, i]));
+      const extra = (l) => colunas
+        .filter((c) => def.campos[c].tipo === "ref" && def.campos[c].colecao === "insumos")
+        .map((c) => insumos.get(l[c])).filter(Boolean)
+        .map((i) => `${i.fabricante ?? ""} ${i.principio_ativo ?? ""}`).join(" ");
+      lista = lista.filter((l) => extra(l).toLowerCase().includes(termo)
+        || colunas.some((c) => String(exibir(def.campos[c], l[c], dados)).toLowerCase().includes(termo)));
     }
     const ordem = def.ordem ?? ((a, b) => String(b.data ?? "").localeCompare(String(a.data ?? "")) || String(b.atualizado_em ?? "").localeCompare(String(a.atualizado_em ?? "")));
     return [...lista].sort(ordem);

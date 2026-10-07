@@ -1,15 +1,16 @@
-import { Component, useEffect, useState } from "react";
+import { Component, useCallback, useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 import LancarComprovante from "./components/LancarComprovante";
-import { Icone } from "./components/ui";
+import { Icone, Modal } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { lerCompartilhado } from "./lib/arquivos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
-import Login from "./pages/Login";
+import Agronomo from "./pages/Agronomo";
+import Login, { NovaSenha } from "./pages/Login";
 import Painel from "./pages/Painel";
-import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
+import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Usuarios, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 
 const MENU = [
@@ -22,6 +23,7 @@ const MENU = [
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],
   ["fretes", "Caminhões e fretes", "caminhao", Fretes],
   ["equipe", "Funcionários", "pessoas", Equipe],
+  ["usuarios", "Usuários", "pessoas", Usuarios],
   ["sync", "Sincronização", "nuvem", Sincronizacao],
 ];
 
@@ -49,6 +51,61 @@ function AvisoAtualizacao() {
   );
 }
 
+function TrocarSenha({ email, aoFechar }) {
+  const [atual, setAtual] = useState("");
+  const [nova, setNova] = useState("");
+  const [repetida, setRepetida] = useState("");
+  const [erro, setErro] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const [pronto, setPronto] = useState(false);
+
+  const salvar = async (e) => {
+    e.preventDefault();
+    setErro(null);
+    if (nova.length < 6) { setErro("A nova senha precisa ter pelo menos 6 caracteres."); return; }
+    if (nova !== repetida) { setErro("As duas senhas novas não são iguais."); return; }
+    setSalvando(true);
+    // Confere a senha atual antes de trocar.
+    const { error: erroAtual } = await supabase.auth.signInWithPassword({ email, password: atual });
+    if (erroAtual) {
+      setSalvando(false);
+      setErro("A senha atual está incorreta.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: nova });
+    setSalvando(false);
+    if (error) setErro(error.message);
+    else setPronto(true);
+  };
+
+  return (
+    <Modal titulo="Trocar senha" aoFechar={aoFechar}>
+      {pronto ? (
+        <>
+          <p>Senha trocada com sucesso.</p>
+          <button className="btn primario" onClick={aoFechar}>Fechar</button>
+        </>
+      ) : (
+        <form onSubmit={salvar} style={{ display: "grid", gap: 12 }}>
+          {erro && <div className="aviso">{erro}</div>}
+          <label className="campo"><span>Senha atual</span>
+            <input type="password" autoComplete="current-password" value={atual} onChange={(e) => setAtual(e.target.value)} required />
+          </label>
+          <label className="campo"><span>Nova senha</span>
+            <input type="password" autoComplete="new-password" value={nova} onChange={(e) => setNova(e.target.value)} required />
+          </label>
+          <label className="campo"><span>Repita a nova senha</span>
+            <input type="password" autoComplete="new-password" value={repetida} onChange={(e) => setRepetida(e.target.value)} required />
+          </label>
+          <button className="btn primario" style={{ justifyContent: "center" }} disabled={salvando}>
+            {salvando ? "Salvando…" : "Salvar nova senha"}
+          </button>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 function Sistema({ sair, email }) {
   const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
   const [tela, setTela] = useState(() => {
@@ -65,6 +122,8 @@ function Sistema({ sair, email }) {
       .then((c) => setCompartilhado(c ?? { arquivo: null, texto: "" }))
       .catch(() => setCompartilhado({ arquivo: null, texto: "" }));
   }, []);
+  const [trocandoSenha, setTrocandoSenha] = useState(false);
+  const fecharTrocaSenha = useCallback(() => setTrocandoSenha(false), []);
 
   const irPara = (id) => {
     setTela(id);
@@ -92,6 +151,11 @@ function Sistema({ sair, email }) {
         </nav>
         <div className="rodape">
           {email && <div style={{ marginBottom: 8, wordBreak: "break-all" }}>{email}</div>}
+          {sair && email && (
+            <button className="btn" style={{ marginBottom: 8 }} onClick={() => { setTrocandoSenha(true); setMenuAberto(false); }}>
+              <Icone nome="chave" /> Trocar senha
+            </button>
+          )}
           {sair && <button className="btn" onClick={sair}><Icone nome="sair" /> Sair</button>}
         </div>
       </aside>
@@ -114,6 +178,7 @@ function Sistema({ sair, email }) {
           aoFechar={() => setCompartilhado(null)}
           aoSalvar={() => { setCompartilhado(null); irPara("financeiro"); }} />
       )}
+      {trocandoSenha && <TrocarSenha email={email} aoFechar={fecharTrocaSenha} />}
     </div>
   );
 }
@@ -121,16 +186,21 @@ function Sistema({ sair, email }) {
 /** Com Supabase, só entra quem tem login. Sem ele, modo demonstração. */
 function Portao() {
   const [sessao, setSessao] = useState(undefined);
+  const [recuperando, setRecuperando] = useState(false);
 
   useEffect(() => {
     if (!supabaseConfigurado) return undefined;
     supabase.auth.getSession().then(({ data }) => setSessao(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSessao(s));
+    const { data } = supabase.auth.onAuthStateChange((evento, s) => {
+      if (evento === "PASSWORD_RECOVERY") setRecuperando(true);
+      setSessao(s);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
   if (!supabaseConfigurado) return <Sistema />;
   if (sessao === undefined) return <div className="vazio">Verificando acesso…</div>;
+  if (recuperando && sessao) return <NovaSenha aoConcluir={() => setRecuperando(false)} />;
   if (!sessao) return <Login />;
   return <Sistema email={sessao.user.email} sair={() => supabase.auth.signOut()} />;
 }
@@ -152,7 +222,12 @@ class ProtecaoErro extends Component {
   }
 }
 
+/** O link do agrônomo (/agronomo/CÓDIGO) abre direto, sem login. */
+const tokenAgronomo = () => window.location.pathname.match(/^\/agronomo\/([A-Za-z0-9]{16,})\/?$/)?.[1];
+
 export default function App() {
+  const token = tokenAgronomo();
+  if (token) return <ProtecaoErro><Agronomo token={token} /></ProtecaoErro>;
   return (
     <ProtecaoErro>
       <Portao />
