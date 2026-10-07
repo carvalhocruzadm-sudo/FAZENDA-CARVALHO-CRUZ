@@ -5,11 +5,13 @@ import {
 } from "../components/CampoUI";
 import { useDados } from "../hooks/useDados";
 import { Entrada, Saida } from "./CampoDeposito";
+import CampoTicket from "./CampoTicket";
 import {
   falar, lancamentosDoPA, maquinasDoPA, operadores, paraNumero, servicoPorNome, servicos, vibrar,
 } from "../lib/campo";
 import { hoje, prepararRegistro } from "../lib/esquema";
 import { guardarFotosDosCadastros } from "../lib/fotos";
+import { supabase, supabaseConfigurado } from "../lib/supabase";
 import { numero } from "../lib/formato";
 
 /**
@@ -18,6 +20,7 @@ import { numero } from "../lib/formato";
  *   /campo/abastecer            → escolher o trator
  *   /campo/abastecer/<máquina>  → abastecimento no PA
  *   /campo/saida, /campo/entrada → depósito de químicos (CampoDeposito.jsx)
+ *   /campo/ticket               → ticket da balança (venda) (CampoTicket.jsx)
  *
  * Uma pergunta por tela, figura grande, poucas palavras e o botão 🔊 que lê
  * a pergunta em voz alta.
@@ -332,18 +335,22 @@ function EscolherTrator({ dados, irPara }) {
   );
 }
 
-const FALA_INICIO = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, ou guardar produto no depósito.";
+const FALA_INICIO = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, guardar produto no depósito, ou lançar o ticket da balança.";
 
-function Inicio({ irPara, sair, voltarAoSistema }) {
-  useEffect(() => { falar(FALA_INICIO); }, []);
+const FALA_INICIO_SEM_TICKET = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, ou guardar produto no depósito.";
+
+function Inicio({ irPara, sair, voltarAoSistema, podeTicket }) {
+  const fala = podeTicket ? FALA_INICIO : FALA_INICIO_SEM_TICKET;
+  useEffect(() => { falar(fala); }, [fala]);
   const opcoes = [
     ["/campo/abastecer", "⛽", "Abastecer trator"],
     ["/campo/saida", "📤", "Tirar do depósito (pulverização)"],
     ["/campo/entrada", "📥", "Guardar no depósito"],
+    ...(podeTicket ? [["/campo/ticket", "🧾", "Ticket da balança (venda)"]] : []),
   ];
   return (
     <div className="campo-app">
-      <Topo titulo="Fazenda Carvalho Cruz" figura="🌱" pergunta={FALA_INICIO} />
+      <Topo titulo="Fazenda Carvalho Cruz" figura="🌱" pergunta={fala} />
       <div className="campo-corpo">
         <Pergunta figura="👋">O que vai fazer?</Pergunta>
         <div className="menu-campo">
@@ -363,11 +370,41 @@ function Inicio({ irPara, sair, voltarAoSistema }) {
 }
 
 /**
+ * O ticket da balança aparece para quem tem o sistema completo e, nas contas
+ * de campo, só para os logins marcados em Usuários → "Lança ticket da balança"
+ * (o banco responde pela função campo_ticket e também barra quem não pode).
+ * A resposta fica guardada no aparelho para funcionar sem internet.
+ */
+function usePodeTicket(email, contaCampo) {
+  const chave = `fcc-ticket:${String(email ?? "").toLowerCase()}`;
+  const [pode, setPode] = useState(() => {
+    try { return localStorage.getItem(chave) === "1"; } catch { return false; }
+  });
+  const perguntar = contaCampo && supabaseConfigurado && Boolean(email);
+  useEffect(() => {
+    if (!perguntar) return undefined;
+    let vivo = true;
+    const ver = () => supabase.rpc("campo_ticket").then(({ data, error }) => {
+      // Sem resposta (sem internet, banco sem a função): fica o que já se sabia.
+      if (!vivo || error) return;
+      try { localStorage.setItem(chave, data ? "1" : "0"); } catch { /* sem armazenamento */ }
+      setPode(Boolean(data));
+    });
+    ver();
+    const aoVoltar = () => document.visibilityState === "visible" && ver();
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => { vivo = false; document.removeEventListener("visibilitychange", aoVoltar); };
+  }, [perguntar, chave]);
+  return contaCampo && supabaseConfigurado ? pode : true;
+}
+
+/**
  * `voltarAoSistema` só existe para quem tem o sistema completo; a conta do
  * Modo Campo fica presa aqui.
  */
-export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema }) {
+export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema, email }) {
   const { dados, pronto, erro, salvar } = useDados();
+  const podeTicket = usePodeTicket(email, !voltarAoSistema);
 
   useEffect(() => { if (pronto) guardarFotosDosCadastros(dados); }, [pronto, dados]);
 
@@ -390,7 +427,11 @@ export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema }) {
       return <Saida key={caminho} {...props} />;
     case "entrada":
       return <Entrada key={caminho} {...props} />;
+    case "ticket":
+      if (podeTicket) return <CampoTicket key={caminho} {...props} />;
+      break;
     default:
-      return <Inicio irPara={irPara} sair={sair} voltarAoSistema={voltarAoSistema} />;
+      break;
   }
+  return <Inicio irPara={irPara} sair={sair} voltarAoSistema={voltarAoSistema} podeTicket={podeTicket} />;
 }

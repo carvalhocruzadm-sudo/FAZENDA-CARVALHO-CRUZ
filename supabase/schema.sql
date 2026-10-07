@@ -8,7 +8,9 @@
 -- ════════════════════════════════════════════════════════════════════════
 
 -- Conta do Modo Campo (o celular dos tratoristas): só vê os cadastros e só
--- lança abastecimento, horímetro e as saídas/entradas do depósito de químicos.
+-- lança abastecimento, horímetro, as saídas/entradas do depósito de químicos e
+-- o ticket da balança (só quem está marcado em Usuários → "Lança ticket da
+-- balança"; e só vê os tickets que ainda faltam completar, sem preço).
 -- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
 -- aqui (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
@@ -22,6 +24,19 @@ begin
   return exists (
     select 1 from public.usuarios u
     where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil = 'campo' and coalesce(u.ativo, true)
+  );
+end $$;
+
+-- Login de campo que pode lançar o ticket da balança (Usuários → "Lança ticket
+-- da balança no celular"). Os outros tratoristas nem veem o botão.
+create or replace function public.campo_ticket() returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if to_regclass('public.usuarios') is null then return false; end if;
+  return exists (
+    select 1 from public.usuarios u
+    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil = 'campo'
+      and coalesce(u.ativo, true) and coalesce(u.ticket_campo, false)
   );
 end $$;
 
@@ -39,6 +54,7 @@ alter table public.culturas add column if not exists peso_saca numeric;
 alter table public.culturas add column if not exists produtividade text;
 alter table public.culturas add column if not exists turma_colheita boolean;
 alter table public.culturas add column if not exists custo_turma_ton numeric;
+alter table public.culturas add column if not exists turmas text;
 alter table public.culturas add column if not exists ativo boolean;
 alter table public.culturas add column if not exists observacao text;
 alter table public.culturas enable row level security;
@@ -157,6 +173,7 @@ alter table public.usuarios add column if not exists funcionario_id uuid;
 alter table public.usuarios add column if not exists nome text;
 alter table public.usuarios add column if not exists email text;
 alter table public.usuarios add column if not exists perfil text;
+alter table public.usuarios add column if not exists ticket_campo boolean;
 alter table public.usuarios add column if not exists telefone text;
 alter table public.usuarios add column if not exists ativo boolean;
 alter table public.usuarios add column if not exists observacao text;
@@ -651,6 +668,8 @@ alter table public.vendas add column if not exists motorista_id uuid;
 alter table public.vendas add column if not exists caminhao_id uuid;
 alter table public.vendas add column if not exists vencimento date;
 alter table public.vendas add column if not exists nota_fiscal text;
+alter table public.vendas add column if not exists a_conferir boolean;
+alter table public.vendas add column if not exists foto_ticket text;
 alter table public.vendas add column if not exists observacao text;
 create index if not exists vendas_data_idx on public.vendas (data);
 alter table public.vendas enable row level security;
@@ -660,6 +679,12 @@ create policy "equipe acessa vendas" on public.vendas
 drop policy if exists "campo le vendas" on public.vendas;
 drop policy if exists "campo lanca vendas" on public.vendas;
 drop policy if exists "campo corrige vendas" on public.vendas;
+create policy "campo le vendas" on public.vendas
+  for select to authenticated using ((select public.eh_campo()) and a_conferir = true and (select public.campo_ticket()));
+create policy "campo lanca vendas" on public.vendas
+  for insert to authenticated with check ((select public.eh_campo()) and a_conferir = true and (select public.campo_ticket()));
+create policy "campo corrige vendas" on public.vendas
+  for update to authenticated using ((select public.eh_campo()) and a_conferir = true and (select public.campo_ticket())) with check ((select public.eh_campo()) and a_conferir = true and (select public.campo_ticket()));
 
 -- Recebimentos
 create table if not exists public.recebimentos (

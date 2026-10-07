@@ -166,6 +166,7 @@ export const ESQUEMA = {
       produtividade: { tipo: "opcoes", rotulo: "Produtividade medida em", opcoes: MEDIDAS_PRODUTIVIDADE, padrao: "sc_ha" },
       turma_colheita: { tipo: "booleano", rotulo: "Colheita feita por turma (paga por tonelada)" },
       custo_turma_ton: { tipo: "dinheiro", rotulo: "Valor padrão da turma por tonelada", mostrarSe: (r) => r.turma_colheita, dica: "O ticket já vem com ele; dá para mudar em cada carga" },
+      turmas: { tipo: "texto", rotulo: "Turmas de colheita (para o celular)", mostrarSe: (r) => r.turma_colheita, dica: "Separe por vírgula. Ex.: Turma do Zé, Turma do Tião. São os botões que aparecem no ticket do Modo Campo" },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
@@ -265,12 +266,13 @@ export const ESQUEMA = {
 
   usuarios: {
     titulo: "Usuários", singular: "usuário", icone: "pessoas",
-    descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users). Perfil Tratorista: esse login só abre o Modo Campo (abastecimento e depósito), no celular.",
+    descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users). Perfil Tratorista: esse login só abre o Modo Campo (abastecimento e depósito), no celular. O ticket da balança só aparece no celular de quem tiver marcado \"Lança ticket da balança\".",
     campos: {
       funcionario_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Funcionário", dica: "Escolha para trazer o nome e o telefone do cadastro de funcionários" },
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
       email: { tipo: "texto", rotulo: "E-mail de acesso", obrigatorio: true },
-      perfil: { tipo: "opcoes", rotulo: "Perfil", padrao: "operador", opcoes: [["admin", "Administrador (tudo)"], ["gerente", "Gerente"], ["operador", "Operador (lança dados)"], ["consulta", "Só consulta"], ["campo", "Tratorista (só o Modo Campo, no celular)"]] },
+      perfil: { tipo: "opcoes", rotulo: "Perfil", padrao: "operador", opcoes: [["admin", "Administrador (tudo)"], ["gerente", "Gerente"], ["operador", "Operador (lança dados)"], ["consulta", "Só consulta"], ["campo", "Tratorista / campo (só o Modo Campo, no celular)"]] },
+      ticket_campo: { tipo: "booleano", rotulo: "Lança ticket da balança no celular", mostrarSe: (r) => r.perfil === "campo", dica: "Só quem estiver marcado vê o botão do ticket no Modo Campo" },
       telefone: { tipo: "texto", rotulo: "Telefone" },
       ativo: { tipo: "booleano", rotulo: "Acesso liberado", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
@@ -281,7 +283,7 @@ export const ESQUEMA = {
         return f ? { nome: f.nome, telefone: f.telefone ?? reg.telefone } : {};
       },
     },
-    colunas: ["nome", "funcionario_id", "email", "perfil", "telefone", "ativo"],
+    colunas: ["nome", "funcionario_id", "email", "perfil", "ticket_campo", "telefone", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => r.nome,
   },
@@ -646,7 +648,10 @@ export const ESQUEMA = {
 
   vendas: {
     titulo: "Vendas da produção", singular: "venda", icone: "venda", lancamento: true,
-    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos. Os tickets da balança lançados pelo link rápido chegam aqui sem comprador e sem preço: é só abrir e completar.",
+    // O celular do Modo Campo lança o ticket e só enxerga os que ainda não foram completados (sem preço).
+    // Só os logins de campo marcados em Usuários → "Lança ticket da balança".
+    campo: "grava", campoSql: "a_conferir = true and (select public.campo_ticket())",
+    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos. Os tickets da balança lançados pelo link rápido chegam aqui sem comprador e sem preço: é só abrir e completar. Os lançados no celular (Modo Campo) vêm com a foto do ticket e marcados \"Falta completar\": complete e desmarque.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       comprador: { tipo: "sugestao", rotulo: "Comprador", sugestoesDe: ["vendas", "comprador"] },
@@ -677,6 +682,8 @@ export const ESQUEMA = {
       caminhao_id: { tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio", filtro: (m) => m.categoria === "caminhao" },
       vencimento: { tipo: "data", rotulo: "Vencimento" },
       nota_fiscal: { tipo: "texto", rotulo: "Nº da nota fiscal" },
+      a_conferir: { tipo: "booleano", rotulo: "Falta completar (ticket lançado no celular)" },
+      foto_ticket: { tipo: "foto", rotulo: "Foto do ticket da balança", lado: 1600 },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
     aoMudar: {
@@ -712,7 +719,7 @@ export const ESQUEMA = {
     validar: (r) => (r.quantidade == null && r.peso_liquido == null ? "Informe o peso ou a quantidade." : null),
     // Carga de vários talhões: peso, quantidade e custos divididos pela área (entrada/saída vão para a observação).
     porTalhao: { dividir: ["peso_liquido", "volumes", "desconto_kg", "quantidade", "frete_cobrado", "frete", "comissao", "juros"], zerar: ["peso_entrada", "peso_saida"] },
-    colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "turma", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor"],
+    colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "turma", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor", "a_conferir"],
   },
 
   recebimentos: {

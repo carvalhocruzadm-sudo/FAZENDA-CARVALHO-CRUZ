@@ -112,9 +112,9 @@ export function Teclado({ valor, aoMudar, casas = 1 }) {
   );
 }
 
-export function FotoComprovante({ caminho, aoTirar, texto }) {
+export function FotoComprovante({ caminho, aoTirar, texto, lado = 1280 }) {
   return (
-    <BotaoFoto aoTirar={aoTirar} lado={1280} camera="environment" className={`campo-foto-btn ${caminho ? "ok" : ""}`}>
+    <BotaoFoto aoTirar={aoTirar} lado={lado} camera="environment" className={`campo-foto-btn ${caminho ? "ok" : ""}`}>
       {caminho ? <Foto caminho={caminho} className="miniatura" /> : <span className="emoji">📷</span>}
       <span>{caminho ? "Foto tirada ✓" : texto}</span>
     </BotaoFoto>
