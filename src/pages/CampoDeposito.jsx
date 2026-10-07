@@ -1,22 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   Cartao, EscolherPessoa, FotoComprovante, FotoOuInicial, FotoProduto, Ouvir, Pergunta, Rodape, Teclado, Topo,
 } from "../components/CampoUI";
 import { Foto } from "../components/Foto";
-import LeitorQR from "../components/LeitorQR";
 import { falar, operadores, paraNumero, vibrar } from "../lib/campo";
 import {
-  bipar, emEmbalagens, itensDaOrdem, ordensAbertas, ordensSeparadas, produtoDoCodigo, saidaDaSeparacao, sobraDaOrdem,
+  emEmbalagens, itensDaOrdem, ordensAbertas, ordensSeparadas, saidaDaSeparacao, sobraDaOrdem,
 } from "../lib/deposito";
 import { hoje, prepararRegistro } from "../lib/esquema";
 import { data as dataBR, nomeRef, numero } from "../lib/formato";
 
 /**
  * Depósito de químicos no Modo Campo:
- *   /campo/saida           → QR-1: as pulverizações para separar, produto por produto
- *   /campo/entrada         → QR-2: produto novo (compra) ou sobra que voltou
- *   /campo/produto/<id>    → o QR colado na frente de cada produto
+ *   /campo/saida    → tirar do depósito: as pulverizações para separar, produto por produto
+ *   /campo/entrada  → guardar no depósito: produto novo (compra) ou sobra que voltou
  */
 
 // ─── Peças ──────────────────────────────────────────────────────────────────
@@ -90,15 +88,14 @@ function CartaoOrdem({ dados, ordem, aoTocar }) {
   );
 }
 
-// ─── QR-1: Saída (separar a pulverização) ──────────────────────────────────
+// ─── Tirar do depósito (separar a pulverização) ──────────────────────────────────
 
 export function Saida({ dados, salvar, irPara }) {
   const [passo, setPasso] = useState("ordem");
   const [ordemId, setOrdemId] = useState(null);
   const [operadorId, setOperadorId] = useState(null);
   const [itemId, setItemId] = useState(null);
-  const [resultado, setResultado] = useState(null); // { certo, lido }
-  const [lendo, setLendo] = useState(false);
+  const [faltamDepois, setFaltamDepois] = useState(0);
   const [erro, setErro] = useState(null);
 
   const ordem = dados.pulverizacoes.find((o) => o.id === ordemId);
@@ -106,40 +103,24 @@ export function Saida({ dados, salvar, irPara }) {
   const atual = itens.find((x) => x.item.id === itemId);
   const ir = (p) => { setErro(null); setPasso(p); window.scrollTo(0, 0); };
 
-  const separar = async (conferidoPorQR) => {
+  /** "Peguei este": lança a saída do produto e, se era o último, marca a ordem como separada. */
+  const separar = async () => {
     try {
-      const { reg, erro: e } = prepararRegistro("aplicacoes", saidaDaSeparacao(ordem, atual.item, operadorId, hoje(), conferidoPorQR));
+      const { reg, erro: e } = prepararRegistro("aplicacoes", saidaDaSeparacao(ordem, atual.item, operadorId, hoje()));
       if (e) throw new Error(e);
       await salvar("aplicacoes", reg);
       const faltam = itens.filter((x) => !x.separado && x.item.id !== atual.item.id);
       if (!faltam.length) {
         await salvar("pulverizacoes", { ...ordem, situacao: "separada", operador_id: ordem.operador_id ?? operadorId });
       }
-      return faltam.length;
+      vibrar([60, 40, 60]);
+      falar(faltam.length ? `Certo! ${atual.insumo.nome} separado.` : "Certo! Todos os produtos separados.");
+      setFaltamDepois(faltam.length);
+      ir("certo");
     } catch (err) {
       setErro(String(err?.message ?? err));
-      return null;
     }
   };
-
-  const aoLer = useCallback(async (lido) => {
-    setLendo(false);
-    const produto = produtoDoCodigo(dados, lido);
-    const certo = produto?.id === atual.insumo.id;
-    bipar(certo);
-    vibrar(certo ? [60, 40, 60] : [400, 100, 400]);
-    if (certo) {
-      falar(`Certo! ${atual.insumo.nome}.`);
-      const faltam = await separar(true);
-      setResultado({ certo, produto, faltam });
-    } else {
-      falar(produto ? `Produto errado! Esse é ${produto.nome}. Pegue ${atual.insumo.nome}.` : "Não conheço esse código. Tente de novo.");
-      setResultado({ certo, produto });
-    }
-    ir("resultado");
-  }, [dados, atual]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (lendo) return <LeitorQR aoLer={aoLer} aoFechar={() => setLendo(false)} titulo={`Aponte para o QR do ${atual.insumo.nome}`} />;
 
   switch (passo) {
     case "ordem": {
@@ -194,74 +175,35 @@ export function Saida({ dados, salvar, irPara }) {
 
     case "produto": {
       const e = emEmbalagens(atual.insumo, atual.item.quantidade);
-      const fala = `Pegue ${atual.insumo.nome}: ${e.fala}. Depois toque no botão verde e aponte a câmera para o QR code do produto.`;
+      const fala = `Pegue ${atual.insumo.nome}: ${e.fala}. Confira se é igual à foto e toque no botão verde.`;
       return (
         <Tela passo={passo} figura="📤" titulo={nomeRef(dados, "talhoes", ordem?.talhao_id)} fala={fala}
           rodape={(
             <footer className="campo-rodape">
               <button type="button" className="campo-btn cinza" onClick={() => ir("lista")}>◀ Voltar</button>
-              <button type="button" className="campo-btn verde" onClick={() => setLendo(true)}>📷 Conferir</button>
+              <button type="button" className="campo-btn verde" onClick={separar}>✓ Peguei este</button>
             </footer>
           )}>
           <div className="produto-grande">
             <FotoProduto insumo={atual.insumo} className="foto" />
             <h2>{atual.insumo.nome}</h2>
           </div>
+          {erro && <div className="campo-aviso erro">{erro}</div>}
           <Embalagens insumo={atual.insumo} quantidade={atual.item.quantidade} />
-          <button type="button" className="link-sem-qr" onClick={() => ir("semqr")}>O produto não tem QR code</button>
         </Tela>
       );
     }
 
-    case "semqr":
+    case "certo":
       return (
-        <Tela passo={passo} figura="📤" titulo="Sem QR code" fala={`Olhe bem a foto. O produto que você pegou é igual a este? ${atual.insumo.nome}.`}
-          rodape={(
-            <footer className="campo-rodape">
-              <button type="button" className="campo-btn cinza" onClick={() => ir("produto")}>✕ Não</button>
-              <button type="button" className="campo-btn verde" onClick={async () => {
-                const faltam = await separar(false);
-                if (faltam == null) return;
-                setResultado({ certo: true, produto: atual.insumo, faltam });
-                ir("resultado");
-              }}>✓ Sim, é este</button>
-            </footer>
-          )}>
-          <Pergunta figura="👀">É igual a este?</Pergunta>
-          {erro && <div className="campo-aviso erro">{erro}</div>}
-          <div className="produto-grande"><FotoProduto insumo={atual.insumo} className="foto" /><h2>{atual.insumo.nome}</h2></div>
-        </Tela>
-      );
-
-    case "resultado":
-      if (resultado?.certo) {
-        return (
-          <div className="campo-app resultado certo">
-            <div className="resultado-marca">✓</div>
-            <h2>Certo!</h2>
-            <p>{atual?.insumo.nome}</p>
-            {erro && <div className="campo-aviso erro">{erro}</div>}
-            <footer className="campo-rodape">
-              <button type="button" className="campo-btn verde" onClick={() => ir(resultado.faltam ? "lista" : "pronto")}>
-                {resultado.faltam ? `Próximo produto ▶` : "✓ Terminar"}
-              </button>
-            </footer>
-          </div>
-        );
-      }
-      return (
-        <div className="campo-app resultado errado">
-          <div className="resultado-marca">✕</div>
-          <h2>Produto errado!</h2>
-          {resultado?.produto ? (
-            <div className="troca">
-              <div><FotoProduto insumo={resultado.produto} /><small>Você pegou</small><b>{resultado.produto.nome}</b></div>
-              <div><FotoProduto insumo={atual.insumo} /><small>Pegue este</small><b>{atual.insumo.nome}</b></div>
-            </div>
-          ) : <p>Esse código não é de nenhum produto.</p>}
+        <div className="campo-app resultado certo">
+          <div className="resultado-marca">✓</div>
+          <h2>Certo!</h2>
+          <p>{atual?.insumo.nome}</p>
           <footer className="campo-rodape">
-            <button type="button" className="campo-btn cinza" onClick={() => ir("produto")}>◀ Voltar</button>
-            <button type="button" className="campo-btn verde" onClick={() => setLendo(true)}>📷 Tentar de novo</button>
+            <button type="button" className="campo-btn verde" onClick={() => ir(faltamDepois ? "lista" : "pronto")}>
+              {faltamDepois ? "Próximo produto ▶" : "✓ Terminar"}
+            </button>
           </footer>
         </div>
       );
@@ -275,7 +217,7 @@ export function Saida({ dados, salvar, irPara }) {
   }
 }
 
-// ─── QR-2: Entrada (compra ou sobra) ───────────────────────────────────────
+// ─── Guardar no depósito (compra ou sobra) ───────────────────────────────────────
 
 function Contador({ insumo, valor, aoMudar }) {
   const tam = Number(insumo.tamanho_embalagem) || 0;
@@ -290,15 +232,14 @@ function Contador({ insumo, valor, aoMudar }) {
   );
 }
 
-export function Entrada({ dados, salvar, irPara, produtoInicial }) {
-  const [passo, setPasso] = useState(produtoInicial ? "operador" : "tipo");
-  const [tipo, setTipo] = useState(produtoInicial ? "compra" : null);
+export function Entrada({ dados, salvar, irPara }) {
+  const [passo, setPasso] = useState("tipo");
+  const [tipo, setTipo] = useState(null);
   const [operadorId, setOperadorId] = useState(null);
   const [ordemId, setOrdemId] = useState(null);
-  const [insumoId, setInsumoId] = useState(produtoInicial ?? null);
+  const [insumoId, setInsumoId] = useState(null);
   const [qtd, setQtd] = useState(""); // texto do teclado ou número do contador
   const [foto, setFoto] = useState(null);
-  const [lendo, setLendo] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -308,20 +249,13 @@ export function Entrada({ dados, salvar, irPara, produtoInicial }) {
   const ir = (p) => { setAviso(null); setPasso(p); window.scrollTo(0, 0); };
   const escolherProduto = (id) => { setInsumoId(id); setQtd(""); ir("quantidade"); };
 
-  const aoLer = useCallback((lido) => {
-    setLendo(false);
-    const p = produtoDoCodigo(dados, lido);
-    bipar(Boolean(p));
-    if (p) { falar(p.nome); escolherProduto(p.id); } else { falar("Não conheço esse código."); setAviso("Esse código não é de nenhum produto cadastrado."); }
-  }, [dados]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const gravar = async () => {
     setSalvando(true);
     try {
       const [colecao, bruto] = tipo === "compra"
         ? ["insumo_entradas", {
           data: hoje(), insumo_id: insumo.id, quantidade, valor: null, a_conferir: true, foto,
-          responsavel_id: operadorId, observacao: "Entrada pelo depósito (QR code)",
+          responsavel_id: operadorId, observacao: "Entrada pelo depósito (Modo Campo)",
         }]
         : ["aplicacoes", sobraDaOrdem(ordem, insumo.id, quantidade, operadorId, hoje())];
       const { reg, erro } = prepararRegistro(colecao, bruto);
@@ -335,8 +269,6 @@ export function Entrada({ dados, salvar, irPara, produtoInicial }) {
       setSalvando(false);
     }
   };
-
-  if (lendo) return <LeitorQR aoLer={aoLer} aoFechar={() => setLendo(false)} />;
 
   const titulo = "Guardar no depósito";
   switch (passo) {
@@ -359,7 +291,7 @@ export function Entrada({ dados, salvar, irPara, produtoInicial }) {
     case "operador":
       return (
         <Tela passo={passo} figura="📥" titulo={titulo} fala="Quem é você? Toque na sua foto."
-          rodape={<Rodape aoVoltar={() => (produtoInicial ? irPara("/campo") : ir("tipo"))} />}>
+          rodape={<Rodape aoVoltar={() => ir("tipo")} />}>
           <Pergunta figura="👤">Quem é você?</Pergunta>
           <EscolherPessoa pessoas={operadores(dados)} marcado={operadorId} aoEscolher={(id) => {
             setOperadorId(id);
@@ -390,13 +322,10 @@ export function Entrada({ dados, salvar, irPara, produtoInicial }) {
         : dados.insumos.filter((i) => i.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
       return (
         <Tela passo={passo} figura="📥" titulo={titulo}
-          fala={tipo === "sobra" ? "Qual produto sobrou? Toque na foto." : "Qual produto chegou? Aponte a câmera para o QR code ou toque na foto."}
+          fala={tipo === "sobra" ? "Qual produto sobrou? Toque na foto." : "Qual produto chegou? Toque na foto."}
           rodape={<Rodape aoVoltar={() => ir(tipo === "sobra" ? "ordem" : "operador")} />}>
           <Pergunta figura="🧴">{tipo === "sobra" ? "Qual produto sobrou?" : "Qual produto?"}</Pergunta>
           {aviso && <div className="campo-aviso erro">{aviso}</div>}
-          {tipo === "compra" && (
-            <button type="button" className="campo-btn verde botao-qr" onClick={() => setLendo(true)}>📷 Ler o QR code do produto</button>
-          )}
           <div className="campo-grade">
             {produtos.map((i) => (
               <Cartao key={i.id} fala={i.nome} marcado={insumoId === i.id} aoTocar={() => { falar(i.nome); escolherProduto(i.id); }}>
@@ -420,7 +349,7 @@ export function Entrada({ dados, salvar, irPara, produtoInicial }) {
         : `Quantas embalagens de ${insumo?.nome} chegaram?${quantidade ? ` ${emEmbalagens(insumo, quantidade).fala}.` : ""} Tire uma foto do produto ou da nota.`;
       return (
         <Tela passo={passo} figura="📥" titulo={insumo?.nome} fala={fala}
-          rodape={<Rodape aoVoltar={() => ir(produtoInicial && tipo === "compra" ? "operador" : "produto")} aoSeguir={() => ir("conferir")} podeSeguir={quantidade > 0 && !passou} />}>
+          rodape={<Rodape aoVoltar={() => ir("produto")} aoSeguir={() => ir("conferir")} podeSeguir={quantidade > 0 && !passou} />}>
           <div className="produto-grande pequeno"><FotoProduto insumo={insumo} className="foto" /><h2>{insumo?.nome}</h2></div>
           {usaContador ? (
             <>
@@ -486,24 +415,4 @@ export function Entrada({ dados, salvar, irPara, produtoInicial }) {
         </Tela>
       );
   }
-}
-
-// ─── QR na frente do produto ───────────────────────────────────────────────
-
-export function Produto({ dados, irPara, id }) {
-  const insumo = dados.insumos.find((i) => i.id === id);
-  const fala = insumo ? `Este produto é ${insumo.nome}.` : "Produto não encontrado.";
-  return (
-    <Tela passo={id} figura="🧴" titulo={insumo?.nome ?? "Produto"} fala={fala}
-      rodape={(
-        <footer className="campo-rodape">
-          <button type="button" className="campo-btn cinza" onClick={() => irPara("/campo")}>🏠 Início</button>
-          {insumo && <button type="button" className="campo-btn verde" onClick={() => irPara(`/campo/entrada/${insumo.id}`)}>📥 Guardar</button>}
-        </footer>
-      )}>
-      {insumo ? (
-        <div className="produto-grande"><FotoProduto insumo={insumo} className="foto" /><h2>{insumo.nome}</h2></div>
-      ) : <div className="campo-aviso">Produto não encontrado.</div>}
-    </Tela>
-  );
 }

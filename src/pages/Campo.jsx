@@ -4,7 +4,7 @@ import {
   Cartao, FiguraServico, FotoComprovante, FotoOuInicial, Ouvir, Passos, Pergunta, Rodape, Teclado, Topo,
 } from "../components/CampoUI";
 import { useDados } from "../hooks/useDados";
-import { Entrada, Produto, Saida } from "./CampoDeposito";
+import { Entrada, Saida } from "./CampoDeposito";
 import {
   falar, lancamentosDoPA, maquinasDoPA, operadores, paraNumero, servicoPorNome, servicos, vibrar,
 } from "../lib/campo";
@@ -13,11 +13,11 @@ import { guardarFotosDosCadastros } from "../lib/fotos";
 import { numero } from "../lib/formato";
 
 /**
- * Modo Campo: as telas dos tratoristas, abertas pelo QR code.
+ * Modo Campo: as telas dos tratoristas, no celular.
  *   /campo                      → o que vai fazer (abastecer, tirar ou guardar no depósito)
  *   /campo/abastecer            → escolher o trator
- *   /campo/abastecer/<máquina>  → abastecimento no PA (QR colado em cada trator)
- *   /campo/saida, /entrada, /produto/<id> → depósito de químicos (CampoDeposito.jsx)
+ *   /campo/abastecer/<máquina>  → abastecimento no PA
+ *   /campo/saida, /campo/entrada → depósito de químicos (CampoDeposito.jsx)
  *
  * Uma pergunta por tela, figura grande, poucas palavras e o botão 🔊 que lê
  * a pergunta em voz alta.
@@ -69,8 +69,8 @@ function Abastecer({ dados, salvar, maquinaId, irPara, editarServicos }) {
   if (!maquina) {
     return (
       <div className="campo-app">
-        <Topo titulo="Trator não encontrado" pergunta="Este QR code não é de nenhum trator cadastrado." />
-        <div className="campo-corpo"><div className="campo-aviso">Este QR code não é de nenhum trator cadastrado. Chame o gerente.</div></div>
+        <Topo titulo="Trator não encontrado" pergunta="Este trator não está cadastrado." />
+        <div className="campo-corpo"><div className="campo-aviso">Este trator não está cadastrado. Chame o gerente.</div></div>
         <Rodape aoVoltar={() => irPara("/campo")} />
       </div>
     );
@@ -308,7 +308,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara, editarServicos }) {
 
 // ─── Início ─────────────────────────────────────────────────────────────────
 
-/** /campo/abastecer: escolher o trator (quando não veio pelo QR do trator). */
+/** /campo/abastecer: escolher o trator. */
 function EscolherTrator({ dados, irPara }) {
   useEffect(() => { falar("Toque no trator que você vai abastecer."); }, []);
   const maquinas = maquinasDoPA(dados);
@@ -375,7 +375,7 @@ export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema }) {
   if (erro) return <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>;
 
   const [, , acao, id] = caminho.split("/");
-  // Só quem tem o sistema completo: abre a aba Serviços do menu Modo Campo (QR).
+  // Só quem tem o sistema completo: abre a aba Serviços do menu Modo Campo.
   const editarServicos = voltarAoSistema ? () => {
     try { localStorage.setItem("fcc-tela", "campo"); } catch { /* sem armazenamento: abre no Painel */ }
     voltarAoSistema();
@@ -389,9 +389,7 @@ export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema }) {
     case "saida":
       return <Saida key={caminho} {...props} />;
     case "entrada":
-      return <Entrada key={caminho} {...props} produtoInicial={id ?? null} />;
-    case "produto":
-      return <Produto key={id} {...props} id={id} />;
+      return <Entrada key={caminho} {...props} />;
     default:
       return <Inicio irPara={irPara} sair={sair} voltarAoSistema={voltarAoSistema} />;
   }

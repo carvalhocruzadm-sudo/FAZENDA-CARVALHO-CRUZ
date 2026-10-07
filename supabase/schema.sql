@@ -212,7 +212,6 @@ alter table public.insumos add column if not exists principio_ativo text;
 alter table public.insumos add column if not exists unidade text;
 alter table public.insumos add column if not exists tamanho_embalagem numeric;
 alter table public.insumos add column if not exists embalagem_tipo text;
-alter table public.insumos add column if not exists codigo_barras text;
 alter table public.insumos add column if not exists qtd_embalagens numeric;
 alter table public.insumos add column if not exists estoque_inicial numeric;
 alter table public.insumos add column if not exists validade date;

@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
-import EtiquetasQR, { EtiquetasDeposito } from "../components/EtiquetasQR";
 import OrdensPulverizacao from "../components/OrdensPulverizacao";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
@@ -116,7 +115,7 @@ export function Maquinas(props) {
 
 /**
  * Tudo o que aparece nas telas dos tratoristas, num lugar só: os serviços, a
- * foto de cada operador, de cada trator e de cada talhão, e os QR codes.
+ * foto de cada operador, de cada trator, de cada talhão e dos produtos.
  */
 export function CadastrosCampo(props) {
   const { dados, abrirCampo } = props;
@@ -148,8 +147,6 @@ export function CadastrosCampo(props) {
         ["maquinas", "Tratores (fotos)", { colecao: "maquinas" }],
         ["talhoes", "Talhões", { colecao: "talhoes" }],
         ["insumos", "Produtos do depósito (fotos)", { colecao: "insumos" }],
-        ["qr", "QR codes do PA", EtiquetasQR],
-        ["qrdeposito", "QR codes do depósito", EtiquetasDeposito],
       ]} />
     </>
   );
@@ -251,7 +248,7 @@ function EstoqueQuimicos({ dados }) {
       </div>
       {aConferir > 0 && (
         <div className="aviso info">
-          {aConferir} entrada(s) lançada(s) no depósito pelo QR code ainda sem preço. Abra a aba Entradas / compras,
+          {aConferir} entrada(s) lançada(s) no depósito pelo Modo Campo ainda sem preço. Abra a aba Entradas / compras,
           complete o valor e a nota e desmarque "Falta conferir".
         </div>
       )}
@@ -374,7 +371,6 @@ export function Quimicos(props) {
       ["aplicacoes", "Aplicações / saídas"],
       ["insumo_entradas", "Entradas / compras"],
       ["insumos", "Produtos"],
-      ["qrdeposito", "QR codes do depósito", EtiquetasDeposito],
     ]} />
   );
 }
