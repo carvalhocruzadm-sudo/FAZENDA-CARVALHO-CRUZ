@@ -153,6 +153,15 @@ export function Diesel(props) {
 
 // ─── Químicos ───────────────────────────────────────────────────────────────
 
+/** Selo de validade: vencido, vencendo (60 dias) ou em dia. */
+function SeloValidade({ validade }) {
+  if (!validade) return "—";
+  const dias = Math.ceil((new Date(`${String(validade).slice(0, 10)}T12:00:00`) - new Date()) / 86400000);
+  const cls = dias < 0 ? "ruim" : dias <= 60 ? "atencao" : "ok";
+  const txt = dias < 0 ? "Vencido" : dias <= 60 ? `Vence em ${dias} d` : null;
+  return <span><span className={`selo ${cls}`}>{txt ?? "Em dia"}</span> {data(validade)}</span>;
+}
+
 function EstoqueQuimicos({ dados }) {
   const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false || x.saldo);
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
@@ -163,7 +172,7 @@ function EstoqueQuimicos({ dados }) {
       const linhas = [...lista].sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({
         produto: x.insumo.nome, fabricante: x.insumo.fabricante ?? "", tipo: tipos[x.insumo.tipo] ?? "", principio: x.insumo.principio_ativo ?? "",
         unidade: x.insumo.unidade, entrou: x.entrada + x.ajuste, aplicado: x.saida, saldo: x.saldo,
-        minimo: x.insumo.estoque_minimo ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
+        minimo: x.insumo.estoque_minimo ?? "", validade: x.insumo.validade ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
         custo: Number(x.custoMedio.toFixed(2)), valor: Number(x.valorEstoque.toFixed(2)),
         observacao: x.insumo.observacao ?? "", fotos: x.insumo.fotos_rotulo ?? [],
       }));
@@ -192,11 +201,12 @@ function EstoqueQuimicos({ dados }) {
           { rotulo: "Inicial / balanço", num: true, valor: (x) => (x.ajuste ? numero(x.ajuste) : "—") },
           { rotulo: "Aplicado", num: true, valor: (x) => numero(x.saida) },
           { rotulo: "Saldo", num: true, valor: (x) => <b className={x.saldo < 0 ? "negativo" : ""}>{numero(x.saldo)} {x.insumo.unidade}</b> },
+          { rotulo: "Validade", valor: (x) => <SeloValidade validade={x.insumo.validade} /> },
           { rotulo: "Situação", valor: (x) => (x.negativo ? <span className="selo ruim">Negativo</span> : x.baixo ? <span className="selo atencao">Baixo</span> : <span className="selo ok">OK</span>) },
           { rotulo: "Custo médio", num: true, valor: (x) => (x.custoMedio ? `${brl(x.custoMedio)}/${x.insumo.unidade}` : "—") },
           { rotulo: "Valor em estoque", num: true, valor: (x) => brl(x.valorEstoque) },
         ]}
-        rodape={["Total", "", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
+        rodape={["Total", "", "", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
       />
     </div>
   );

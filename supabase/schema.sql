@@ -120,6 +120,7 @@ alter table public.insumos add column if not exists unidade text;
 alter table public.insumos add column if not exists tamanho_embalagem numeric;
 alter table public.insumos add column if not exists qtd_embalagens numeric;
 alter table public.insumos add column if not exists estoque_inicial numeric;
+alter table public.insumos add column if not exists validade date;
 alter table public.insumos add column if not exists custo_inicial numeric;
 alter table public.insumos add column if not exists estoque_minimo numeric;
 alter table public.insumos add column if not exists ativo boolean;
