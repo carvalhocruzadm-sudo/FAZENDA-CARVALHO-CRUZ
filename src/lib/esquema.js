@@ -23,6 +23,11 @@
  *   arquivo  → foto ou PDF anexado (guarda o caminho; ver lib/arquivos.js)
  *   itens    → lista guardada como JSON (sem campo na tela padrão: tem tela própria)
  *
+ * `porTalhao` diz como um lançamento com vários talhões se divide (um
+ * registro por talhão): `dividir` os campos repartidos pela área, `area` o
+ * campo que recebe a área do talhão, `leituras` emenda o horímetro, `zerar`
+ * os campos que não fazem sentido repartir. Ver lib/talhoes.js.
+ *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
  * outro enquanto se digita (escolher o talhão já traz a cultura dele).
@@ -380,8 +385,8 @@ export const ESQUEMA = {
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       agronomo: { tipo: "texto", rotulo: "Agrônomo" },
-      talhao_id: { ...refTalhao, obrigatorio: true },
       cultura_id: refCultura,
+      talhao_id: { ...refTalhao, obrigatorio: true },
       area_ha: { tipo: "numero", rotulo: "Área a aplicar (ha)", casas: 2 },
       alvo: { tipo: "texto", rotulo: "Alvo (praga, doença, planta daninha)" },
       calda_l_ha: { tipo: "numero", rotulo: "Calda (L/ha)", casas: 1 },
@@ -406,8 +411,8 @@ export const ESQUEMA = {
       implemento_id: { tipo: "ref", colecao: "maquinas", rotulo: "Implemento", filtro: (m) => m.categoria === "implemento" },
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
       operacao: { tipo: "sugestao", rotulo: "Operação", sugestoes: OPERACOES, sugestoesDe: ["servicos", "nome"], obrigatorio: true },
-      talhao_id: refTalhao,
       cultura_id: refCultura,
+      talhao_id: refTalhao,
       leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, obrigatorio: true },
       leitura_final: { tipo: "numero", rotulo: "Leitura final", casas: 1, obrigatorio: true },
       trabalhado: { tipo: "numero", rotulo: "Horas / km", casas: 1, somenteLeitura: true },
@@ -421,6 +426,8 @@ export const ESQUEMA = {
     },
     calcular: (r) => ({ trabalhado: Math.max(0, num(r.leitura_final) - num(r.leitura_inicial)) }),
     validar: (r) => (num(r.leitura_final) < num(r.leitura_inicial) ? "A leitura final não pode ser menor que a inicial." : null),
+    // Vários talhões: as horas são divididas pela área, uma leitura emendando na outra.
+    porTalhao: { leituras: true },
     colunas: ["data", "maquina_id", "operador_id", "operacao", "talhao_id", "leitura_inicial", "leitura_final", "trabalhado"],
   },
 
@@ -464,8 +471,8 @@ export const ESQUEMA = {
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
       litros: { tipo: "numero", rotulo: "Litros", casas: 1, obrigatorio: true },
       leitura: { tipo: "numero", rotulo: "Horímetro / km no abastecimento", casas: 1 },
-      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)" },
       cultura_id: refCultura,
+      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)" },
       posto: { tipo: "texto", rotulo: "Posto", mostrarSe: (r) => r.origem === "posto" },
       preco_litro: { tipo: "dinheiro", rotulo: "Preço por litro", casas: 3, mostrarSe: (r) => r.origem === "posto" },
       valor: { tipo: "dinheiro", rotulo: "Valor", somenteLeitura: true, mostrarSe: (r) => r.origem === "posto" },
@@ -475,6 +482,7 @@ export const ESQUEMA = {
     },
     aoMudar: culturaDoTalhao,
     calcular: (r) => ({ valor: r.origem === "posto" ? +(num(r.litros) * num(r.preco_litro)).toFixed(2) : null }),
+    porTalhao: { dividir: ["litros"] },
     colunas: ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "talhao_id", "valor"],
   },
 
@@ -521,8 +529,8 @@ export const ESQUEMA = {
       insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
       quantidade: { tipo: "numero", rotulo: "Quantidade total", casas: 2, obrigatorio: true, dica: "Negativa quando é sobra que voltou para o estoque" },
       pulverizacao_id: { tipo: "ref", colecao: "pulverizacoes", rotulo: "Ordem de pulverização" },
-      talhao_id: { ...refTalhao, obrigatorio: true },
       cultura_id: refCultura,
+      talhao_id: { ...refTalhao, obrigatorio: true },
       dose_ha: { tipo: "numero", rotulo: "Dose por ha", casas: 3 },
       area_aplicada: { tipo: "numero", rotulo: "Área aplicada (ha)", casas: 2 },
       responsavel_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Responsável" },
@@ -530,28 +538,25 @@ export const ESQUEMA = {
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
     aoMudar: culturaDoTalhao,
+    porTalhao: { dividir: ["quantidade"], area: "area_aplicada" },
     colunas: ["data", "insumo_id", "quantidade", "talhao_id", "cultura_id", "dose_ha", "responsavel_id"],
   },
 
   pulverizacoes: {
     titulo: "Ordens de pulverização", singular: "ordem de pulverização", icone: "spray", lancamento: true, campo: "grava",
-    descricao: "O gerente cria a ordem (talhão, trator, produtos e dose por ha). No depósito, o tratorista abre o Modo Campo → Tirar do depósito, vê a ordem com as fotos dos produtos e separa um por um, conferindo pela foto.",
+    descricao: "O gerente cria a ordem: primeiro a cultura, depois marca as fazendas e os talhões (marcar a fazenda já marca todos os talhões dela), o trator e os produtos com a dose por ha. No depósito, o tratorista abre o Modo Campo → Tirar do depósito, vê a ordem com as fotos dos produtos e separa um por um, conferindo pela foto. A saída de cada produto é dividida entre os talhões pela área.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
-      talhao_id: { ...refTalhao, obrigatorio: true },
       cultura_id: refCultura,
-      area_ha: { tipo: "numero", rotulo: "Área a pulverizar (ha)", casas: 2, obrigatorio: true },
+      // Primeiro talhão marcado (as ordens antigas só tinham este).
+      talhao_id: { ...refTalhao, obrigatorio: true },
+      // Todos os talhões da ordem: [{ talhao_id, area_ha }].
+      talhoes: { tipo: "itens", rotulo: "Talhões" },
+      area_ha: { tipo: "numero", rotulo: "Área a pulverizar (ha)", casas: 2, obrigatorio: true, dica: "Soma das áreas dos talhões marcados" },
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Trator / pulverizador", filtro: (m) => m.medidor === "horas" },
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Tratorista" },
       situacao: { tipo: "opcoes", rotulo: "Situação", padrao: "aberta", opcoes: [["aberta", "Aberta (esperando separar)"], ["separada", "Produtos separados"], ["concluida", "Concluída"], ["cancelada", "Cancelada"]] },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
-    },
-    aoMudar: {
-      // Escolher o talhão traz a cultura e a área dele.
-      talhao_id: (reg, dados) => {
-        const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
-        return t ? { cultura_id: t.cultura_id ?? null, area_ha: t.area_ha ?? reg.area_ha } : {};
-      },
     },
     colunas: ["data", "talhao_id", "area_ha", "maquina_id", "operador_id", "situacao"],
     resumo: (r) => `Pulverização de ${String(r.data ?? "").split("-").reverse().join("/")}`,
@@ -595,6 +600,7 @@ export const ESQUEMA = {
       ...culturaDoTalhao,
       centro: (r) => (r.centro === "geral" ? { cultura_id: null, talhao_id: null } : r.centro === "cultura" ? { talhao_id: null } : {}),
     },
+    porTalhao: { dividir: ["valor", "litros"] },
     colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago", "comprovante"],
   },
 
@@ -616,8 +622,8 @@ export const ESQUEMA = {
     descricao: "O que saiu de cada talhão. Dá a produtividade por hectare.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
-      talhao_id: { ...refTalhao, obrigatorio: true },
       cultura_id: { ...refCultura, obrigatorio: true },
+      talhao_id: { ...refTalhao, obrigatorio: true },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2, obrigatorio: true },
       unidade: { tipo: "opcoes", rotulo: "Unidade", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
       responsavel_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Responsável" },
@@ -629,7 +635,12 @@ export const ESQUEMA = {
         const c = t && dados.culturas.find((x) => x.id === t.cultura_id);
         return c ? { cultura_id: c.id, unidade: c.unidade || reg.unidade } : {};
       },
+      cultura_id: (reg, dados) => {
+        const c = dados.culturas.find((x) => x.id === reg.cultura_id);
+        return c?.unidade ? { unidade: c.unidade } : {};
+      },
     },
+    porTalhao: { dividir: ["quantidade"] },
     colunas: ["data", "talhao_id", "cultura_id", "quantidade", "unidade", "responsavel_id"],
   },
 
@@ -699,6 +710,8 @@ export const ESQUEMA = {
       };
     },
     validar: (r) => (r.quantidade == null && r.peso_liquido == null ? "Informe o peso ou a quantidade." : null),
+    // Carga de vários talhões: peso, quantidade e custos divididos pela área (entrada/saída vão para a observação).
+    porTalhao: { dividir: ["peso_liquido", "volumes", "desconto_kg", "quantidade", "frete_cobrado", "frete", "comissao", "juros"], zerar: ["peso_entrada", "peso_saida"] },
     colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "turma", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor"],
   },
 

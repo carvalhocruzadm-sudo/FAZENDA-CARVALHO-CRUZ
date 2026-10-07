@@ -1,6 +1,8 @@
 import { useId, useMemo, useState } from "react";
 
 import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
+import { SEM_CULTURA, fazendaDoTalhao } from "../lib/talhoes";
+import EscolhaTalhoes from "./EscolhaTalhoes";
 import { CampoFoto } from "./Foto";
 import { CampoArquivo } from "./Comprovante";
 import ConsultaProduto from "./ConsultaProduto";
@@ -130,14 +132,24 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
           || [x.nome, x.fabricante, x.tipo, x.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(termo)))
         .sort(def.ordem ?? (() => 0));
       const rotuloOpcao = (x) => `${def.resumo?.(x) ?? x.nome}${deProduto && x.fabricante ? ` — ${x.fabricante}` : ""}`;
+      const opcao = (x) => <option key={x.id} value={x.id}>{rotuloOpcao(x)}</option>;
+      // Talhão: só os da cultura já escolhida, separados por fazenda.
+      const deTalhao = campo.colecao === "talhoes";
+      const lista = deTalhao && reg.cultura_id ? opcoes.filter((x) => x.id === valor || x.cultura_id === reg.cultura_id) : opcoes;
+      const nomeFazenda = (x) => dados.fazendas?.find((f) => f.id === x.fazenda_id)?.nome || "Sem fazenda";
+      const fazendas = deTalhao ? [...new Set(lista.map(nomeFazenda))].sort((a, b) => a.localeCompare(b, "pt-BR")) : [];
       controle = (
         <>
           {deProduto && (
             <input type="search" placeholder="Buscar produto ou fabricante…" value={achar} onChange={(e) => setAchar(e.target.value)} aria-label="Buscar produto" autoComplete="off" />
           )}
           <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
-            <option value="">{opcoes.length ? "— escolha —" : termo ? "Nenhum produto encontrado" : `Nenhum ${def.singular} cadastrado`}</option>
-            {opcoes.map((x) => <option key={x.id} value={x.id}>{rotuloOpcao(x)}</option>)}
+            <option value="">
+              {lista.length ? "— escolha —" : termo ? "Nenhum produto encontrado" : deTalhao && opcoes.length ? "Nenhum talhão desta cultura" : `Nenhum ${def.singular} cadastrado`}
+            </option>
+            {deTalhao && fazendas.length > 1
+              ? fazendas.map((f) => <optgroup key={f} label={f}>{lista.filter((x) => nomeFazenda(x) === f).map(opcao)}</optgroup>)
+              : lista.map(opcao)}
           </select>
         </>
       );
@@ -173,9 +185,10 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
  * Formulário gerado do esquema. `reg` é o rascunho; cada mudança passa pelos
  * `aoMudar` do esquema (que completam outros campos) e os campos calculados
  * são refeitos para aparecer já preenchidos. `somente` mostra só esses campos,
- * nessa ordem.
+ * nessa ordem. `escolha` (do useEscolhaTalhoes) troca cultura e talhão pela
+ * escolha cultura → fazendas → talhões no lançamento novo.
  */
-export default function Formulario({ colecao, reg, setReg, dados, contexto, somente }) {
+export default function Formulario({ colecao, reg, setReg, dados, contexto, somente, escolha }) {
   const def = ESQUEMA[colecao];
 
   const aoMudar = (chave, v) => {
@@ -192,11 +205,27 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
     [def, somente]
   );
 
+  const comEscolha = escolha?.ativo(reg);
+  const visiveis = campos.filter(([, c]) => campoVisivel(c, reg));
+  // A escolha entra no lugar do primeiro dos dois (cultura ou talhão); o outro some.
+  const lugar = comEscolha && visiveis.find(([c]) => c === "cultura_id" || c === "talhao_id")?.[0];
+
   return (
     <div className="form">
-      {campos.filter(([, c]) => campoVisivel(c, reg)).map(([chave, campo]) => (
-        <Campo key={chave} colecao={colecao} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />
-      ))}
+      {visiveis.map(([chave, campo]) => {
+        if (comEscolha && (chave === "cultura_id" || chave === "talhao_id")) {
+          if (chave !== lugar) return null;
+          return (
+            <EscolhaTalhoes key="escolha-talhoes" culturas={dados.culturas}
+              talhoes={dados.talhoes.filter((t) => t.ativo !== false || t.id in escolha.props.areas)}
+              nomeFazenda={fazendaDoTalhao(dados)} cultura={escolha.props.cultura}
+              aoMudarCultura={(c) => { escolha.props.setCultura(c); aoMudar("cultura_id", c && c !== SEM_CULTURA ? c : null); }}
+              areas={escolha.props.areas} setAreas={escolha.props.setAreas} rotuloCultura={def.campos.cultura_id?.rotulo ?? "Cultura"}
+              obrigatorio={campoObrigatorio(def.campos.talhao_id, reg)} todasCulturas />
+          );
+        }
+        return <Campo key={chave} colecao={colecao} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />;
+      })}
       {colecao === "insumos" && <div className="largo"><ConsultaProduto reg={reg} setReg={setReg} /></div>}
     </div>
   );
