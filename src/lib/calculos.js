@@ -104,12 +104,20 @@ export function consumoPorMaquina(dados, periodo) {
 
 // ─── Químicos / insumos ─────────────────────────────────────────────────────
 
+/**
+ * Estoque de cada produto: quantidade inicial + entradas + balanços −
+ * aplicações (a sobra que voltou da pulverização é aplicação negativa). O
+ * custo médio só conta as entradas com preço: a que chegou pelo depósito e
+ * ainda não foi conferida não o derruba.
+ */
 export function estoqueInsumos(dados) {
   const mapa = new Map();
-  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0, ajuste: 0, qtdComCusto: 0, valorAjuste: 0 });
+  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0, qtdComPreco: 0, ajuste: 0, qtdComCusto: 0, valorAjuste: 0 });
   for (const e of dados.insumo_entradas) {
     const x = mapa.get(e.insumo_id);
-    if (x) { x.entrada += n(e.quantidade); x.valorEntrada += n(e.valor); }
+    if (!x) continue;
+    x.entrada += n(e.quantidade);
+    if (n(e.valor) > 0) { x.valorEntrada += n(e.valor); x.qtdComPreco += n(e.quantidade); }
   }
   // Quantidade que já existia quando o produto foi cadastrado (não é compra).
   for (const x of mapa.values()) {
@@ -135,7 +143,7 @@ export function estoqueInsumos(dados) {
     if (x) x.saida += n(a.quantidade);
   }
   return [...mapa.values()].map((x) => {
-    const baseQtd = x.entrada + x.qtdComCusto;
+    const baseQtd = x.qtdComPreco + x.qtdComCusto;
     const custoMedio = baseQtd ? (x.valorEntrada + x.valorAjuste) / baseQtd : 0;
     const saldo = x.entrada + x.ajuste - x.saida;
     const minimo = n(x.insumo.estoque_minimo);

@@ -25,7 +25,7 @@ async function comFilaPorCima(dados) {
   const fila = await lerFila();
   const d = { ...dados };
   for (const op of fila) {
-    if (op.acao === "upload") continue; // arquivo, não registro
+    if (op.acao === "foto" || op.acao === "upload") continue; // arquivo, não registro
     const lista = d[op.tabela] ?? [];
     const semEste = lista.filter((x) => x.id !== op.payload.id);
     d[op.tabela] = op.acao === "delete" ? semEste : [...semEste, op.payload];

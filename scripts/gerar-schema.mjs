@@ -11,7 +11,7 @@ import { SEED } from "../src/lib/seed.js";
 const TIPO_SQL = {
   texto: "text", textoLongo: "text", sugestao: "text", opcoes: "text",
   numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid", fotos: "jsonb", itens: "jsonb",
-  arquivo: "text",
+  arquivo: "text", foto: "text",
 };
 
 const lit = (v) => (v == null ? "null" : typeof v === "number" || typeof v === "boolean" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
@@ -25,6 +25,24 @@ let sql = `-- ══════════════════════
 -- falta, acrescenta colunas novas e não apaga nada.
 -- ════════════════════════════════════════════════════════════════════════
 
+-- Conta do Modo Campo (o celular dos tratoristas): só vê os cadastros e só
+-- lança abastecimento, horímetro e as saídas/entradas do depósito de químicos.
+-- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
+-- aqui (troque o e-mail):
+--   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
+--   where email = 'campo@fazenda.com';
+-- security definer: lê a tabela de usuários sem passar pelas regras dela.
+create or replace function public.eh_campo() returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '') = 'campo' then return true; end if;
+  if to_regclass('public.usuarios') is null then return false; end if;
+  return exists (
+    select 1 from public.usuarios u
+    where lower(u.email) = lower(auth.jwt() ->> 'email') and u.perfil = 'campo' and coalesce(u.ativo, true)
+  );
+end $$;
+
 `;
 
 for (const [tabela, def] of Object.entries(ESQUEMA)) {
@@ -37,15 +55,51 @@ for (const [tabela, def] of Object.entries(ESQUEMA)) {
   sql += `alter table public.${tabela} enable row level security;
 drop policy if exists "equipe acessa ${tabela}" on public.${tabela};
 create policy "equipe acessa ${tabela}" on public.${tabela}
-  for all to authenticated using (true) with check (true);\n\n`;
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le ${tabela}" on public.${tabela};
+drop policy if exists "campo lanca ${tabela}" on public.${tabela};
+drop policy if exists "campo corrige ${tabela}" on public.${tabela};\n`;
+  // campoSql: as linhas que a conta de campo pode ver e corrigir (ex.: só as que ela lançou).
+  const linhas = def.campoSql ? `(select public.eh_campo()) and ${def.campoSql}` : "(select public.eh_campo())";
+  if (def.campo) {
+    sql += `create policy "campo le ${tabela}" on public.${tabela}
+  for select to authenticated using (${linhas});\n`;
+  }
+  if (def.campo === "grava") {
+    sql += `create policy "campo lanca ${tabela}" on public.${tabela}
+  for insert to authenticated with check (${linhas});
+create policy "campo corrige ${tabela}" on public.${tabela}
+  for update to authenticated using (${linhas}) with check (${linhas});\n`;
+  }
+  sql += "\n";
 }
 
+sql += `-- ─── Fotos (Storage) ──────────────────────────────────────────────────────
+-- Bucket privado: só quem tem login vê. O Modo Campo tira e vê fotos, mas não apaga.
+insert into storage.buckets (id, name, public) values ('fotos', 'fotos', false) on conflict (id) do nothing;
+drop policy if exists "equipe ve fotos" on storage.objects;
+create policy "equipe ve fotos" on storage.objects
+  for select to authenticated using (bucket_id = 'fotos');
+drop policy if exists "equipe envia fotos" on storage.objects;
+create policy "equipe envia fotos" on storage.objects
+  for insert to authenticated with check (bucket_id = 'fotos');
+drop policy if exists "equipe troca fotos" on storage.objects;
+create policy "equipe troca fotos" on storage.objects
+  for update to authenticated using (bucket_id = 'fotos') with check (bucket_id = 'fotos');
+drop policy if exists "escritorio apaga fotos" on storage.objects;
+create policy "escritorio apaga fotos" on storage.objects
+  for delete to authenticated using (bucket_id = 'fotos' and not (select public.eh_campo()));
+
+`;
+
 sql += `-- ─── Comprovantes (fotos e PDFs anexados às despesas) ──────────────────────
--- Pasta privada no Storage: só quem tem login no app vê e envia.
+-- Pasta privada no Storage: só quem tem login no app vê e envia (a conta do
+-- Modo Campo não vê os comprovantes).
 insert into storage.buckets (id, name, public) values ('comprovantes', 'comprovantes', false) on conflict (id) do nothing;
 drop policy if exists "equipe acessa comprovantes" on storage.objects;
 create policy "equipe acessa comprovantes" on storage.objects
-  for all to authenticated using (bucket_id = 'comprovantes') with check (bucket_id = 'comprovantes');
+  for all to authenticated using (bucket_id = 'comprovantes' and not (select public.eh_campo()))
+  with check (bucket_id = 'comprovantes' and not (select public.eh_campo()));
 
 `;
 

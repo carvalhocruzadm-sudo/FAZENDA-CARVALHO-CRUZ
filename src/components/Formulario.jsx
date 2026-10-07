@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 
 import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
+import { CampoFoto } from "./Foto";
 import { CampoArquivo } from "./Comprovante";
 import ConsultaProduto from "./ConsultaProduto";
 import { Icone } from "./ui";
@@ -77,7 +78,7 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
   const [achar, setAchar] = useState("");
   const valor = reg[chave];
   const obrig = campoObrigatorio(campo, reg);
-  const largo = campo.tipo === "textoLongo" || campo.tipo === "fotos" || campo.tipo === "arquivo";
+  const largo = ["textoLongo", "fotos", "foto", "arquivo"].includes(campo.tipo);
   const set = (v) => aoMudar(chave, v);
 
   if (campo.tipo === "booleano") {
@@ -103,6 +104,9 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
         <input id={id} type="number" inputMode="decimal" step="any" value={valor ?? ""} readOnly={campo.somenteLeitura}
           onChange={(e) => set(e.target.value)} placeholder={campo.tipo === "dinheiro" ? "R$" : ""} />
       );
+      break;
+    case "foto":
+      controle = <CampoFoto valor={valor} aoMudar={set} lado={campo.lado} />;
       break;
     case "data":
       controle = <input id={id} type="date" value={valor ?? ""} onChange={(e) => set(e.target.value)} />;

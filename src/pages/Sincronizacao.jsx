@@ -65,7 +65,7 @@ export default function Sincronizacao({ sincronizarAgora, recarregarDaNuvem }) {
               <tbody>
                 {fila.map((op) => (
                   <tr key={op.id}>
-                    <td>{op.tabela}</td><td>{op.acao === "delete" ? "Apagar" : op.acao === "upload" ? "Enviar comprovante" : "Salvar"}</td>
+                    <td>{op.tabela}</td><td>{{ delete: "Apagar", foto: "Enviar foto", upload: "Enviar comprovante" }[op.acao] ?? "Salvar"}</td>
                     <td>{new Date(op.criadoEm).toLocaleString("pt-BR")}</td><td>{op.tentativas}</td>
                     <td style={{ whiteSpace: "normal", color: "var(--vermelho)" }}>{op.erro ?? ""}</td>
                   </tr>

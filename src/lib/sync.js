@@ -12,6 +12,7 @@
 
 import { supabase, supabaseConfigurado } from "./supabase";
 import { BUCKET } from "./arquivos";
+import { enviarFoto } from "./fotos";
 import { COLECOES, MAX_TENTATIVAS, apagarArquivo, apagarOp, atualizarOp, gravarMeta, gravarTodasColecoes, lerArquivo, lerFila, lerMeta, lerTodasColecoes } from "./db";
 
 const INTERVALO_AUTO_SYNC = 60_000;
@@ -69,6 +70,10 @@ function tamanhoDoPayload(op) {
 }
 
 async function executarOp(op) {
+  if (op.acao === "foto") {
+    await enviarFoto(op.payload.id);
+    return;
+  }
   if (op.acao === "upload") {
     // Comprovante: sobe o arquivo guardado no aparelho e apaga a cópia local.
     const caminho = op.payload.id;
