@@ -57,11 +57,40 @@ Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas gu
 4. Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
    (**Project Settings → Data API / API Keys**).
 
+## 👨‍🌾 Link do agrônomo
+
+Em **Químicos e insumos → Link do agrônomo**, escreva o nome do agrônomo e clique em **Criar link**. Copie o
+link (ou use **Enviar pelo WhatsApp**). Quem abre o link **não precisa de senha** e vê **só o estoque de
+químicos** (sem preços, vendas ou financeiro). Ele pode:
+
+- ver o estoque **por produto, fabricante, tipo, princípio ativo ou validade**, com busca e foto do rótulo;
+- marcar os produtos, clicar em **Criar aplicação** (talhão, área, alvo, dose por hectare) e **enviar para a
+  fazenda** e/ou **baixar o PDF**.
+
+A aplicação enviada aparece em **Químicos e insumos → Aplicações do agrônomo**, onde você baixa o PDF, aprova ou
+**dá baixa no estoque** (isso lança as saídas no talhão). Para desligar o acesso, desative ou apague o link.
+
+Para funcionar, rode de novo o `supabase/schema.sql` no SQL Editor (ele cria as funções do link).
+Para o agrônomo ver a **validade**, lance a data de validade nas **Entradas / compras**.
+
+## 🤖 Consulta de produto (uso, dose e substitutos)
+
+No cadastro de um produto, o botão **Consultar uso, dose e substitutos** pesquisa pelo nome comercial e
+fabricante. Para funcionar, uma vez só (precisa do [Supabase CLI](https://supabase.com/docs/guides/cli)):
+
+```bash
+supabase functions deploy consultar-produto
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic.com
+```
+
+A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
+tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
+
 ## 📥 Histórico das planilhas
 
 [`supabase/importacao-historico.sql`](supabase/importacao-historico.sql) traz o histórico das planilhas
-(vendas de milho, silagem e laranja de 2025 e 2026 com os recebimentos, despesas de janeiro/2026 e os
-fretes do caminhão). Cole no **SQL Editor** e clique em **Run**. Pode rodar de novo sem duplicar.
+(vendas de milho, silagem e laranja de 2025 e 2026 com os recebimentos, despesas das planilhas
+FINANCEIRO 2025 e 2026, aditivos dos sócios e os fretes do caminhão). Cole no **SQL Editor** e clique em **Run**. Pode rodar de novo sem duplicar.
 Para desfazer: `delete from public.<tabela> where importado is not null;`.
 
 Para gerar de novo a partir das planilhas atualizadas:
@@ -73,6 +102,11 @@ python3 scripts/importar-planilhas.py <pasta com os .xlsx>
 
 O script confere se o valor líquido de cada venda bate com a conta do sistema e lista as datas que
 estavam digitadas erradas (e como ficaram).
+
+[`supabase/importacao-comprovantes.sql`](supabase/importacao-comprovantes.sql) traz as despesas do grupo
+de WhatsApp *COMPROVANTES - CARVALHO CRUZ* (dez/2025 a set/2026), lidas dos comprovantes e cruzadas com as
+planilhas FINANCEIRO — o que já estava nelas não entra de novo. Para desfazer:
+`delete from public.despesas where importado = 'WHATSAPP';`.
 
 ## ☁️ Publicar no Vercel
 
