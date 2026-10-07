@@ -56,6 +56,19 @@ Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas gu
 4. Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
    (**Project Settings → Data API / API Keys**).
 
+## 🤖 Consulta de produto (uso, dose e substitutos)
+
+No cadastro de um produto, o botão **Consultar uso, dose e substitutos** pesquisa pelo nome comercial e
+fabricante. Para funcionar, uma vez só (precisa do [Supabase CLI](https://supabase.com/docs/guides/cli)):
+
+```bash
+supabase functions deploy consultar-produto
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic.com
+```
+
+A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
+tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
+
 ## 📥 Histórico das planilhas
 
 [`supabase/importacao-historico.sql`](supabase/importacao-historico.sql) traz o histórico das planilhas

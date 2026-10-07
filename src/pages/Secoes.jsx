@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
-import { Abas, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
+import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
   noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
 } from "../lib/calculos";
-import { ESQUEMA } from "../lib/esquema";
+import { ESQUEMA, hoje } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
+import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
@@ -155,14 +156,37 @@ export function Diesel(props) {
 function EstoqueQuimicos({ dados }) {
   const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false || x.saldo);
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
+  const [exportando, setExportando] = useState(false);
+  const exportar = async () => {
+    setExportando(true);
+    try {
+      const linhas = [...lista].sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({
+        produto: x.insumo.nome, fabricante: x.insumo.fabricante ?? "", tipo: tipos[x.insumo.tipo] ?? "", principio: x.insumo.principio_ativo ?? "",
+        unidade: x.insumo.unidade, entrou: x.entrada, aplicado: x.saida, saldo: x.saldo,
+        minimo: x.insumo.estoque_minimo ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
+        custo: Number(x.custoMedio.toFixed(2)), valor: Number(x.valorEstoque.toFixed(2)),
+        observacao: x.insumo.observacao ?? "", fotos: x.insumo.fotos_rotulo ?? [],
+      }));
+      await gerarPlanilhaAgronomo(`estoque-agronomo-${hoje()}.xlsx`, linhas);
+    } finally {
+      setExportando(false);
+    }
+  };
   return (
     <div className="cartao">
-      <p className="descricao">Saldo = entradas − aplicações. O custo médio vem das entradas e é o que vai para o custo do talhão.</p>
+      <div className="barra">
+        <p className="descricao" style={{ margin: 0 }}>Saldo = entradas − aplicações. O custo médio vem das entradas.</p>
+        <span className="espaco" />
+        <button className="btn" onClick={exportar} disabled={!lista.length || exportando} title="Baixar planilha do estoque para o agrônomo">
+          <Icone nome="exportar" /> {exportando ? "Gerando…" : "Planilha para o agrônomo"}
+        </button>
+      </div>
       <TabelaSimples
         vazio="Cadastre os produtos na aba Produtos e lance as entradas."
         linhas={lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({ ...x, id: x.insumo.id }))}
         colunas={[
           { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "Tipo", valor: (x) => tipos[x.insumo.tipo] ?? "—" },
           { rotulo: "Entrou", num: true, valor: (x) => numero(x.entrada) },
           { rotulo: "Aplicado", num: true, valor: (x) => numero(x.saida) },
@@ -171,7 +195,7 @@ function EstoqueQuimicos({ dados }) {
           { rotulo: "Custo médio", num: true, valor: (x) => (x.custoMedio ? `${brl(x.custoMedio)}/${x.insumo.unidade}` : "—") },
           { rotulo: "Valor em estoque", num: true, valor: (x) => brl(x.valorEstoque) },
         ]}
-        rodape={["Total", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
+        rodape={["Total", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
       />
     </div>
   );

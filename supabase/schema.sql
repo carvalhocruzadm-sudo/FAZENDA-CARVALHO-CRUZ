@@ -113,11 +113,13 @@ create table if not exists public.insumos (
   atualizado_em timestamptz
 );
 alter table public.insumos add column if not exists nome text;
+alter table public.insumos add column if not exists fabricante text;
 alter table public.insumos add column if not exists tipo text;
 alter table public.insumos add column if not exists principio_ativo text;
 alter table public.insumos add column if not exists unidade text;
 alter table public.insumos add column if not exists estoque_minimo numeric;
 alter table public.insumos add column if not exists ativo boolean;
+alter table public.insumos add column if not exists fotos_rotulo jsonb;
 alter table public.insumos add column if not exists observacao text;
 alter table public.insumos enable row level security;
 drop policy if exists "equipe acessa insumos" on public.insumos;
