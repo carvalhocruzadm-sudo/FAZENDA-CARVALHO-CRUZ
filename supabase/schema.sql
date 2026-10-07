@@ -83,6 +83,24 @@ drop policy if exists "equipe acessa funcionarios" on public.funcionarios;
 create policy "equipe acessa funcionarios" on public.funcionarios
   for all to authenticated using (true) with check (true);
 
+-- Usuários
+create table if not exists public.usuarios (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.usuarios add column if not exists funcionario_id uuid;
+alter table public.usuarios add column if not exists nome text;
+alter table public.usuarios add column if not exists email text;
+alter table public.usuarios add column if not exists perfil text;
+alter table public.usuarios add column if not exists telefone text;
+alter table public.usuarios add column if not exists ativo boolean;
+alter table public.usuarios add column if not exists observacao text;
+alter table public.usuarios enable row level security;
+drop policy if exists "equipe acessa usuarios" on public.usuarios;
+create policy "equipe acessa usuarios" on public.usuarios
+  for all to authenticated using (true) with check (true);
+
 -- Máquinas e veículos
 create table if not exists public.maquinas (
   id uuid primary key default gen_random_uuid(),
