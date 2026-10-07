@@ -10,6 +10,7 @@ import {
   bipar, emEmbalagens, itensDaOrdem, ordensAbertas, ordensSeparadas, produtoDoCodigo, saidaDaSeparacao, sobraDaOrdem,
 } from "../lib/deposito";
 import { hoje, prepararRegistro } from "../lib/esquema";
+import { nomesTalhoesDaOrdem, talhoesDaOrdem } from "../lib/talhoes";
 import { data as dataBR, nomeRef, numero } from "../lib/formato";
 
 /**
@@ -67,15 +68,17 @@ function Pronto({ texto, irPara }) {
 
 function CartaoOrdem({ dados, ordem, aoTocar }) {
   const talhao = dados.talhoes.find((t) => t.id === ordem.talhao_id);
+  const nomes = nomesTalhoesDaOrdem(dados, ordem);
+  const varios = talhoesDaOrdem(dados, ordem).length > 1;
   const itens = itensDaOrdem(dados, ordem.id);
-  const fala = `Pulverização no talhão ${talhao?.nome ?? ""}, ${itens.length} produtos`;
+  const fala = `Pulverização ${varios ? "nos talhões" : "no talhão"} ${nomes}, ${itens.length} produtos`;
   return (
     <div className="campo-item">
       <button type="button" className="ordem-cartao" onClick={aoTocar}>
         <div className="ordem-cabeca">
           {talhao?.foto ? <FotoOuInicial caminho={talhao.foto} nome={talhao.nome} /> : <span className="figura">💦</span>}
           <div>
-            <b>{talhao?.nome ?? "Talhão"}</b>
+            <b>{nomes}</b>
             <small>{dataBR(ordem.data)} · {nomeRef(dados, "maquinas", ordem.maquina_id)}</small>
           </div>
         </div>
@@ -108,9 +111,10 @@ export function Saida({ dados, salvar, irPara }) {
 
   const separar = async (conferidoPorQR) => {
     try {
-      const { reg, erro: e } = prepararRegistro("aplicacoes", saidaDaSeparacao(ordem, atual.item, operadorId, hoje(), conferidoPorQR));
+      const regs = saidaDaSeparacao(dados, ordem, atual.item, operadorId, hoje(), conferidoPorQR).map((b) => prepararRegistro("aplicacoes", b));
+      const e = regs.find((x) => x.erro)?.erro;
       if (e) throw new Error(e);
-      await salvar("aplicacoes", reg);
+      for (const { reg } of regs) await salvar("aplicacoes", reg);
       const faltam = itens.filter((x) => !x.separado && x.item.id !== atual.item.id);
       if (!faltam.length) {
         await salvar("pulverizacoes", { ...ordem, situacao: "separada", operador_id: ordem.operador_id ?? operadorId });
@@ -171,7 +175,7 @@ export function Saida({ dados, salvar, irPara }) {
         ? `Pegue estes produtos. Faltam ${faltam}. ${itens.filter((x) => !x.separado).map((x) => `${x.insumo.nome}: ${emEmbalagens(x.insumo, x.item.quantidade).fala}`).join(". ")}. Toque no produto para conferir.`
         : "Todos os produtos já foram separados.";
       return (
-        <Tela passo={passo} figura="📤" titulo={nomeRef(dados, "talhoes", ordem?.talhao_id)} fala={fala}
+        <Tela passo={passo} figura="📤" titulo={ordem ? nomesTalhoesDaOrdem(dados, ordem) : ""} fala={fala}
           rodape={faltam ? <Rodape aoVoltar={() => ir("ordem")} /> : <footer className="campo-rodape"><button type="button" className="campo-btn verde" onClick={() => ir("pronto")}>✓ Terminar</button></footer>}>
           <Pergunta figura="🧴">Pegue estes produtos</Pergunta>
           {itens.map(({ item, insumo, separado }) => (
@@ -196,7 +200,7 @@ export function Saida({ dados, salvar, irPara }) {
       const e = emEmbalagens(atual.insumo, atual.item.quantidade);
       const fala = `Pegue ${atual.insumo.nome}: ${e.fala}. Depois toque no botão verde e aponte a câmera para o QR code do produto.`;
       return (
-        <Tela passo={passo} figura="📤" titulo={nomeRef(dados, "talhoes", ordem?.talhao_id)} fala={fala}
+        <Tela passo={passo} figura="📤" titulo={ordem ? nomesTalhoesDaOrdem(dados, ordem) : ""} fala={fala}
           rodape={(
             <footer className="campo-rodape">
               <button type="button" className="campo-btn cinza" onClick={() => ir("lista")}>◀ Voltar</button>
@@ -318,15 +322,16 @@ export function Entrada({ dados, salvar, irPara, produtoInicial }) {
   const gravar = async () => {
     setSalvando(true);
     try {
-      const [colecao, bruto] = tipo === "compra"
-        ? ["insumo_entradas", {
+      const [colecao, brutos] = tipo === "compra"
+        ? ["insumo_entradas", [{
           data: hoje(), insumo_id: insumo.id, quantidade, valor: null, a_conferir: true, foto,
           responsavel_id: operadorId, observacao: "Entrada pelo depósito (QR code)",
-        }]
-        : ["aplicacoes", sobraDaOrdem(ordem, insumo.id, quantidade, operadorId, hoje())];
-      const { reg, erro } = prepararRegistro(colecao, bruto);
+        }]]
+        : ["aplicacoes", sobraDaOrdem(dados, ordem, insumo.id, quantidade, operadorId, hoje())];
+      const regs = brutos.map((b) => prepararRegistro(colecao, b));
+      const erro = regs.find((x) => x.erro)?.erro;
       if (erro) throw new Error(erro);
-      await salvar(colecao, reg);
+      for (const { reg } of regs) await salvar(colecao, reg);
       vibrar([60, 60, 120]);
       ir(tipo === "compra" ? "pronto" : "mais");
     } catch (e) {

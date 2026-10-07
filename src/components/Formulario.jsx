@@ -130,14 +130,24 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
           || [x.nome, x.fabricante, x.tipo, x.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(termo)))
         .sort(def.ordem ?? (() => 0));
       const rotuloOpcao = (x) => `${def.resumo?.(x) ?? x.nome}${deProduto && x.fabricante ? ` — ${x.fabricante}` : ""}`;
+      const opcao = (x) => <option key={x.id} value={x.id}>{rotuloOpcao(x)}</option>;
+      // Talhão: só os da cultura já escolhida, separados por fazenda.
+      const deTalhao = campo.colecao === "talhoes";
+      const lista = deTalhao && reg.cultura_id ? opcoes.filter((x) => x.id === valor || x.cultura_id === reg.cultura_id) : opcoes;
+      const nomeFazenda = (x) => dados.fazendas?.find((f) => f.id === x.fazenda_id)?.nome || "Sem fazenda";
+      const fazendas = deTalhao ? [...new Set(lista.map(nomeFazenda))].sort((a, b) => a.localeCompare(b, "pt-BR")) : [];
       controle = (
         <>
           {deProduto && (
             <input type="search" placeholder="Buscar produto ou fabricante…" value={achar} onChange={(e) => setAchar(e.target.value)} aria-label="Buscar produto" autoComplete="off" />
           )}
           <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
-            <option value="">{opcoes.length ? "— escolha —" : termo ? "Nenhum produto encontrado" : `Nenhum ${def.singular} cadastrado`}</option>
-            {opcoes.map((x) => <option key={x.id} value={x.id}>{rotuloOpcao(x)}</option>)}
+            <option value="">
+              {lista.length ? "— escolha —" : termo ? "Nenhum produto encontrado" : deTalhao && opcoes.length ? "Nenhum talhão desta cultura" : `Nenhum ${def.singular} cadastrado`}
+            </option>
+            {deTalhao && fazendas.length > 1
+              ? fazendas.map((f) => <optgroup key={f} label={f}>{lista.filter((x) => nomeFazenda(x) === f).map(opcao)}</optgroup>)
+              : lista.map(opcao)}
           </select>
         </>
       );

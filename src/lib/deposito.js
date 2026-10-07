@@ -4,6 +4,7 @@
  */
 
 import { numero } from "./formato";
+import { dividirQuantidade, talhoesDaOrdem } from "./talhoes";
 
 const n = (v) => Number(v) || 0;
 
@@ -77,24 +78,38 @@ export function itensDaOrdem(dados, ordemId) {
     .sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome));
 }
 
-/** A saída do estoque de um produto separado para a ordem. */
-export function saidaDaSeparacao(ordem, item, operadorId, data, conferidoPorQR) {
-  return {
-    data, insumo_id: item.insumo_id, quantidade: n(item.quantidade), pulverizacao_id: ordem.id,
-    talhao_id: ordem.talhao_id, cultura_id: ordem.cultura_id ?? null, dose_ha: item.dose_ha ?? null,
-    area_aplicada: ordem.area_ha ?? null, responsavel_id: operadorId, maquina_id: ordem.maquina_id ?? null,
+/**
+ * Uma linha por talhão da ordem, com a parte da quantidade que cabe a ele
+ * (dividida pela área), para o custo cair no talhão certo.
+ */
+function porTalhao(dados, ordem, quantidade, linha) {
+  const talhoes = talhoesDaOrdem(dados, ordem);
+  const partes = dividirQuantidade(quantidade, talhoes);
+  const varios = talhoes.length > 1 ? ` · dividido entre ${talhoes.map((x) => x.talhao.nome).join(", ")} pela área` : "";
+  return talhoes.map((x, i) => ({
+    ...linha, quantidade: partes[i], pulverizacao_id: ordem.id,
+    talhao_id: x.talhao.id, cultura_id: x.talhao.cultura_id ?? ordem.cultura_id ?? null,
+    observacao: linha.observacao + varios,
+    area_aplicada: linha.area_aplicada === undefined ? x.area_ha || null : linha.area_aplicada,
+  }));
+}
+
+/** As saídas do estoque de um produto separado para a ordem (uma por talhão). */
+export function saidaDaSeparacao(dados, ordem, item, operadorId, data, conferidoPorQR) {
+  return porTalhao(dados, ordem, n(item.quantidade), {
+    data, insumo_id: item.insumo_id, dose_ha: item.dose_ha ?? null,
+    responsavel_id: operadorId, maquina_id: ordem.maquina_id ?? null,
     observacao: conferidoPorQR ? "Separado no depósito (conferido pelo QR code)" : "Separado no depósito SEM conferir pelo QR code",
-  };
+  });
 }
 
 /** A sobra que voltou: aplicação negativa, para o estoque subir e o custo do talhão ficar certo. */
-export function sobraDaOrdem(ordem, insumoId, quantidade, operadorId, data) {
-  return {
-    data, insumo_id: insumoId, quantidade: -Math.abs(n(quantidade)), pulverizacao_id: ordem.id,
-    talhao_id: ordem.talhao_id, cultura_id: ordem.cultura_id ?? null, area_aplicada: null, dose_ha: null,
+export function sobraDaOrdem(dados, ordem, insumoId, quantidade, operadorId, data) {
+  return porTalhao(dados, ordem, -Math.abs(n(quantidade)), {
+    data, insumo_id: insumoId, area_aplicada: null, dose_ha: null,
     responsavel_id: operadorId, maquina_id: ordem.maquina_id ?? null,
     observacao: "Sobra que voltou da pulverização (lançada no depósito)",
-  };
+  });
 }
 
 /** Bip curto (certo) ou grave e longo (errado). */
