@@ -69,3 +69,18 @@ export default function DetalheProduto({ id, dados, aoFechar }) {
     </Modal>
   );
 }
+
+/** Nome do produto que, ao clicar, abre a janela de detalhes e foto. */
+export function LinkProduto({ id, dados, children }) {
+  const [aberto, setAberto] = useState(false);
+  if (!id) return children ?? "—";
+  return (
+    <>
+      <button type="button" className="link-produto" title="Ver detalhes e foto"
+        onClick={(e) => { e.stopPropagation(); setAberto(true); }}>
+        {children}
+      </button>
+      {aberto && <DetalheProduto id={id} dados={dados} aoFechar={() => setAberto(false)} />}
+    </>
+  );
+}

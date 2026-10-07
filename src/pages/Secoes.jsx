@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
-import DetalheProduto from "../components/DetalheProduto";
+import { LinkProduto } from "../components/DetalheProduto";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
@@ -179,7 +179,6 @@ function EstoqueQuimicos({ dados }) {
   const lista = estoqueInsumos(dados).filter((x) => (x.insumo.ativo !== false || x.saldo) && achaProduto(x.insumo, busca));
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
   const [exportando, setExportando] = useState(false);
-  const [produtoAberto, setProdutoAberto] = useState(null);
   const exportar = async () => {
     setExportando(true);
     try {
@@ -211,11 +210,7 @@ function EstoqueQuimicos({ dados }) {
         colunas={[
           {
             rotulo: "Produto",
-            valor: (x) => (
-              <button type="button" className="link-produto" title="Ver detalhes e foto" onClick={() => setProdutoAberto(x.insumo.id)}>
-                {x.insumo.nome}
-              </button>
-            ),
+            valor: (x) => <LinkProduto id={x.insumo.id} dados={dados}>{x.insumo.nome}</LinkProduto>,
           },
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "Tipo", valor: (x) => tipos[x.insumo.tipo] ?? "—" },
@@ -300,7 +295,7 @@ function BalancoEstoque({ dados, salvar }) {
         vazio="Cadastre os produtos na aba Produtos primeiro."
         linhas={linhas}
         colunas={[
-          { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          { rotulo: "Produto", valor: (x) => <LinkProduto id={x.insumo.id} dados={dados}>{x.insumo.nome}</LinkProduto> },
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "No sistema", num: true, valor: (x) => `${numero(x.saldo)} ${x.insumo.unidade}` },
           { rotulo: "Contagem", valor: (x) => (
@@ -314,7 +309,6 @@ function BalancoEstoque({ dados, salvar }) {
           ) : "—") },
         ]}
       />
-      {produtoAberto && <DetalheProduto id={produtoAberto} dados={dados} aoFechar={() => setProdutoAberto(null)} />}
     </div>
   );
 }
