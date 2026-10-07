@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { COLECOES, apagarItem, enfileirar, gravarItem, lerFila, lerTodasColecoes, limparLocal } from "../lib/db";
+import { retirarEmEspera } from "../lib/arquivos";
+import { COLECOES, apagarItem, enfileirar, gravarArquivo, gravarItem, lerFila, lerTodasColecoes, limparLocal } from "../lib/db";
+import { ESQUEMA } from "../lib/esquema";
 import { SEED } from "../lib/seed";
 import { supabaseConfigurado } from "../lib/supabase";
 import { atualizarContadores, iniciarAutoSync, sincronizar } from "../lib/sync";
@@ -23,6 +25,7 @@ async function comFilaPorCima(dados) {
   const fila = await lerFila();
   const d = { ...dados };
   for (const op of fila) {
+    if (op.acao === "upload") continue; // arquivo, não registro
     const lista = d[op.tabela] ?? [];
     const semEste = lista.filter((x) => x.id !== op.payload.id);
     d[op.tabela] = op.acao === "delete" ? semEste : [...semEste, op.payload];
@@ -78,6 +81,14 @@ export function useDados() {
 
   const salvar = useCallback(async (colecao, registro) => {
     const item = { ...registro, id: registro.id || novoId(), atualizado_em: new Date().toISOString() };
+    // Comprovante novo: guarda no aparelho e enfileira o envio antes do
+    // registro, para o arquivo já estar na nuvem quando o lançamento chegar.
+    for (const [chave, campo] of Object.entries(ESQUEMA[colecao].campos)) {
+      const arquivo = campo.tipo === "arquivo" && item[chave] ? retirarEmEspera(item[chave]) : null;
+      if (!arquivo) continue;
+      await gravarArquivo(item[chave], { arquivo, tipo: arquivo.type });
+      await enfileirar({ tabela: "comprovantes", acao: "upload", payload: { id: item[chave] } });
+    }
     setDados((d) => ({ ...d, [colecao]: [...d[colecao].filter((x) => x.id !== item.id), item] }));
     await gravarItem(colecao, item);
     await enfileirar({ tabela: colecao, acao: "upsert", payload: item });
