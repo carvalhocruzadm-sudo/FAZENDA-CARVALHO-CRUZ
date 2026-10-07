@@ -1,27 +1,11 @@
 /**
  * Regras do depósito de químicos no Modo Campo: ordens de pulverização,
- * separação conferida pelo QR code e entradas (compra e sobra).
+ * separação conferida pela foto e entradas (compra e sobra).
  */
 
 import { numero } from "./formato";
 
 const n = (v) => Number(v) || 0;
-
-/** Endereço que vai no QR colado na frente de cada produto. */
-export const enderecoProduto = (id) => `${window.location.origin}/campo/produto/${id}`;
-
-/**
- * O que a câmera leu → o produto é este? Aceita a etiqueta QR do sistema
- * (…/campo/produto/<id>) e o código de barras da embalagem, se cadastrado.
- */
-export function produtoDoCodigo(dados, lido) {
-  const texto = String(lido ?? "").trim();
-  const id = texto.match(/\/campo\/produto\/([\w-]+)/)?.[1];
-  if (id) return dados.insumos.find((i) => i.id === id) ?? null;
-  const digitos = texto.replace(/\D/g, "");
-  if (!digitos) return null;
-  return dados.insumos.find((i) => String(i.codigo_barras ?? "").replace(/\D/g, "") === digitos) ?? null;
-}
 
 const plural = (qtd, palavra) => {
   const p = String(palavra || "embalagem").toLowerCase();
@@ -78,12 +62,12 @@ export function itensDaOrdem(dados, ordemId) {
 }
 
 /** A saída do estoque de um produto separado para a ordem. */
-export function saidaDaSeparacao(ordem, item, operadorId, data, conferidoPorQR) {
+export function saidaDaSeparacao(ordem, item, operadorId, data) {
   return {
     data, insumo_id: item.insumo_id, quantidade: n(item.quantidade), pulverizacao_id: ordem.id,
     talhao_id: ordem.talhao_id, cultura_id: ordem.cultura_id ?? null, dose_ha: item.dose_ha ?? null,
     area_aplicada: ordem.area_ha ?? null, responsavel_id: operadorId, maquina_id: ordem.maquina_id ?? null,
-    observacao: conferidoPorQR ? "Separado no depósito (conferido pelo QR code)" : "Separado no depósito SEM conferir pelo QR code",
+    observacao: "Separado no depósito (Modo Campo)",
   };
 }
 
@@ -95,22 +79,4 @@ export function sobraDaOrdem(ordem, insumoId, quantidade, operadorId, data) {
     responsavel_id: operadorId, maquina_id: ordem.maquina_id ?? null,
     observacao: "Sobra que voltou da pulverização (lançada no depósito)",
   };
-}
-
-/** Bip curto (certo) ou grave e longo (errado). */
-export function bipar(certo) {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const vol = ctx.createGain();
-    osc.type = certo ? "sine" : "square";
-    osc.frequency.value = certo ? 1200 : 220;
-    vol.gain.value = 0.25;
-    osc.connect(vol).connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + (certo ? 0.18 : 0.7));
-    osc.onended = () => ctx.close();
-  } catch { /* sem som: fica a cor e a vibração */ }
 }
