@@ -74,7 +74,7 @@ Para o agrônomo ver a **validade**, lance a data de validade nas **Entradas / c
 
 ## 🤖 Consulta de produto (uso, dose e substitutos)
 
-No cadastro de um produto, o botão **Consultar uso, dose e substitutos** pesquisa pelo nome comercial e
+Na aba **Produtos**, o botão **Pesquisar na internet** (e, no cadastro, **Consultar uso, dose e substitutos**) pesquisa pelo nome comercial e
 fabricante. Para funcionar, uma vez só (precisa do [Supabase CLI](https://supabase.com/docs/guides/cli)):
 
 ```bash

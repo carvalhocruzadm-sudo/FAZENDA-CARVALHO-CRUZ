@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { supabase } from "../lib/supabase";
-import { Icone } from "./ui";
+import { Icone, Modal } from "./ui";
 
 /**
  * Botão "Consultar uso, dose e substitutos": pergunta à IA (função
@@ -31,7 +31,7 @@ export default function ConsultaProduto({ reg, setReg }) {
   };
 
   const guardar = () => {
-    setReg((atual) => ({ ...atual, observacao: [atual.observacao, texto].filter(Boolean).join("\n\n") }));
+    setReg?.((atual) => ({ ...atual, observacao: [atual.observacao, texto].filter(Boolean).join("\n\n") }));
     setTexto(null);
   };
 
@@ -48,10 +48,38 @@ export default function ConsultaProduto({ reg, setReg }) {
           <div className="barra">
             <small>Informação de apoio: vale o rótulo/bula e a orientação do agrônomo.</small>
             <span className="espaco" />
-            <button type="button" className="btn" onClick={guardar}>Guardar na observação</button>
+            {setReg && <button type="button" className="btn" onClick={guardar}>Guardar na observação</button>}
           </div>
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Pesquisa avulsa na internet, aberta pela aba Produtos: digita o nome
+ * comercial (e o fabricante) e vê princípio ativo, dose do fabricante e
+ * culturas, sem precisar cadastrar antes. Dá para cadastrar com o resultado.
+ */
+export function PesquisaProduto({ aoFechar, aoCadastrar }) {
+  const [reg, setReg] = useState({ nome: "", fabricante: "", observacao: "" });
+  const campo = (chave, rotulo, extra) => (
+    <label className="campo"><span>{rotulo}</span>
+      <input value={reg[chave]} onChange={(e) => setReg((r) => ({ ...r, [chave]: e.target.value }))} {...extra} />
+    </label>
+  );
+  return (
+    <Modal titulo="Pesquisar produto na internet" aoFechar={aoFechar}>
+      <p className="descricao">Digite o nome comercial e, se souber, o fabricante. Traz princípio ativo, dose recomendada pelo fabricante e culturas.</p>
+      {campo("nome", "Nome comercial", { autoFocus: true })}
+      {campo("fabricante", "Fabricante")}
+      <ConsultaProduto reg={reg} setReg={setReg} />
+      {reg.observacao && (
+        <div className="barra">
+          <span className="espaco" />
+          <button type="button" className="btn primario" onClick={() => aoCadastrar(reg)}>Cadastrar com estes dados</button>
+        </div>
+      )}
+    </Modal>
   );
 }

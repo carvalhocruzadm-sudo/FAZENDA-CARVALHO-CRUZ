@@ -30,9 +30,9 @@ Deno.serve(async (req) => {
 - Tipo: ${tipo || "não informado"}
 
 Pesquise na internet (de preferência bula, ficha técnica do fabricante, AGROFIT/MAPA) e responda em português do Brasil, em texto simples e curto, com estas seções:
-1. O QUE É — princípio ativo, concentração, formulação, classe.
-2. PARA QUE SERVE — culturas e alvos (pragas, plantas daninhas, doenças ou nutrição) indicados.
-3. DOSE E MODO DE USO — dose por hectare por cultura/alvo, volume de calda, época e número de aplicações, intervalo de segurança.
+1. PRINCÍPIO ATIVO — ingrediente(s) ativo(s), concentração, formulação, classe e fabricante.
+2. CULTURAS E ALVOS — culturas em que o produto é registrado e para que serve (pragas, plantas daninhas, doenças ou nutrição).
+3. DOSE RECOMENDADA PELO FABRICANTE — dose por hectare (ou por 100 L de calda) para cada cultura/alvo, volume de calda, época, número de aplicações e intervalo de segurança.
 4. EQUIVALENTES — outros produtos comerciais com o MESMO princípio ativo e concentração.
 5. SUBSTITUTOS — alternativas com outro princípio ativo para o mesmo uso.
 6. CUIDADOS — classe toxicológica, EPI, carência e o que não misturar, se houver.

@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from "react";
 import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
 import { baixarCSV, exibir, numero } from "../lib/formato";
+import { PesquisaProduto } from "./ConsultaProduto";
 import Formulario from "./Formulario";
 import { Icone, Modal, SeletorPeriodo } from "./ui";
 
@@ -47,6 +48,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   const [periodo, setPeriodo] = useState(periodoInicial ?? (def.lancamento ? "mes" : "tudo"));
   const [rascunho, setRascunho] = useState(null);
   const [erro, setErro] = useState(null);
+  const [pesquisando, setPesquisando] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   const colunas = colunasProp ?? def.colunas;
@@ -119,8 +121,19 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
         <button className="btn" onClick={() => exportarCSV(colecao, colunas, def, linhas, dados)} disabled={!linhas.length} title="Baixar planilha (CSV)">
           <Icone nome="exportar" /> Planilha
         </button>
+        {colecao === "insumos" && (
+          <button className="btn" onClick={() => setPesquisando(true)} title="Pesquisar princípio ativo, dose e culturas de um produto">
+            <Icone nome="busca" /> Pesquisar na internet
+          </button>
+        )}
         <button className="btn primario" onClick={novo}><Icone nome="mais" /> Novo</button>
       </div>
+      {pesquisando && (
+        <PesquisaProduto
+          aoFechar={() => setPesquisando(false)}
+          aoCadastrar={(r) => { setPesquisando(false); abrir({ ...registroNovo(colecao), nome: r.nome, fabricante: r.fabricante, observacao: r.observacao }); }}
+        />
+      )}
 
       {linhas.length === 0 ? (
         <div className="vazio">
