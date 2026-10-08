@@ -11,6 +11,8 @@
 -- lança abastecimento, horímetro, as saídas/entradas do depósito de químicos e
 -- o ticket da balança (só quem está marcado em Usuários → "Lança ticket da
 -- balança"; e só vê os tickets que ainda faltam completar, sem preço).
+-- Perfil "Lançador de ticket": login só do ticket da balança (não lança
+-- abastecimento nem depósito).
 -- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
 -- aqui (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
@@ -19,26 +21,43 @@
 create or replace function public.eh_campo() returns boolean
 language plpgsql stable security definer set search_path = public as $$
 begin
-  if coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '') = 'campo' then return true; end if;
+  if coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '') in ('campo', 'ticket') then return true; end if;
   if to_regclass('public.usuarios') is null then return false; end if;
   return exists (
     select 1 from public.usuarios u
-    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil = 'campo' and coalesce(u.ativo, true)
+    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil in ('campo', 'ticket') and coalesce(u.ativo, true)
   );
 end $$;
 
--- Login de campo que pode lançar o ticket da balança (Usuários → "Lança ticket
--- da balança no celular"). Os outros tratoristas nem veem o botão.
-create or replace function public.campo_ticket() returns boolean
+-- O que o login de campo pode fazer no celular:
+--   'ticket'        → login só do ticket da balança (perfil Lançador de ticket);
+--   'campo_ticket'  → tratorista marcado em "Lança ticket da balança no celular";
+--   'campo'         → tratorista (abastecimento e depósito);
+--   null            → não é login de campo.
+create or replace function public.acesso_campo() returns text
 language plpgsql stable security definer set search_path = public as $$
+declare
+  meta text := coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '');
+  cad text;
+  marcado boolean;
 begin
-  if to_regclass('public.usuarios') is null then return false; end if;
-  return exists (
-    select 1 from public.usuarios u
-    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil = 'campo'
-      and coalesce(u.ativo, true) and coalesce(u.ticket_campo, false)
-  );
+  if meta = 'ticket' then return 'ticket'; end if;
+  if to_regclass('public.usuarios') is not null then
+    select u.perfil, coalesce(u.ticket_campo, false) into cad, marcado from public.usuarios u
+    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil in ('campo', 'ticket') and coalesce(u.ativo, true)
+    order by (u.perfil = 'ticket') desc limit 1;
+  end if;
+  if cad = 'ticket' then return 'ticket'; end if;
+  if cad = 'campo' and marcado then return 'campo_ticket'; end if;
+  if cad = 'campo' or meta = 'campo' then return 'campo'; end if;
+  return null;
 end $$;
+
+-- Pode lançar o ticket da balança (regras da tabela de vendas)?
+create or replace function public.campo_ticket() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(public.acesso_campo() in ('ticket', 'campo_ticket'), false);
+$$;
 
 -- Culturas
 create table if not exists public.culturas (
@@ -338,9 +357,9 @@ drop policy if exists "campo corrige operacoes" on public.operacoes;
 create policy "campo le operacoes" on public.operacoes
   for select to authenticated using ((select public.eh_campo()));
 create policy "campo lanca operacoes" on public.operacoes
-  for insert to authenticated with check ((select public.eh_campo()));
+  for insert to authenticated with check ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket');
 create policy "campo corrige operacoes" on public.operacoes
-  for update to authenticated using ((select public.eh_campo())) with check ((select public.eh_campo()));
+  for update to authenticated using ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket') with check ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket');
 
 -- Revisões e manutenções
 create table if not exists public.revisoes (
@@ -418,9 +437,9 @@ drop policy if exists "campo corrige abastecimentos" on public.abastecimentos;
 create policy "campo le abastecimentos" on public.abastecimentos
   for select to authenticated using ((select public.eh_campo()));
 create policy "campo lanca abastecimentos" on public.abastecimentos
-  for insert to authenticated with check ((select public.eh_campo()));
+  for insert to authenticated with check ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket');
 create policy "campo corrige abastecimentos" on public.abastecimentos
-  for update to authenticated using ((select public.eh_campo())) with check ((select public.eh_campo()));
+  for update to authenticated using ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket') with check ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket');
 
 -- Entradas de químicos/insumos
 create table if not exists public.insumo_entradas (
@@ -451,9 +470,9 @@ drop policy if exists "campo corrige insumo_entradas" on public.insumo_entradas;
 create policy "campo le insumo_entradas" on public.insumo_entradas
   for select to authenticated using ((select public.eh_campo()) and a_conferir = true);
 create policy "campo lanca insumo_entradas" on public.insumo_entradas
-  for insert to authenticated with check ((select public.eh_campo()) and a_conferir = true);
+  for insert to authenticated with check ((select public.eh_campo()) and a_conferir = true and (select public.acesso_campo()) is distinct from 'ticket');
 create policy "campo corrige insumo_entradas" on public.insumo_entradas
-  for update to authenticated using ((select public.eh_campo()) and a_conferir = true) with check ((select public.eh_campo()) and a_conferir = true);
+  for update to authenticated using ((select public.eh_campo()) and a_conferir = true and (select public.acesso_campo()) is distinct from 'ticket') with check ((select public.eh_campo()) and a_conferir = true and (select public.acesso_campo()) is distinct from 'ticket');
 
 -- Balanço / conferência de estoque
 create table if not exists public.insumo_ajustes (
@@ -504,9 +523,9 @@ drop policy if exists "campo corrige aplicacoes" on public.aplicacoes;
 create policy "campo le aplicacoes" on public.aplicacoes
   for select to authenticated using ((select public.eh_campo()));
 create policy "campo lanca aplicacoes" on public.aplicacoes
-  for insert to authenticated with check ((select public.eh_campo()));
+  for insert to authenticated with check ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket');
 create policy "campo corrige aplicacoes" on public.aplicacoes
-  for update to authenticated using ((select public.eh_campo())) with check ((select public.eh_campo()));
+  for update to authenticated using ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket') with check ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket');
 
 -- Ordens de pulverização
 create table if not exists public.pulverizacoes (
@@ -534,9 +553,9 @@ drop policy if exists "campo corrige pulverizacoes" on public.pulverizacoes;
 create policy "campo le pulverizacoes" on public.pulverizacoes
   for select to authenticated using ((select public.eh_campo()));
 create policy "campo lanca pulverizacoes" on public.pulverizacoes
-  for insert to authenticated with check ((select public.eh_campo()));
+  for insert to authenticated with check ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket');
 create policy "campo corrige pulverizacoes" on public.pulverizacoes
-  for update to authenticated using ((select public.eh_campo())) with check ((select public.eh_campo()));
+  for update to authenticated using ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket') with check ((select public.eh_campo()) and (select public.acesso_campo()) is distinct from 'ticket');
 
 -- Produtos da ordem de pulverização
 create table if not exists public.pulverizacao_itens (
