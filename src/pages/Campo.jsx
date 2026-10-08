@@ -339,14 +339,17 @@ const FALA_INICIO = "O que você vai fazer? Abastecer o trator, tirar produto do
 
 const FALA_INICIO_SEM_TICKET = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, ou guardar produto no depósito.";
 
-function Inicio({ irPara, sair, voltarAoSistema, podeTicket }) {
-  const fala = podeTicket ? FALA_INICIO : FALA_INICIO_SEM_TICKET;
+const FALA_INICIO_SO_TICKET = "Toque no ticket da balança para lançar uma venda.";
+
+function Inicio({ irPara, sair, voltarAoSistema, podeTicket, soTicket }) {
+  const fala = soTicket ? FALA_INICIO_SO_TICKET : podeTicket ? FALA_INICIO : FALA_INICIO_SEM_TICKET;
   useEffect(() => { falar(fala); }, [fala]);
-  const opcoes = [
+  const ticket = ["/campo/ticket", "🧾", "Ticket da balança (venda)"];
+  const opcoes = soTicket ? [ticket] : [
     ["/campo/abastecer", "⛽", "Abastecer trator"],
     ["/campo/saida", "📤", "Tirar do depósito (pulverização)"],
     ["/campo/entrada", "📥", "Guardar no depósito"],
-    ...(podeTicket ? [["/campo/ticket", "🧾", "Ticket da balança (venda)"]] : []),
+    ...(podeTicket ? [ticket] : []),
   ];
   return (
     <div className="campo-app">
@@ -370,32 +373,37 @@ function Inicio({ irPara, sair, voltarAoSistema, podeTicket }) {
 }
 
 /**
- * O ticket da balança aparece para quem tem o sistema completo e, nas contas
- * de campo, só para os logins marcados em Usuários → "Lança ticket da balança"
- * (o banco responde pela função campo_ticket e também barra quem não pode).
+ * O que este login faz no Modo Campo (o banco responde pela função
+ * acesso_campo, que lê o cadastro de Usuários, e também barra o resto):
+ *   - sistema completo ou modo demonstração: tudo;
+ *   - Lançador de ticket: só o ticket da balança;
+ *   - tratorista: abastecer e depósito, e o ticket se estiver marcado em
+ *     Usuários → "Lança ticket da balança no celular".
  * A resposta fica guardada no aparelho para funcionar sem internet.
  */
-function usePodeTicket(email, contaCampo) {
-  const chave = `fcc-ticket:${String(email ?? "").toLowerCase()}`;
-  const [pode, setPode] = useState(() => {
-    try { return localStorage.getItem(chave) === "1"; } catch { return false; }
+function useAcessoCampo(email, contaCampo) {
+  const chave = `fcc-acesso:${String(email ?? "").toLowerCase()}`;
+  const [acesso, setAcesso] = useState(() => {
+    try { return localStorage.getItem(chave) || "campo"; } catch { return "campo"; }
   });
   const perguntar = contaCampo && supabaseConfigurado && Boolean(email);
   useEffect(() => {
     if (!perguntar) return undefined;
     let vivo = true;
-    const ver = () => supabase.rpc("campo_ticket").then(({ data, error }) => {
+    const ver = () => supabase.rpc("acesso_campo").then(({ data, error }) => {
       // Sem resposta (sem internet, banco sem a função): fica o que já se sabia.
       if (!vivo || error) return;
-      try { localStorage.setItem(chave, data ? "1" : "0"); } catch { /* sem armazenamento */ }
-      setPode(Boolean(data));
+      const novo = data || "campo";
+      try { localStorage.setItem(chave, novo); } catch { /* sem armazenamento */ }
+      setAcesso(novo);
     });
     ver();
     const aoVoltar = () => document.visibilityState === "visible" && ver();
     document.addEventListener("visibilitychange", aoVoltar);
     return () => { vivo = false; document.removeEventListener("visibilitychange", aoVoltar); };
   }, [perguntar, chave]);
-  return contaCampo && supabaseConfigurado ? pode : true;
+  if (!contaCampo || !supabaseConfigurado) return { podeTicket: true, soTicket: false };
+  return { podeTicket: acesso === "ticket" || acesso === "campo_ticket", soTicket: acesso === "ticket" };
 }
 
 /**
@@ -404,7 +412,7 @@ function usePodeTicket(email, contaCampo) {
  */
 export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema, email }) {
   const { dados, pronto, erro, salvar } = useDados();
-  const podeTicket = usePodeTicket(email, !voltarAoSistema);
+  const { podeTicket, soTicket } = useAcessoCampo(email, !voltarAoSistema);
 
   useEffect(() => { if (pronto) guardarFotosDosCadastros(dados); }, [pronto, dados]);
 
@@ -418,6 +426,8 @@ export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema, emai
     voltarAoSistema();
   } : null;
   const props = { dados, salvar, irPara };
+  const inicio = <Inicio irPara={irPara} sair={sair} voltarAoSistema={voltarAoSistema} podeTicket={podeTicket} soTicket={soTicket} />;
+  if (soTicket) return acao === "ticket" ? <CampoTicket key={caminho} {...props} /> : inicio;
   switch (acao) {
     case "abastecer":
       return id
@@ -433,5 +443,5 @@ export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema, emai
     default:
       break;
   }
-  return <Inicio irPara={irPara} sair={sair} voltarAoSistema={voltarAoSistema} podeTicket={podeTicket} />;
+  return inicio;
 }

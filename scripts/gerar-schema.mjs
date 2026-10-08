@@ -29,6 +29,8 @@ let sql = `-- ══════════════════════
 -- lança abastecimento, horímetro, as saídas/entradas do depósito de químicos e
 -- o ticket da balança (só quem está marcado em Usuários → "Lança ticket da
 -- balança"; e só vê os tickets que ainda faltam completar, sem preço).
+-- Perfil "Lançador de ticket": login só do ticket da balança (não lança
+-- abastecimento nem depósito).
 -- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
 -- aqui (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
@@ -37,26 +39,43 @@ let sql = `-- ══════════════════════
 create or replace function public.eh_campo() returns boolean
 language plpgsql stable security definer set search_path = public as $$
 begin
-  if coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '') = 'campo' then return true; end if;
+  if coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '') in ('campo', 'ticket') then return true; end if;
   if to_regclass('public.usuarios') is null then return false; end if;
   return exists (
     select 1 from public.usuarios u
-    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil = 'campo' and coalesce(u.ativo, true)
+    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil in ('campo', 'ticket') and coalesce(u.ativo, true)
   );
 end $$;
 
--- Login de campo que pode lançar o ticket da balança (Usuários → "Lança ticket
--- da balança no celular"). Os outros tratoristas nem veem o botão.
-create or replace function public.campo_ticket() returns boolean
+-- O que o login de campo pode fazer no celular:
+--   'ticket'        → login só do ticket da balança (perfil Lançador de ticket);
+--   'campo_ticket'  → tratorista marcado em "Lança ticket da balança no celular";
+--   'campo'         → tratorista (abastecimento e depósito);
+--   null            → não é login de campo.
+create or replace function public.acesso_campo() returns text
 language plpgsql stable security definer set search_path = public as $$
+declare
+  meta text := coalesce(auth.jwt() -> 'app_metadata' ->> 'perfil', '');
+  cad text;
+  marcado boolean;
 begin
-  if to_regclass('public.usuarios') is null then return false; end if;
-  return exists (
-    select 1 from public.usuarios u
-    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil = 'campo'
-      and coalesce(u.ativo, true) and coalesce(u.ticket_campo, false)
-  );
+  if meta = 'ticket' then return 'ticket'; end if;
+  if to_regclass('public.usuarios') is not null then
+    select u.perfil, coalesce(u.ticket_campo, false) into cad, marcado from public.usuarios u
+    where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) and u.perfil in ('campo', 'ticket') and coalesce(u.ativo, true)
+    order by (u.perfil = 'ticket') desc limit 1;
+  end if;
+  if cad = 'ticket' then return 'ticket'; end if;
+  if cad = 'campo' and marcado then return 'campo_ticket'; end if;
+  if cad = 'campo' or meta = 'campo' then return 'campo'; end if;
+  return null;
 end $$;
+
+-- Pode lançar o ticket da balança (regras da tabela de vendas)?
+create or replace function public.campo_ticket() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(public.acesso_campo() in ('ticket', 'campo_ticket'), false);
+$$;
 
 `;
 
@@ -81,10 +100,12 @@ drop policy if exists "campo corrige ${tabela}" on public.${tabela};\n`;
   for select to authenticated using (${linhas});\n`;
   }
   if (def.campo === "grava") {
+    // O login só de ticket grava só onde a regra da tabela já pede o ticket (vendas).
+    const grava = def.campoSql?.includes("campo_ticket") ? linhas : `${linhas} and (select public.acesso_campo()) is distinct from 'ticket'`;
     sql += `create policy "campo lanca ${tabela}" on public.${tabela}
-  for insert to authenticated with check (${linhas});
+  for insert to authenticated with check (${grava});
 create policy "campo corrige ${tabela}" on public.${tabela}
-  for update to authenticated using (${linhas}) with check (${linhas});\n`;
+  for update to authenticated using (${grava}) with check (${grava});\n`;
   }
   sql += "\n";
 }

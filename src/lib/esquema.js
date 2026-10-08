@@ -266,12 +266,12 @@ export const ESQUEMA = {
 
   usuarios: {
     titulo: "Usuários", singular: "usuário", icone: "pessoas",
-    descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users). Perfil Tratorista: esse login só abre o Modo Campo (abastecimento e depósito), no celular. O ticket da balança só aparece no celular de quem tiver marcado \"Lança ticket da balança\".",
+    descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users). Perfil Tratorista: esse login só abre o Modo Campo (abastecimento e depósito), no celular. O ticket da balança só aparece no celular de quem tiver marcado \"Lança ticket da balança\". Perfil Lançador de ticket: login separado que só abre o ticket da balança.",
     campos: {
       funcionario_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Funcionário", dica: "Escolha para trazer o nome e o telefone do cadastro de funcionários" },
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
       email: { tipo: "texto", rotulo: "E-mail de acesso", obrigatorio: true },
-      perfil: { tipo: "opcoes", rotulo: "Perfil", padrao: "operador", opcoes: [["admin", "Administrador (tudo)"], ["gerente", "Gerente"], ["operador", "Operador (lança dados)"], ["consulta", "Só consulta"], ["campo", "Tratorista / campo (só o Modo Campo, no celular)"]] },
+      perfil: { tipo: "opcoes", rotulo: "Perfil", padrao: "operador", opcoes: [["admin", "Administrador (tudo)"], ["gerente", "Gerente"], ["operador", "Operador (lança dados)"], ["consulta", "Só consulta"], ["campo", "Tratorista / campo (só o Modo Campo, no celular)"], ["ticket", "Lançador de ticket (só o ticket da balança, no celular)"]] },
       ticket_campo: { tipo: "booleano", rotulo: "Lança ticket da balança no celular", mostrarSe: (r) => r.perfil === "campo", dica: "Só quem estiver marcado vê o botão do ticket no Modo Campo" },
       telefone: { tipo: "texto", rotulo: "Telefone" },
       ativo: { tipo: "booleano", rotulo: "Acesso liberado", padrao: true },

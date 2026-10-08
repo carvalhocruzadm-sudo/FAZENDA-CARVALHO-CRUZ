@@ -226,10 +226,10 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
   );
 }
 
-/** O cadastro de Usuários diz que este e-mail é de tratorista (perfil "campo")? */
+/** O cadastro de Usuários diz que este e-mail é de campo (perfil "campo" ou "ticket")? */
 function emailEhCampo(usuarios, email) {
   const alvo = String(email ?? "").trim().toLowerCase();
-  return Boolean(alvo) && (usuarios ?? []).some((u) => u.perfil === "campo" && u.ativo !== false
+  return Boolean(alvo) && (usuarios ?? []).some((u) => ["campo", "ticket"].includes(u.perfil) && u.ativo !== false
     && String(u.email ?? "").trim().toLowerCase() === alvo);
 }
 
@@ -246,7 +246,7 @@ function emailEhCampo(usuarios, email) {
  */
 function usePerfilCampo(usuario) {
   const email = usuario?.email ?? null;
-  const doMetadata = usuario?.app_metadata?.perfil === "campo";
+  const doMetadata = ["campo", "ticket"].includes(usuario?.app_metadata?.perfil);
   const chave = `fcc-campo:${String(email ?? "").toLowerCase()}`;
   const lerGuardado = () => {
     try { const v = localStorage.getItem(chave); return v == null ? null : v === "1"; } catch { return null; }
