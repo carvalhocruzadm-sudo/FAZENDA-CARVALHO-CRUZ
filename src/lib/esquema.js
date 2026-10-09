@@ -35,6 +35,14 @@
 
 export const hoje = () => new Date().toISOString().slice(0, 10);
 
+/** A segunda-feira da semana de uma data ("2026-10-09" → "2026-10-05"). */
+export function segundaDaSemana(iso) {
+  const d = new Date(`${String(iso).slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
 const num = (v) => Number(v) || 0;
 
 export const FUNCOES = [
@@ -166,7 +174,8 @@ export const ESQUEMA = {
       produtividade: { tipo: "opcoes", rotulo: "Produtividade medida em", opcoes: MEDIDAS_PRODUTIVIDADE, padrao: "sc_ha" },
       turma_colheita: { tipo: "booleano", rotulo: "Colheita feita por turma (paga por tonelada)" },
       custo_turma_ton: { tipo: "dinheiro", rotulo: "Valor padrão da turma por tonelada", mostrarSe: (r) => r.turma_colheita, dica: "O ticket já vem com ele; dá para mudar em cada carga" },
-      turmas: { tipo: "texto", rotulo: "Turmas de colheita (para o celular)", mostrarSe: (r) => r.turma_colheita, dica: "Separe por vírgula. Ex.: Turma do Zé, Turma do Tião. São os botões que aparecem no ticket do Modo Campo" },
+      // Lista antiga de turmas (antes do cadastro de Turmas de colheita); o celular ainda lê, mas não aparece mais no formulário.
+      turmas: { tipo: "texto", rotulo: "Turmas de colheita (lista antiga)", mostrarSe: () => false },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
@@ -251,6 +260,7 @@ export const ESQUEMA = {
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
       foto: { tipo: "foto", rotulo: "Foto do rosto (o tratorista se acha por ela)" },
       funcao: { tipo: "sugestao", rotulo: "Função", sugestoes: FUNCOES, obrigatorio: true },
+      lanca_ticket: { tipo: "booleano", rotulo: "Lança ticket da balança", dica: "Aparece no \"Quem é você?\" do ticket, no celular" },
       telefone: { tipo: "texto", rotulo: "Telefone" },
       cpf: { tipo: "texto", rotulo: "CPF" },
       vinculo: { tipo: "opcoes", rotulo: "Vínculo", opcoes: [["mensal", "Mensalista"], ["diarista", "Diarista"], ["temporario", "Temporário / safra"]], padrao: "mensal" },
@@ -259,8 +269,28 @@ export const ESQUEMA = {
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "foto", "funcao", "vinculo", "salario", "telefone", "ativo"],
+    colunas: ["nome", "foto", "funcao", "lanca_ticket", "vinculo", "salario", "telefone", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.nome,
+  },
+
+  turmas: {
+    titulo: "Turmas de colheita", singular: "turma", icone: "pessoas", campo: "le",
+    descricao: "As turmas que colhem por tonelada (laranja). Aparecem no ticket do celular com a foto e o valor por tonelada. O que cada uma tem a receber está na aba \"A pagar por semana\".",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome da turma", obrigatorio: true, dica: "Ex.: Turma do Tião. É o nome que aparece no celular" },
+      encarregado: { tipo: "texto", rotulo: "Encarregado / gato" },
+      telefone: { tipo: "texto", rotulo: "Telefone" },
+      pix: { tipo: "texto", rotulo: "Chave PIX" },
+      cpf: { tipo: "texto", rotulo: "CPF / CNPJ" },
+      cultura_id: { ...refCultura, rotulo: "Cultura que colhe", dica: "Em branco: aparece em todas as culturas colhidas por turma" },
+      valor_ton: { tipo: "dinheiro", rotulo: "Valor por tonelada", dica: "O ticket do celular já vem com ele" },
+      foto: { tipo: "foto", rotulo: "Foto (aparece no celular)" },
+      ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["nome", "foto", "encarregado", "telefone", "pix", "cultura_id", "valor_ton", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR"),
     resumo: (r) => r.nome,
   },
 
@@ -720,6 +750,21 @@ export const ESQUEMA = {
     // Carga de vários talhões: peso, quantidade e custos divididos pela área (entrada/saída vão para a observação).
     porTalhao: { dividir: ["peso_liquido", "volumes", "desconto_kg", "quantidade", "frete_cobrado", "frete", "comissao", "juros"], zerar: ["peso_entrada", "peso_saida"] },
     colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "turma", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor", "a_conferir"],
+  },
+
+  pagamentos_turmas: {
+    titulo: "Pagamentos das turmas", singular: "pagamento", icone: "dinheiro", lancamento: true,
+    descricao: "O que já foi pago a cada turma de colheita. Na aba \"A pagar por semana\" o botão Pagar lança aqui o que falta.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data do pagamento", obrigatorio: true, padrao: hoje },
+      turma_id: { tipo: "ref", colecao: "turmas", rotulo: "Turma", obrigatorio: true },
+      semana: { tipo: "data", rotulo: "Semana que está pagando (segunda-feira)", obrigatorio: true, dica: "Qualquer dia da semana serve: o sistema acerta para a segunda-feira" },
+      valor: { tipo: "dinheiro", rotulo: "Valor pago", obrigatorio: true },
+      forma: { tipo: "opcoes", rotulo: "Forma", opcoes: [["pix", "PIX"], ["dinheiro", "Dinheiro"], ["transferencia", "Transferência"], ["cheque", "Cheque"]], padrao: "pix" },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    calcular: (r) => ({ semana: r.semana ? segundaDaSemana(r.semana) : r.semana }),
+    colunas: ["data", "turma_id", "semana", "valor", "forma", "observacao"],
   },
 
   recebimentos: {

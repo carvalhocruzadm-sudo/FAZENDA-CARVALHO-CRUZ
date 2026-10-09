@@ -11,6 +11,7 @@ import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
 import { baixarCSV, brl, data, exibir, nomeRef, numero } from "../lib/formato";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
+import TurmasSemana from "./TurmasSemana";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
@@ -598,6 +599,18 @@ export function Vendas(props) {
         ["resumo", "Resumo por cultura", VendasPorCultura],
       ]} />
     </>
+  );
+}
+
+// ─── Turmas de colheita ─────────────────────────────────────────────────────
+
+export function Turmas(props) {
+  return (
+    <Secao props={props} abas={[
+      ["semana", "A pagar por semana", TurmasSemana],
+      ["turmas", "Cadastro"],
+      ["pagamentos_turmas", "Pagamentos"],
+    ]} />
   );
 }
 
