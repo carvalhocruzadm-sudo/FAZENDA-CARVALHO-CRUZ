@@ -165,6 +165,7 @@ create table if not exists public.funcionarios (
 alter table public.funcionarios add column if not exists nome text;
 alter table public.funcionarios add column if not exists foto text;
 alter table public.funcionarios add column if not exists funcao text;
+alter table public.funcionarios add column if not exists lanca_ticket boolean;
 alter table public.funcionarios add column if not exists telefone text;
 alter table public.funcionarios add column if not exists cpf text;
 alter table public.funcionarios add column if not exists vinculo text;

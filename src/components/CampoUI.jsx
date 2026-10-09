@@ -92,7 +92,7 @@ export function Rodape({ aoVoltar, aoSeguir, podeSeguir = true, textoSeguir = "P
   );
 }
 
-/** Teclado numérico grande (horímetro, litros). */
+/** Teclado numérico grande (horímetro, litros). `casas={0}`: só número inteiro, sem vírgula. */
 export function Teclado({ valor, aoMudar, casas = 1 }) {
   const digitar = (t) => {
     vibrar(20);
@@ -105,9 +105,9 @@ export function Teclado({ valor, aoMudar, casas = 1 }) {
   };
   return (
     <div className="teclado">
-      {["1", "2", "3", "4", "5", "6", "7", "8", "9", ",", "0", "⌫"].map((t) => (
-        <button key={t} type="button" onClick={() => digitar(t)} aria-label={t === "⌫" ? "Apagar" : t}>{t}</button>
-      ))}
+      {["1", "2", "3", "4", "5", "6", "7", "8", "9", ",", "0", "⌫"].map((t) => (t === "," && casas === 0
+        ? <span key={t} />
+        : <button key={t} type="button" onClick={() => digitar(t)} aria-label={t === "⌫" ? "Apagar" : t}>{t}</button>))}
     </div>
   );
 }
