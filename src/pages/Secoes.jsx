@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
+import NotasFiscais from "../components/NotasFiscais";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
@@ -271,15 +272,14 @@ function VendasPorCultura({ dados }) {
 
 export function Vendas(props) {
   return (
-    <>
-      <div className="aviso info">A emissão de NF-e pelo sistema é a próxima etapa. Por enquanto, anote o número da nota em cada venda.</div>
-      <Secao props={props} abas={[
-        ["vendas", "Cargas vendidas"],
-        ["recebimentos", "Recebimentos"],
-        ["areceber", "A receber", AReceber],
-        ["resumo", "Resumo por cultura", VendasPorCultura],
-      ]} />
-    </>
+    <Secao props={props} abas={[
+      ["vendas", "Cargas vendidas"],
+      ["recebimentos", "Recebimentos"],
+      ["areceber", "A receber", AReceber],
+      ["resumo", "Resumo por cultura", VendasPorCultura],
+      ["notas", "Notas fiscais (Bling)", NotasFiscais],
+      ["compradores", "Compradores"],
+    ]} />
   );
 }
 

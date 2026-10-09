@@ -33,11 +33,29 @@ for (const [tabela, def] of Object.entries(ESQUEMA)) {
     sql += `alter table public.${tabela} add column if not exists ${coluna} ${TIPO_SQL[campo.tipo]};\n`;
   }
   if (def.campos.data) sql += `create index if not exists ${tabela}_data_idx on public.${tabela} (data);\n`;
+  // somenteServidor: quem grava é uma função do Supabase; a equipe só lê.
   sql += `alter table public.${tabela} enable row level security;
 drop policy if exists "equipe acessa ${tabela}" on public.${tabela};
 create policy "equipe acessa ${tabela}" on public.${tabela}
-  for all to authenticated using (true) with check (true);\n\n`;
+  ${def.somenteServidor ? "for select to authenticated using (true)" : "for all to authenticated using (true) with check (true)"};\n\n`;
 }
+
+sql += `-- Conexão com o Bling (emissão de NF-e). Guarda as chaves de acesso: fica
+-- trancada (RLS sem nenhuma regra), só a função "bling" do Supabase lê e grava.
+create table if not exists public.bling_conexao (
+  id int primary key default 1 check (id = 1),
+  access_token text,
+  refresh_token text,
+  expira_em timestamptz,
+  estado text,
+  natureza_id bigint,
+  natureza_nome text,
+  atualizado_em timestamptz default now()
+);
+alter table public.bling_conexao enable row level security;
+create unique index if not exists notas_fiscais_venda_idx on public.notas_fiscais (venda_id);
+
+`;
 
 sql += `-- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────\n`;
 for (const [tabela, itens] of Object.entries(SEED)) {

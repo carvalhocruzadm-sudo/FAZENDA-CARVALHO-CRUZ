@@ -63,6 +63,30 @@ export const OPERACOES = [
   "Terraplanagem", "Serviço geral",
 ];
 
+/** NCM mais comuns das culturas da fazenda (o contador confirma). */
+export const NCM_SUGESTOES = [
+  "10059010", // milho em grão
+  "08051000", // laranja
+  "07099300", // abóbora
+  "12024200", // amendoim descascado
+  "12024100", // amendoim com casca
+  "12149000", // silagem / forragem
+  "07049000", // outras hortaliças
+  "01022990", // bovinos vivos
+];
+
+export const UFS = [
+  "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB",
+  "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+];
+
+/** Situação da NF-e no Bling (o número que a API devolve). */
+export const SITUACOES_NFE = {
+  1: ["Pendente", "neutro"], 2: ["Cancelada", "ruim"], 3: ["Aguardando SEFAZ", "atencao"],
+  4: ["Rejeitada", "ruim"], 5: ["Autorizada", "ok"], 6: ["Autorizada", "ok"], 7: ["Registrada", "ok"],
+  8: ["Aguardando SEFAZ", "atencao"], 9: ["Denegada", "ruim"], 10: ["Consultando", "atencao"], 11: ["Bloqueada", "ruim"],
+};
+
 const refTalhao = { tipo: "ref", colecao: "talhoes", rotulo: "Talhão" };
 const refCultura = { tipo: "ref", colecao: "culturas", rotulo: "Cultura" };
 
@@ -83,10 +107,12 @@ export const ESQUEMA = {
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
       tipo: { tipo: "opcoes", rotulo: "Tipo", opcoes: [["agricola", "Agrícola"], ["pecuaria", "Pecuária"]], padrao: "agricola" },
       unidade: { tipo: "opcoes", rotulo: "Unidade de venda", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
+      ncm: { tipo: "sugestao", rotulo: "NCM (para a nota fiscal)", sugestoes: NCM_SUGESTOES, dica: "Só os números. Confirme com o contador. Ex.: milho 10059010, laranja 08051000" },
+      codigo_nf: { tipo: "texto", rotulo: "Código do produto no Bling", dica: "Se já existe o produto cadastrado no Bling, o mesmo código. Vazio = o nome da cultura" },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "tipo", "unidade", "ativo"],
+    colunas: ["nome", "tipo", "unidade", "ncm", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => r.nome,
   },
@@ -377,6 +403,36 @@ export const ESQUEMA = {
     colunas: ["data", "talhao_id", "cultura_id", "quantidade", "unidade", "responsavel_id"],
   },
 
+  compradores: {
+    titulo: "Compradores (dados da nota)", singular: "comprador", icone: "pessoas",
+    descricao: "Os dados que a NF-e exige de quem compra. O nome tem que ser igual ao que se escreve no campo Comprador da venda.",
+    campos: {
+      nome: { tipo: "sugestao", rotulo: "Nome (como aparece nas vendas)", obrigatorio: true, sugestoesDe: ["vendas", "comprador"] },
+      razao_social: { tipo: "texto", rotulo: "Razão social / nome completo", dica: "Vai na nota. Vazio = o nome acima" },
+      tipo_pessoa: { tipo: "opcoes", rotulo: "Pessoa", opcoes: [["J", "Jurídica (CNPJ)"], ["F", "Física (CPF)"]], padrao: "J" },
+      documento: { tipo: "texto", rotulo: "CNPJ / CPF", obrigatorio: true },
+      contribuinte: {
+        tipo: "opcoes", rotulo: "Contribuinte de ICMS", padrao: "1",
+        opcoes: [["1", "Sim, tem inscrição estadual"], ["2", "Isento de inscrição"], ["9", "Não contribuinte"]],
+      },
+      ie: { tipo: "texto", rotulo: "Inscrição estadual", mostrarSe: (r) => r.contribuinte === "1", obrigatorio: true },
+      email: { tipo: "texto", rotulo: "E-mail (recebe a nota)" },
+      telefone: { tipo: "texto", rotulo: "Telefone" },
+      cep: { tipo: "texto", rotulo: "CEP" },
+      endereco: { tipo: "texto", rotulo: "Endereço (rua)", obrigatorio: true },
+      numero: { tipo: "texto", rotulo: "Número", padrao: "S/N" },
+      complemento: { tipo: "texto", rotulo: "Complemento" },
+      bairro: { tipo: "texto", rotulo: "Bairro", obrigatorio: true },
+      municipio: { tipo: "texto", rotulo: "Município", obrigatorio: true },
+      uf: { tipo: "opcoes", rotulo: "UF", opcoes: UFS.map((u) => [u, u]) },
+      ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["nome", "documento", "ie", "municipio", "uf"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.nome,
+  },
+
   vendas: {
     titulo: "Vendas da produção", singular: "venda", icone: "venda", lancamento: true,
     descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos.",
@@ -453,6 +509,25 @@ export const ESQUEMA = {
       observacao: { tipo: "texto", rotulo: "Observação" },
     },
     colunas: ["data", "comprador", "cultura_id", "forma_pagamento", "valor", "observacao"],
+  },
+
+  // Escrita só pela função `bling` no Supabase: o app só lê.
+  notas_fiscais: {
+    titulo: "Notas fiscais (Bling)", singular: "nota fiscal", icone: "lista", somenteServidor: true,
+    campos: {
+      venda_id: { tipo: "ref", colecao: "vendas", rotulo: "Venda" },
+      data: { tipo: "data", rotulo: "Emitida em" },
+      comprador: { tipo: "texto", rotulo: "Comprador" },
+      bling_id: { tipo: "numero", rotulo: "Id no Bling", casas: 0 },
+      numero: { tipo: "texto", rotulo: "Número" },
+      serie: { tipo: "texto", rotulo: "Série" },
+      situacao: { tipo: "numero", rotulo: "Situação", casas: 0 },
+      chave_acesso: { tipo: "texto", rotulo: "Chave de acesso" },
+      link_danfe: { tipo: "texto", rotulo: "DANFE" },
+      valor: { tipo: "dinheiro", rotulo: "Valor da nota" },
+      mensagem: { tipo: "textoLongo", rotulo: "Mensagem do Bling / SEFAZ" },
+    },
+    colunas: ["data", "numero", "comprador", "valor", "situacao"],
   },
 
   fretes: {
