@@ -74,11 +74,8 @@ const novo = () => ({
 /** Número salvo → texto do teclado ("32.5" → "32,5"). */
 const paraTeclado = (v) => (v == null || v === "" ? "" : String(v).replace(".", ","));
 
-/** Quem lança ticket: os marcados em Funcionários; sem ninguém marcado, a equipe toda. */
-function lancadores(dados) {
-  const marcados = operadores(dados).filter((f) => f.lanca_ticket);
-  return marcados.length ? marcados : operadores(dados);
-}
+/** Quem lança ticket: só os marcados em Funcionários → "Lança ticket da balança". */
+const lancadores = (dados) => operadores(dados).filter((f) => f.lanca_ticket);
 
 /**
  * O que muda conforme a cultura: os talhões dela (nenhum marcado com ela =
@@ -311,7 +308,7 @@ export default function CampoTicket({ dados, salvar, irPara }) {
       corpo = (
         <>
           <Pergunta figura="👤">Quem é você?</Pergunta>
-          {lancadores(dados).length === 0 && <div className="campo-aviso">Nenhum funcionário cadastrado. Chame o gerente.</div>}
+          {lancadores(dados).length === 0 && <div className="campo-aviso">Ninguém marcado para lançar ticket. Chame o gerente: no computador, em Funcionários, marque "Lança ticket da balança".</div>}
           <EscolherPessoa pessoas={lancadores(dados)} marcado={r.operador_id}
             aoEscolher={(id) => { const n = { ...r, operador_id: id }; setR(n); seguirCom(n); }} />
         </>
