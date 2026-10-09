@@ -19,7 +19,7 @@ export { COLECOES };
 const DB_NOME = "fazenda-carvalho-cruz";
 // Suba a versão sempre que uma coleção nova entrar no esquema: é no upgrade
 // que a store dela é criada.
-const DB_VERSAO = 8;
+const DB_VERSAO = 9;
 
 const STORES = [...COLECOES, "fila", "meta", "fotos", "arquivos"];
 

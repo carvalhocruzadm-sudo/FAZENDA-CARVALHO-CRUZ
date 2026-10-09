@@ -74,6 +74,8 @@ alter table public.culturas add column if not exists produtividade text;
 alter table public.culturas add column if not exists turma_colheita boolean;
 alter table public.culturas add column if not exists custo_turma_ton numeric;
 alter table public.culturas add column if not exists turmas text;
+alter table public.culturas add column if not exists ncm text;
+alter table public.culturas add column if not exists codigo_nf text;
 alter table public.culturas add column if not exists ativo boolean;
 alter table public.culturas add column if not exists observacao text;
 alter table public.culturas enable row level security;
@@ -679,6 +681,37 @@ drop policy if exists "campo le colheitas" on public.colheitas;
 drop policy if exists "campo lanca colheitas" on public.colheitas;
 drop policy if exists "campo corrige colheitas" on public.colheitas;
 
+-- Compradores (dados da nota)
+create table if not exists public.compradores (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.compradores add column if not exists nome text;
+alter table public.compradores add column if not exists razao_social text;
+alter table public.compradores add column if not exists tipo_pessoa text;
+alter table public.compradores add column if not exists documento text;
+alter table public.compradores add column if not exists contribuinte text;
+alter table public.compradores add column if not exists ie text;
+alter table public.compradores add column if not exists email text;
+alter table public.compradores add column if not exists telefone text;
+alter table public.compradores add column if not exists cep text;
+alter table public.compradores add column if not exists endereco text;
+alter table public.compradores add column if not exists numero text;
+alter table public.compradores add column if not exists complemento text;
+alter table public.compradores add column if not exists bairro text;
+alter table public.compradores add column if not exists municipio text;
+alter table public.compradores add column if not exists uf text;
+alter table public.compradores add column if not exists ativo boolean;
+alter table public.compradores add column if not exists observacao text;
+alter table public.compradores enable row level security;
+drop policy if exists "equipe acessa compradores" on public.compradores;
+create policy "equipe acessa compradores" on public.compradores
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le compradores" on public.compradores;
+drop policy if exists "campo lanca compradores" on public.compradores;
+drop policy if exists "campo corrige compradores" on public.compradores;
+
 -- Vendas da produção
 create table if not exists public.vendas (
   id uuid primary key default gen_random_uuid(),
@@ -774,6 +807,32 @@ drop policy if exists "campo le recebimentos" on public.recebimentos;
 drop policy if exists "campo lanca recebimentos" on public.recebimentos;
 drop policy if exists "campo corrige recebimentos" on public.recebimentos;
 
+-- Notas fiscais (Bling)
+create table if not exists public.notas_fiscais (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.notas_fiscais add column if not exists venda_id uuid;
+alter table public.notas_fiscais add column if not exists data date;
+alter table public.notas_fiscais add column if not exists comprador text;
+alter table public.notas_fiscais add column if not exists bling_id numeric;
+alter table public.notas_fiscais add column if not exists numero text;
+alter table public.notas_fiscais add column if not exists serie text;
+alter table public.notas_fiscais add column if not exists situacao numeric;
+alter table public.notas_fiscais add column if not exists chave_acesso text;
+alter table public.notas_fiscais add column if not exists link_danfe text;
+alter table public.notas_fiscais add column if not exists valor numeric;
+alter table public.notas_fiscais add column if not exists mensagem text;
+create index if not exists notas_fiscais_data_idx on public.notas_fiscais (data);
+alter table public.notas_fiscais enable row level security;
+drop policy if exists "equipe acessa notas_fiscais" on public.notas_fiscais;
+create policy "equipe acessa notas_fiscais" on public.notas_fiscais
+  for select to authenticated using (not (select public.eh_campo()));
+drop policy if exists "campo le notas_fiscais" on public.notas_fiscais;
+drop policy if exists "campo lanca notas_fiscais" on public.notas_fiscais;
+drop policy if exists "campo corrige notas_fiscais" on public.notas_fiscais;
+
 -- Fretes do caminhão
 create table if not exists public.fretes (
   id uuid primary key default gen_random_uuid(),
@@ -824,6 +883,21 @@ create policy "equipe acessa planejamento" on public.planejamento
 drop policy if exists "campo le planejamento" on public.planejamento;
 drop policy if exists "campo lanca planejamento" on public.planejamento;
 drop policy if exists "campo corrige planejamento" on public.planejamento;
+
+-- Conexão com o Bling (emissão de NF-e). Guarda as chaves de acesso: fica
+-- trancada (RLS sem nenhuma regra), só a função "bling" do Supabase lê e grava.
+create table if not exists public.bling_conexao (
+  id int primary key default 1 check (id = 1),
+  access_token text,
+  refresh_token text,
+  expira_em timestamptz,
+  estado text,
+  natureza_id bigint,
+  natureza_nome text,
+  atualizado_em timestamptz default now()
+);
+alter table public.bling_conexao enable row level security;
+create unique index if not exists notas_fiscais_venda_idx on public.notas_fiscais (venda_id);
 
 -- ─── Fotos (Storage) ──────────────────────────────────────────────────────
 -- Bucket privado: só quem tem login vê. O Modo Campo tira e vê fotos, mas não apaga.

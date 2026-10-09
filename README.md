@@ -15,7 +15,7 @@ banco próprio.
 | **Painel** | Vendas, entrou/saiu do caixa, resultado, a receber, diesel no tanque e avisos: revisão vencendo, estoque baixo ou negativo, contas vencendo. |
 | **Lavoura e talhões** | Fazendas, talhões/sítios (área, cultura, nº de pés), culturas (dá para **adicionar culturas novas**; cada uma diz o tipo — citros, grãos, hortaliças, forragem, pecuária —, em que é colhida e vendida, o peso da saca, a medida de produtividade — t/ha, sc/ha, kg/pé, cx/pé — e se a colheita é por turma), colheitas e **planejamento da safra** por fase (dessecação, plantio, coberturas, pulverizações), com dose/ha × hectares × preço, como na aba PLANEJAMENTO. |
 | **Ticket da balança** | Tela rápida para lançar os tickets que o gerente manda no grupo do WhatsApp: venda de quê, data, peso, talhão e, na laranja, a turma de colheita e o valor dela por tonelada. Abre direto pelo link **`/ticket`** (fixe no grupo). A carga entra em Vendas sem comprador e sem preço, para completar depois. |
-| **Vendas** | Uma linha por **carga**, como nas planilhas de milho, laranja e silagem: tara, peso bruto e líquido, placa, sítio, tipo (BOA/SUKITA/CASQUINOL), desconto em kg, preço por t, saca, arroba ou saco, custo/ton, frete, comissão e juros. **Recebimentos** separados e o **saldo a receber de cada comprador**. |
+| **Vendas** | Uma linha por **carga**, como nas planilhas de milho, laranja e silagem: tara, peso bruto e líquido, placa, sítio, tipo (BOA/SUKITA/CASQUINOL), desconto em kg, preço por t, saca, arroba ou saco, custo/ton, frete, comissão e juros. **Recebimentos** separados e o **saldo a receber de cada comprador**. **Emissão de NF-e pelo Bling** (aba *Notas fiscais*) e cadastro dos **Compradores** com os dados da nota. |
 | **Financeiro** | Despesas nas categorias da planilha FINANCEIRO (Alimentação, Produtos químicos, Adubos, Peças, Serviços, Combustíveis, Salários, Taxas, Benfeitorias, Investimentos, Arrendamentos, Empréstimos, Retiradas…), com forma de pagamento, favorecido e **centro de custo** (geral, cultura ou talhão). Outras entradas (aditivo dos sócios, empréstimos). **Custo por cultura e por talhão** (R$/ha). **Comprovante** anexado em cada despesa (foto ou PDF). |
 | **Máquinas e horímetro** | Inventário de tratores, implementos, caminhões e veículos. Lançamento de **horímetro por operação** (máquina, operador, talhão, horas). Revisões feitas e **aviso de revisão** pelo intervalo em horas ou km. Consumo em L/h ou km/L. |
 | **Diesel** | O **tanque da fazenda**: compras (entrada) e abastecimentos (saída), com saldo em litros e preço médio. Abastecimentos em **posto** também. |
@@ -116,7 +116,6 @@ Os arquivos ficam no Storage do Supabase, numa pasta privada (`comprovantes`) cr
 `supabase/schema.sql` — rode o SQL de novo depois de atualizar.
 
 ### Próximas etapas
-- **Emissão de NF-e** (por enquanto a venda guarda só o número da nota).
 - Perfis de acesso (o que cada funcionário pode ver e lançar).
 - Venda de laranja de terceiros, cotação de produtos.
 
@@ -170,6 +169,36 @@ supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic
 
 A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
 tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
+
+## 🧾 Emissão de NF-e pelo Bling
+
+A nota é emitida na conta do Bling da fazenda: o sistema monta a nota a partir da venda e o Bling manda para a
+SEFAZ. Os impostos e o CFOP vêm da **natureza de operação** cadastrada no Bling (peça ao contador para deixar
+pronta a de venda da produção). Configuração, uma vez só:
+
+1. **Criar o aplicativo no Bling**: no Bling, menu **Preferências → Sistema → Central de extensões → Área do
+   integrador → Criar aplicativo** (tipo *Aplicativo privado/API*). Em **Link de redirecionamento** coloque
+   `https://SEU-PROJETO.supabase.co/functions/v1/bling`. Em **Escopos**, marque *Notas Fiscais* (com
+   as opções de dentro). Se existir, marque também *Naturezas de Operação*; se não existir, o app pede o número
+   da natureza em vez de mostrar a lista. Salve e copie o **Client ID** e o **Client Secret**.
+2. **Publicar a função no Supabase** (precisa do [Supabase CLI](https://supabase.com/docs/guides/cli)):
+   ```bash
+   supabase functions deploy bling --no-verify-jwt
+   supabase secrets set BLING_CLIENT_ID=... BLING_CLIENT_SECRET=...
+   ```
+   (O `--no-verify-jwt` é porque o Bling chama a função de volta sem login; as ações do app conferem o login lá dentro.)
+3. **Rodar o `supabase/schema.sql`** de novo no SQL Editor (cria Compradores, Notas fiscais e a conexão com o Bling).
+4. No app, **Vendas → Notas fiscais (Bling) → Conectar ao Bling**, autorize e clique em **Já autorizei**. Escolha
+   a natureza de operação.
+5. Em **Lavoura → Culturas**, preencha o **NCM** de cada cultura vendida; em **Vendas → Compradores**, os dados
+   de cada comprador (o nome igual ao das vendas).
+
+Daí em diante: **Notas fiscais → Nota** na venda → **Emitir NF-e**. Autorizada, o número entra sozinho na venda e
+aparece o link do DANFE. Rejeitada, aparece o motivo; corrija e clique em **Emitir de novo** (corrige a mesma
+nota no Bling). **Cancelar** ou **carta de correção**: pelo próprio Bling.
+
+As chaves do Bling ficam só no Supabase (tabela `bling_conexao`, trancada) e se renovam sozinhas. Se ficar mais
+de 30 dias sem emitir, o Bling pede para conectar de novo.
 
 ## 📥 Histórico das planilhas
 
