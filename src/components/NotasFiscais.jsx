@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PERIODOS, noPeriodo } from "../lib/calculos";
-import { SITUACOES_NFE, UNIDADES_VENDA } from "../lib/esquema";
+import { SITUACOES_NFE, UNIDADES_VENDA, kgPorUnidade } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 import { supabase, supabaseConfigurado } from "../lib/supabase";
 import { Icone, Modal, SeletorPeriodo, TabelaSimples } from "./ui";
@@ -26,21 +26,22 @@ async function chamarBling(corpo) {
 }
 
 const igual = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
-const KG = Object.fromEntries(UNIDADES_VENDA.map(([v, , kg]) => [v, kg]));
 const AUTORIZADA = [5, 6, 7];
 const ESPERANDO = [3, 8, 10];
 
 /** Quantidade que vai na nota: a da venda menos o desconto em kg. */
-function quantidadeDaNota(v) {
-  const kg = KG[v.unidade];
+function quantidadeDaNota(v, dados) {
+  const kg = kgPorUnidade(v.unidade, dados.culturas.find((c) => c.id === v.cultura_id));
   return kg ? (Number(v.quantidade) || 0) - (Number(v.desconto_kg) || 0) / kg : Number(v.quantidade) || 0;
 }
 
 /** O que falta no cadastro para emitir (a função confere tudo de novo). */
 function pendencias(venda, dados) {
   const falta = [];
+  if (!venda.comprador) falta.push("o comprador na venda");
+  if (!(Number(venda.preco_unitario) > 0)) falta.push("o preço na venda");
   const comp = dados.compradores.find((c) => c.ativo !== false && igual(c.nome, venda.comprador));
-  if (!comp) falta.push(`cadastrar “${venda.comprador}” em Compradores`);
+  if (venda.comprador && !comp) falta.push(`cadastrar “${venda.comprador}” em Compradores`);
   const cultura = dados.culturas.find((c) => c.id === venda.cultura_id);
   if (cultura && String(cultura.ncm ?? "").replace(/\D/g, "").length !== 8) falta.push(`NCM de ${cultura.nome} em Culturas`);
   return falta;
@@ -210,9 +211,9 @@ function Emitir({ venda, nota, dados, conexao, salvar, sincronizarAgora, aoFecha
           ["Data da venda", data(venda.data)],
           ["Comprador", venda.comprador],
           ["Produto", [nomeRef(dados, "culturas", venda.cultura_id), venda.classificacao].filter(Boolean).join(" - ")],
-          ["Quantidade na nota", `${numero(quantidadeDaNota(venda), 3)} ${un[venda.unidade] ?? ""}`],
+          ["Quantidade na nota", `${numero(quantidadeDaNota(venda, dados), 3)} ${un[venda.unidade] ?? ""}`],
           ["Preço", brl(venda.preco_unitario)],
-          ["Valor da mercadoria", brl(quantidadeDaNota(venda) * (Number(venda.preco_unitario) || 0))],
+          ["Valor da mercadoria", brl(quantidadeDaNota(venda, dados) * (Number(venda.preco_unitario) || 0))],
           ...(Number(venda.frete_cobrado) ? [["Frete cobrado", brl(venda.frete_cobrado)]] : []),
           ["Natureza de operação", conexao?.natureza_nome ?? "—"],
         ].map(([r, v]) => ({ id: r, r, v }))}
@@ -296,7 +297,7 @@ export default function NotasFiscais({ dados, salvar, sincronizarAgora }) {
             { rotulo: "Data", valor: (v) => data(v.data) },
             { rotulo: "Comprador", valor: (v) => v.comprador },
             { rotulo: "Cultura", valor: (v) => nomeRef(dados, "culturas", v.cultura_id) },
-            { rotulo: "Valor", num: true, valor: (v) => brl(quantidadeDaNota(v) * (Number(v.preco_unitario) || 0) + (Number(v.frete_cobrado) || 0)) },
+            { rotulo: "Valor", num: true, valor: (v) => brl(quantidadeDaNota(v, dados) * (Number(v.preco_unitario) || 0) + (Number(v.frete_cobrado) || 0)) },
             {
               rotulo: "NF-e",
               valor: (v) => {

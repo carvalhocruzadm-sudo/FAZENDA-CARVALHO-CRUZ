@@ -4,17 +4,23 @@
  * supabase/schema.sql, para o modo demonstração e a nuvem baterem.
  */
 
+import { FIGURA_DA_OPERACAO, OPERACOES } from "./esquema.js";
+
 const id = (grupo, n) => `00000000-0000-4000-${grupo}-${String(n).padStart(12, "0")}`;
 
 export const CULTURAS = [
-  ["Milho", "agricola", "sc60"],
-  ["Laranja", "agricola", "t"],
-  ["Abóbora", "agricola", "kg"],
-  ["Amendoim", "agricola", "sc60"],
-  ["Silagem", "agricola", "saco"],
-  ["Milho verde", "agricola", "unidade"],
-  ["Confinamento", "pecuaria", "arroba"],
-].map(([nome, tipo, unidade], i) => ({ id: id("8000", i + 1), nome, tipo, unidade, ativo: true, observacao: null }));
+  // nome, tipo de cultura, unidade, peso da saca, produtividade, turma de colheita
+  ["Milho", "graos", "sc60", null, "sc_ha", false],
+  ["Laranja", "citros", "t", null, "kg_pe", true],
+  ["Abóbora", "hortalicas", "kg", null, "t_ha", false],
+  ["Amendoim", "graos", "sc60", null, "sc_ha", false],
+  ["Silagem", "forragem", "saco", null, "t_ha", false],
+  ["Milho verde", "hortalicas", "unidade", null, "nenhuma", false],
+  ["Confinamento", "pecuaria", "arroba", null, "nenhuma", false],
+].map(([nome, grupo, unidade, peso_saca, produtividade, turma_colheita], i) => ({
+  id: id("8000", i + 1), nome, grupo, tipo: grupo === "pecuaria" ? "pecuaria" : "agricola", unidade, peso_saca,
+  produtividade, turma_colheita, custo_turma_ton: null, ativo: true, observacao: null,
+}));
 
 const [MILHO, LARANJA] = CULTURAS.map((c) => c.id);
 
@@ -47,7 +53,11 @@ export const TALHOES = [
   ["Águas Claras", AGUAS_CLARAS, 25, null, MILHO],
 ].map(([nome, fazenda_id, area_ha, pes, cultura_id], i) => ({
   id: id("8200", i + 1), nome, fazenda_id, area_ha, pes, cultura_id,
-  variedade: null, safra: null, data_plantio: null, previsao_colheita: null, ativo: true, observacao: null,
+  ativo: true, observacao: null,
 }));
 
-export const SEED = { culturas: CULTURAS, fazendas: FAZENDAS, talhoes: TALHOES };
+export const SERVICOS = OPERACOES.map((nome, i) => ({
+  id: id("8300", i + 1), nome, figura: FIGURA_DA_OPERACAO[nome] ?? "🔧", foto: null, ativo: true, observacao: null,
+}));
+
+export const SEED = { culturas: CULTURAS, fazendas: FAZENDAS, talhoes: TALHOES, servicos: SERVICOS };

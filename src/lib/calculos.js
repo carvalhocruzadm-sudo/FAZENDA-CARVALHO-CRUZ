@@ -3,6 +3,8 @@
  * Assim um lançamento corrigido corrige na hora o saldo, o custo e o alerta.
  */
 
+import { kgPorUnidade } from "./esquema";
+
 const n = (v) => Number(v) || 0;
 const soma = (lista, f) => lista.reduce((t, x) => t + n(f(x)), 0);
 
@@ -102,20 +104,48 @@ export function consumoPorMaquina(dados, periodo) {
 
 // ─── Químicos / insumos ─────────────────────────────────────────────────────
 
+/**
+ * Estoque de cada produto: quantidade inicial + entradas + balanços −
+ * aplicações (a sobra que voltou da pulverização é aplicação negativa). O
+ * custo médio só conta as entradas com preço: a que chegou pelo depósito e
+ * ainda não foi conferida não o derruba.
+ */
 export function estoqueInsumos(dados) {
   const mapa = new Map();
-  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0 });
+  for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0, qtdComPreco: 0, ajuste: 0, qtdComCusto: 0, valorAjuste: 0 });
   for (const e of dados.insumo_entradas) {
     const x = mapa.get(e.insumo_id);
-    if (x) { x.entrada += n(e.quantidade); x.valorEntrada += n(e.valor); }
+    if (!x) continue;
+    x.entrada += n(e.quantidade);
+    if (n(e.valor) > 0) { x.valorEntrada += n(e.valor); x.qtdComPreco += n(e.quantidade); }
+  }
+  // Quantidade que já existia quando o produto foi cadastrado (não é compra).
+  for (const x of mapa.values()) {
+    const q = n(x.insumo.estoque_inicial);
+    x.ajuste += q;
+    if (q > 0 && n(x.insumo.custo_inicial) > 0) {
+      x.qtdComCusto += q;
+      x.valorAjuste += q * n(x.insumo.custo_inicial);
+    }
+  }
+  // Balanço: ajusta o saldo, mas não é compra (não entra nas despesas).
+  for (const a of dados.insumo_ajustes ?? []) {
+    const x = mapa.get(a.insumo_id);
+    if (!x) continue;
+    x.ajuste += n(a.quantidade);
+    if (n(a.quantidade) > 0 && n(a.custo_unitario) > 0) {
+      x.qtdComCusto += n(a.quantidade);
+      x.valorAjuste += n(a.quantidade) * n(a.custo_unitario);
+    }
   }
   for (const a of dados.aplicacoes) {
     const x = mapa.get(a.insumo_id);
     if (x) x.saida += n(a.quantidade);
   }
   return [...mapa.values()].map((x) => {
-    const custoMedio = x.entrada ? x.valorEntrada / x.entrada : 0;
-    const saldo = x.entrada - x.saida;
+    const baseQtd = x.qtdComPreco + x.qtdComCusto;
+    const custoMedio = baseQtd ? (x.valorEntrada + x.valorAjuste) / baseQtd : 0;
+    const saldo = x.entrada + x.ajuste - x.saida;
     const minimo = n(x.insumo.estoque_minimo);
     return {
       ...x, saldo, custoMedio, valorEstoque: Math.max(0, saldo) * custoMedio,
@@ -172,12 +202,12 @@ export function custos(dados, periodo) {
 
   const porTalhao = dados.talhoes.map((t) => {
     const custo = soma(linhas.filter((l) => l.talhao_id === t.id), (l) => l.valor);
-    const receita = soma(vendas.filter((v) => v.talhao_id === t.id), (v) => v.valor);
-    const colhido = colheitas.filter((c) => c.talhao_id === t.id);
-    const producao = soma(colhido, (c) => c.quantidade);
-    const unidade = colhido[0]?.unidade ?? null;
+    const vendido = vendas.filter((v) => v.talhao_id === t.id);
+    const receita = soma(vendido, (v) => v.valor);
+    const cultura = dados.culturas.find((c) => c.id === t.cultura_id);
+    const kg = kgColhidos(dados, colheitas.filter((c) => c.talhao_id === t.id), vendido);
     const area = n(t.area_ha);
-    return { talhao: t, custo, receita, producao, unidade, custoHa: area ? custo / area : null, producaoHa: area ? producao / area : null };
+    return { talhao: t, custo, receita, kg, custoHa: area ? custo / area : null, produtividade: produtividade(cultura, t, kg) };
   });
 
   const custoTotal = soma(linhas, (l) => l.valor);
@@ -272,6 +302,86 @@ export function resumoPlanejamento(dados) {
     const hectares = soma(Object.values(x.haPorFazenda), (h) => h);
     return { ...x, hectares, porHa: hectares ? x.total / hectares : null };
   });
+}
+
+// ─── Produtividade ──────────────────────────────────────────────────────────
+
+/**
+ * Quilos colhidos num talhão: pelas colheitas lançadas; se não houver
+ * nenhuma, pelo peso das cargas vendidas (os tickets da balança). Nunca soma
+ * os dois, senão a mesma carga contaria duas vezes.
+ */
+export function kgColhidos(dados, colheitas, vendas) {
+  const culturaDe = (id) => dados.culturas.find((c) => c.id === id);
+  if (colheitas.length) {
+    return soma(colheitas, (c) => n(c.quantidade) * (kgPorUnidade(c.unidade, culturaDe(c.cultura_id)) ?? 0));
+  }
+  return soma(vendas, (v) => v.peso_liquido ?? n(v.quantidade) * (kgPorUnidade(v.unidade, culturaDe(v.cultura_id)) ?? 0));
+}
+
+/**
+ * Produtividade na medida escolhida no cadastro da cultura (t/ha, sc/ha,
+ * kg/pé…). Devolve { valor, sigla } ou null quando falta área, nº de pés ou peso.
+ */
+export function produtividade(cultura, talhao, kg) {
+  if (!cultura || !kg) return null;
+  const area = n(talhao.area_ha), pes = n(talhao.pes);
+  const saca = n(cultura.peso_saca) || 60;
+  switch (cultura.produtividade) {
+    case "t_ha": return area ? { valor: kg / 1000 / area, sigla: "t/ha" } : null;
+    case "sc_ha": return area ? { valor: kg / saca / area, sigla: "sc/ha" } : null;
+    case "kg_ha": return area ? { valor: kg / area, sigla: "kg/ha" } : null;
+    case "kg_pe": return pes ? { valor: kg / pes, sigla: "kg/pé" } : null;
+    case "cx_pe": return pes ? { valor: kg / 40.8 / pes, sigla: "cx/pé" } : null;
+    default: return null;
+  }
+}
+
+// ─── Por fazenda / talhão ───────────────────────────────────────────────────
+
+/**
+ * Tudo o que aconteceu em cada lugar, uma linha por lançamento: despesas,
+ * químicos aplicados, diesel, operações de máquina, colheitas e vendas.
+ * A fazenda vem do próprio lançamento (despesa) ou do talhão dele. Custo dos
+ * químicos e do diesel do tanque pelo custo médio, como em `custos`.
+ * O que não tem talhão nem fazenda (revisão, despesa geral sem fazenda) fica
+ * de fora — está em Financeiro.
+ */
+export function lancamentosPorLocal(dados, periodo) {
+  const custoMedio = new Map(estoqueInsumos(dados).map((x) => [x.insumo.id, x.custoMedio]));
+  const { precoMedio } = diesel(dados);
+  const talhaoPorId = new Map(dados.talhoes.map((t) => [t.id, t]));
+  const linha = (tipo, colecao, r, extra) => ({
+    id: `${colecao}:${r.id}`, tipo, colecao, reg: r, data: r.data,
+    talhao_id: r.talhao_id ?? null,
+    fazenda_id: r.fazenda_id ?? talhaoPorId.get(r.talhao_id)?.fazenda_id ?? null,
+    custo: 0, receita: 0, ...extra,
+  });
+  const linhas = [
+    ...noPeriodo(dados.despesas, periodo).map((d) => linha("Despesa", "despesas", { ...d, talhao_id: d.centro === "talhao" ? d.talhao_id : null }, { custo: n(d.valor) })),
+    ...noPeriodo(dados.aplicacoes, periodo).map((a) => linha("Aplicação", "aplicacoes", a, { custo: n(a.quantidade) * (custoMedio.get(a.insumo_id) ?? 0) })),
+    ...noPeriodo(dados.abastecimentos, periodo).filter((a) => a.talhao_id).map((a) => linha("Diesel", "abastecimentos", a, { custo: custoAbastecimento(a, precoMedio) })),
+    ...noPeriodo(dados.operacoes, periodo).filter((o) => o.talhao_id).map((o) => linha("Operação", "operacoes", o)),
+    ...noPeriodo(dados.colheitas, periodo).map((c) => linha("Colheita", "colheitas", c)),
+    ...noPeriodo(dados.vendas, periodo).filter((v) => v.talhao_id).map((v) => linha("Venda", "vendas", v, { receita: n(v.valor) })),
+  ];
+  return linhas
+    .filter((l) => l.fazenda_id || l.talhao_id)
+    .sort((a, b) => String(b.data ?? "").localeCompare(String(a.data ?? "")));
+}
+
+/** Totais de um conjunto de lançamentos (de uma fazenda ou de um talhão). */
+export function totaisLocal(linhas) {
+  const colhido = linhas.filter((l) => l.colecao === "colheitas");
+  const ops = linhas.filter((l) => l.colecao === "operacoes");
+  const custo = soma(linhas, (l) => l.custo);
+  const receita = soma(linhas, (l) => l.receita);
+  return {
+    custo, receita, resultado: receita - custo,
+    producao: soma(colhido, (l) => l.reg.quantidade), unidade: colhido[0]?.reg.unidade ?? null,
+    horas: soma(ops, (l) => l.reg.trabalhado), operacoes: ops.length,
+    ultima: linhas[0]?.data ?? null,
+  };
 }
 
 export { soma };

@@ -123,10 +123,12 @@ async function bling(metodo: string, caminho: string, corpo?: unknown) {
 const so = (v: unknown) => String(v ?? "").replace(/\D/g, "");
 const n = (v: unknown) => Number(v) || 0;
 
-/** Quilos em cada unidade de venda (o mesmo de UNIDADES_VENDA no app). */
-const KG: Record<string, number> = { t: 1000, kg: 1, sc60: 60, arroba: 15 };
+/** Quilos em cada unidade de venda (o mesmo de kgPorUnidade no app: a "saca" pesa o que diz a cultura). */
+const KG: Record<string, number> = { t: 1000, kg: 1, sc60: 60, cx408: 40.8, arroba: 15 };
+const kgPorUnidade = (unidade: string, cultura: Qualquer) =>
+  unidade === "saca" ? Number(cultura?.peso_saca) || null : KG[unidade] ?? null;
 const UNIDADE_NF: Record<string, string> = {
-  t: "TON", kg: "KG", sc60: "SC", arroba: "ARROBA", saco: "SC", caixa: "CX", unidade: "UN", cabeca: "CAB",
+  t: "TON", kg: "KG", saca: "SC", sc60: "SC", cx408: "CX", arroba: "ARROBA", saco: "SC", caixa: "CX", unidade: "UN", cabeca: "CAB",
 };
 
 /** Data e hora de agora no horário de Brasília, como o Bling pede. */
@@ -145,7 +147,9 @@ async function montarNota(venda: Qualquer, naturezaId: number, observacoes: stri
   const comp = (compradores ?? []).find((c: Qualquer) => c.ativo !== false && igual(c.nome, venda.comprador));
 
   const faltam: string[] = [];
-  if (!comp) faltam.push(`cadastro do comprador “${venda.comprador}” (aba Compradores)`);
+  // Carga lançada pelo ticket da balança chega sem comprador e sem preço.
+  if (!venda.comprador) faltam.push("comprador da venda");
+  else if (!comp) faltam.push(`cadastro do comprador “${venda.comprador}” (aba Compradores)`);
   else {
     if (![11, 14].includes(so(comp.documento).length)) faltam.push("CNPJ/CPF do comprador");
     if (comp.contribuinte === "1" && !comp.ie) faltam.push("inscrição estadual do comprador");
@@ -153,12 +157,13 @@ async function montarNota(venda: Qualquer, naturezaId: number, observacoes: stri
       if (!comp[c]) faltam.push(`${r} do comprador`);
     }
   }
+  if (!(n(venda.preco_unitario) > 0)) faltam.push("preço da venda");
   if (!cultura) faltam.push("cultura da venda");
   else if (so(cultura.ncm).length !== 8) faltam.push(`NCM da cultura ${cultura.nome} (8 números, no cadastro de Culturas)`);
   if (faltam.length) throw new ErroBling(`Falta preencher: ${faltam.join("; ")}.`);
 
   // Quantidade da nota = a da venda menos o desconto em kg (umidade, impureza).
-  const kgUn = KG[venda.unidade];
+  const kgUn = kgPorUnidade(venda.unidade, cultura);
   const quantidade = kgUn ? n(venda.quantidade) - n(venda.desconto_kg) / kgUn : n(venda.quantidade);
   const pesoKg = venda.peso_liquido ? n(venda.peso_liquido) - n(venda.desconto_kg) : null;
   if (quantidade <= 0) throw new ErroBling("A quantidade da venda está zerada.");
@@ -319,6 +324,12 @@ Deno.serve(async (req) => {
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const { data: quem } = await admin.auth.getUser(jwt);
   if (!quem?.user) return json({ erro: "Entre no sistema de novo (login vencido)." }, 401);
+  // Conta do Modo Campo / ticket não mexe com nota fiscal.
+  const comoUsuario = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${jwt}` } },
+  });
+  const { data: ehCampo } = await comoUsuario.rpc("eh_campo");
+  if (ehCampo === true) return json({ erro: "Nota fiscal só pelo login do escritório." }, 403);
 
   const corpo = await req.json().catch(() => ({}));
   try {

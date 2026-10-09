@@ -13,9 +13,10 @@ banco próprio.
 | Menu | O que faz |
 |---|---|
 | **Painel** | Vendas, entrou/saiu do caixa, resultado, a receber, diesel no tanque e avisos: revisão vencendo, estoque baixo ou negativo, contas vencendo. |
-| **Lavoura e talhões** | Fazendas, talhões/sítios (área, cultura, nº de pés), culturas (dá para **adicionar culturas novas**), colheitas e **planejamento da safra** por fase (dessecação, plantio, coberturas, pulverizações), com dose/ha × hectares × preço, como na aba PLANEJAMENTO. |
+| **Lavoura e talhões** | Fazendas, talhões/sítios (área, cultura, nº de pés), culturas (dá para **adicionar culturas novas**; cada uma diz o tipo — citros, grãos, hortaliças, forragem, pecuária —, em que é colhida e vendida, o peso da saca, a medida de produtividade — t/ha, sc/ha, kg/pé, cx/pé — e se a colheita é por turma), colheitas e **planejamento da safra** por fase (dessecação, plantio, coberturas, pulverizações), com dose/ha × hectares × preço, como na aba PLANEJAMENTO. |
+| **Ticket da balança** | Tela rápida para lançar os tickets que o gerente manda no grupo do WhatsApp: venda de quê, data, peso, talhão e, na laranja, a turma de colheita e o valor dela por tonelada. Abre direto pelo link **`/ticket`** (fixe no grupo). A carga entra em Vendas sem comprador e sem preço, para completar depois. |
 | **Vendas** | Uma linha por **carga**, como nas planilhas de milho, laranja e silagem: tara, peso bruto e líquido, placa, sítio, tipo (BOA/SUKITA/CASQUINOL), desconto em kg, preço por t, saca, arroba ou saco, custo/ton, frete, comissão e juros. **Recebimentos** separados e o **saldo a receber de cada comprador**. **Emissão de NF-e pelo Bling** (aba *Notas fiscais*) e cadastro dos **Compradores** com os dados da nota. |
-| **Financeiro** | Despesas nas categorias da planilha FINANCEIRO (Alimentação, Produtos químicos, Adubos, Peças, Serviços, Combustíveis, Salários, Taxas, Benfeitorias, Investimentos, Arrendamentos, Empréstimos, Retiradas…), com forma de pagamento, favorecido e **centro de custo** (geral, cultura ou talhão). Outras entradas (aditivo dos sócios, empréstimos). **Custo por cultura e por talhão** (R$/ha). |
+| **Financeiro** | Despesas nas categorias da planilha FINANCEIRO (Alimentação, Produtos químicos, Adubos, Peças, Serviços, Combustíveis, Salários, Taxas, Benfeitorias, Investimentos, Arrendamentos, Empréstimos, Retiradas…), com forma de pagamento, favorecido e **centro de custo** (geral, cultura ou talhão). Outras entradas (aditivo dos sócios, empréstimos). **Custo por cultura e por talhão** (R$/ha). **Comprovante** anexado em cada despesa (foto ou PDF). |
 | **Máquinas e horímetro** | Inventário de tratores, implementos, caminhões e veículos. Lançamento de **horímetro por operação** (máquina, operador, talhão, horas). Revisões feitas e **aviso de revisão** pelo intervalo em horas ou km. Consumo em L/h ou km/L. |
 | **Diesel** | O **tanque da fazenda**: compras (entrada) e abastecimentos (saída), com saldo em litros e preço médio. Abastecimentos em **posto** também. |
 | **Químicos e insumos** | Produtos, entradas (compras) e aplicações por talhão. **Estoque** = entradas − aplicações, com custo médio, estoque mínimo e valor em estoque. |
@@ -28,6 +29,91 @@ Excel) e **repetir lançamento** (o botão `+` da linha), bom para lançar vári
 
 O cadastro inicial já vem com as culturas, as fazendas e os sítios da laranja com área e nº de pés
 (tirados da aba CADASTROS da planilha VENDAS_LARANJA).
+
+### 🚜 Modo Campo (tratoristas, no celular)
+
+Telas feitas para quem não lê: uma pergunta por tela, fotos e figuras grandes, teclado de números
+gigante e o botão 🔊 que lê a pergunta em voz alta. O Modo Campo abre com três botões grandes:
+**⛽ Abastecer trator**, **📤 Tirar do depósito** e **📥 Guardar no depósito**.
+
+**Abastecer trator** (no PA, todo fim de dia): toca na foto do trator e responde:
+1. **Quem é você?** (toca na própria foto)
+2. **Qual serviço?** (figuras)
+3. **Qual fazenda?** (só aparece com mais de uma fazenda)
+4. **Qual talhão?** (só os da fazenda escolhida; pode marcar mais de um)
+5. **Horímetro agora** + foto do painel
+6. **Litros de diesel** + foto da bomba
+7. **Está certo?** → Salvar
+
+O sistema pega o último horímetro do trator e calcula as horas trabalhadas e os litros por hora. Com
+mais de um talhão, **as horas e o diesel são divididos pela área (ha)** de cada um. Os lançamentos
+aparecem sozinhos em **Diesel → Abastecimentos** (baixa o tanque) e em **Máquinas → Horímetro /
+operações**. Horímetro menor que o anterior, ou mais de 24 h desde o último, sai marcado com
+"CONFERIR" na observação.
+
+**Tudo se cadastra pelo sistema**, no menu **Modo Campo**:
+- **Serviços**: nome, figura (🚜 🌱 💦 ✂️ 🍊…) e, se quiser, uma foto. Serviço que não se usa mais:
+  desmarque Ativo. (Abrindo o Modo Campo com o login do escritório, a tela "Qual serviço?" tem o botão
+  **Cadastrar ou editar serviços**.)
+- **Operadores (fotos)**: a foto do rosto de cada tratorista (é por ela que ele se acha na tela).
+- **Tratores (fotos)**: a foto de cada trator.
+- **Talhões**: nome, fazenda, área (ha, usada na divisão) e foto, se quiser.
+- **Produtos do depósito (fotos)**: as fotos do rótulo (a primeira é a que o tratorista vê).
+
+Os números no alto mostram quantos tratoristas, tratores e produtos ainda estão sem foto.
+
+**Áudio**: o botão 🔊 grande no alto lê a pergunta da tela (e, no horímetro e nos litros, o número
+digitado; na tela "Está certo?", o resumo inteiro). Cada foto/figura tem um 🔊 pequeno que lê o nome
+sem escolher, para o tratorista ouvir antes de tocar.
+
+**Para ligar** (uma vez):
+1. Rode de novo o [`supabase/schema.sql`](supabase/schema.sql) no **SQL Editor** (cria o lugar das fotos
+   e as regras da conta de campo).
+2. Em **Authentication → Users → Add user**, crie **um** usuário para todos os celulares do campo, por
+   exemplo `campo@fazendacarvalhocruz.com` (o e-mail não precisa existir; marque Auto Confirm User).
+   Depois, no sistema, em **Usuários → Novo**, coloque o mesmo e-mail com o perfil **Tratorista (só o
+   Modo Campo, no celular)**. Os tratoristas não precisam de login próprio: cada um se identifica
+   tocando na própria foto.
+   Essa conta só abre o Modo Campo: não vê financeiro, vendas nem compras, e não apaga nada.
+3. Em cada celular, abra o site, entre com essa conta **uma vez** e use **Adicionar à tela inicial**.
+
+Quem tem o login do escritório também pode abrir o Modo Campo pelo botão no menu **Modo Campo**, para testar.
+
+### 🧴 Depósito de químicos
+
+**No escritório**
+- **Químicos → Produtos**: fotos do rótulo (a primeira é a que o tratorista vê), tipo e tamanho da
+  embalagem (ex.: Galão de 5 L). Com a embalagem, o tratorista vê "pegue 2 galões de 5 L e mais 3,2 L".
+- **Químicos → Ordens de pulverização**: o gerente cria a ordem com talhão (a área vem sozinha),
+  trator e produtos com a dose por ha. O total é dose × área. Dá para **copiar os produtos do
+  Planejamento da safra**.
+
+**Tirar do depósito (separar a pulverização)**
+1. Escolhe a pulverização (cartão com o talhão e as fotos dos produtos) e toca na própria foto.
+2. Vê a lista de produtos. Em cada um: foto grande, as embalagens desenhadas e o botão
+   **✓ Peguei este** — confere pela foto e toca. A saída é lançada e o estoque baixa.
+3. Todos separados → a ordem fica "Separada".
+
+**Guardar no depósito**
+- **Produto novo**: toca na foto do produto, escolhe quantas embalagens com os botões − e +, tira foto
+  do produto ou da nota. Chega no sistema **sem preço e marcada "Falta conferir"**; o Painel e a aba
+  Estoque avisam. O escritório completa valor e nota e desmarca. O custo médio só conta as entradas
+  com preço.
+- **Sobrou da pulverização**: escolhe a pulverização e o produto e digita quanto voltou (não deixa
+  voltar mais do que saiu). Vira uma aplicação negativa: o estoque sobe e o custo do talhão fica só com
+  o que foi usado. Ao terminar, a ordem fica "Concluída".
+
+### 📎 Lançar despesa pelo comprovante do banco
+No **Android**, com o app instalado na tela inicial ("Adicionar à tela inicial" / "Instalar app" no
+Chrome): no app do banco, toque em **Compartilhar** no comprovante e escolha **Fazenda CC**. O app abre
+com o comprovante na tela; é só tocar na **categoria**, escrever a **descrição**, conferir o valor e
+**Salvar despesa**. Funciona sem internet: o comprovante sobe para a nuvem na próxima sincronização.
+
+No **iPhone** o sistema não deixa app de navegador aparecer no Compartilhar: lance a despesa em
+Financeiro → Despesas → Novo e use **Anexar foto ou PDF** no campo Comprovante.
+
+Os arquivos ficam no Storage do Supabase, numa pasta privada (`comprovantes`) criada pelo
+`supabase/schema.sql` — rode o SQL de novo depois de atualizar.
 
 ### Próximas etapas
 - Perfis de acesso (o que cada funcionário pode ver e lançar).
@@ -54,6 +140,22 @@ Sem Supabase configurado o app abre em **modo demonstração**: funciona, mas gu
 3. Em **Authentication → Users → Add user**, crie o login (e-mail e senha) de cada pessoa que vai usar.
 4. Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
    (**Project Settings → Data API / API Keys**).
+
+## 👨‍🌾 Link do agrônomo
+
+Em **Químicos e insumos → Link do agrônomo**, escreva o nome do agrônomo e clique em **Criar link**. Copie o
+link (ou use **Enviar pelo WhatsApp**). Quem abre o link **não precisa de senha** e vê **só o estoque de
+químicos** (sem preços, vendas ou financeiro). Ele pode:
+
+- ver o estoque **por produto, fabricante, tipo, princípio ativo ou validade**, com busca e foto do rótulo;
+- marcar os produtos, clicar em **Criar aplicação** (talhão, área, alvo, dose por hectare) e **enviar para a
+  fazenda** e/ou **baixar o PDF**.
+
+A aplicação enviada aparece em **Químicos e insumos → Aplicações do agrônomo**, onde você baixa o PDF, aprova ou
+**dá baixa no estoque** (isso lança as saídas no talhão). Para desligar o acesso, desative ou apague o link.
+
+Para funcionar, rode de novo o `supabase/schema.sql` no SQL Editor (ele cria as funções do link).
+Para o agrônomo ver a **validade**, lance a data de validade nas **Entradas / compras**.
 
 ## 🤖 Consulta de produto (uso, dose e substitutos)
 

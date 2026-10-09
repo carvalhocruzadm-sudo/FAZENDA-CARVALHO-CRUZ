@@ -6,6 +6,10 @@
  *   uma por coleção do esquema (culturas, talhoes, maquinas, …) → cópia local
  *   fila  → operações pendentes de envio para o Supabase, em ordem
  *   meta  → chaves de controle (última sincronização)
+ *   fotos → as fotos (chave = caminho no Storage): as tiradas aqui esperando
+ *           envio e as já baixadas, para aparecerem sem internet
+ *   arquivos → comprovantes salvos no aparelho esperando subir para a nuvem
+ *              (chave = caminho do arquivo; ver lib/arquivos.js)
  */
 
 import { COLECOES } from "./esquema";
@@ -15,9 +19,9 @@ export { COLECOES };
 const DB_NOME = "fazenda-carvalho-cruz";
 // Suba a versão sempre que uma coleção nova entrar no esquema: é no upgrade
 // que a store dela é criada.
-const DB_VERSAO = 2;
+const DB_VERSAO = 9;
 
-const STORES = [...COLECOES, "fila", "meta"];
+const STORES = [...COLECOES, "fila", "meta", "fotos", "arquivos"];
 
 let promessaDB = null;
 
@@ -45,6 +49,12 @@ export function abrirDB() {
       }
       if (!db.objectStoreNames.contains("meta")) {
         db.createObjectStore("meta");
+      }
+      if (!db.objectStoreNames.contains("fotos")) {
+        db.createObjectStore("fotos");
+      }
+      if (!db.objectStoreNames.contains("arquivos")) {
+        db.createObjectStore("arquivos");
       }
     };
 
@@ -224,5 +234,44 @@ export async function apagarItem(store, id) {
   const db = await abrirDB();
   const { tx, concluida } = transacao(db, [store], "readwrite");
   tx.objectStore(store).delete(id);
+  await concluida;
+}
+
+// ─── Fotos ──────────────────────────────────────────────────────────────────
+
+/** @returns {Promise<{ blob: Blob, pendente: boolean } | undefined>} */
+export async function lerFoto(caminho) {
+  const db = await abrirDB();
+  const { tx } = transacao(db, ["fotos"], "readonly");
+  return pedido(tx.objectStore("fotos").get(caminho));
+}
+
+export async function gravarFoto(caminho, foto) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["fotos"], "readwrite");
+  tx.objectStore("fotos").put(foto, caminho);
+  await concluida;
+}
+
+// ─── Arquivos (comprovantes) ────────────────────────────────────────────────
+
+/** @param {{ arquivo: Blob, tipo: string }} valor */
+export async function gravarArquivo(caminho, valor) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["arquivos"], "readwrite");
+  tx.objectStore("arquivos").put(valor, caminho);
+  await concluida;
+}
+
+export async function lerArquivo(caminho) {
+  const db = await abrirDB();
+  const { tx } = transacao(db, ["arquivos"], "readonly");
+  return pedido(tx.objectStore("arquivos").get(caminho));
+}
+
+export async function apagarArquivo(caminho) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["arquivos"], "readwrite");
+  tx.objectStore("arquivos").delete(caminho);
   await concluida;
 }

@@ -1,6 +1,10 @@
 import { useId, useMemo, useState } from "react";
 
 import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
+import { SEM_CULTURA, fazendaDoTalhao } from "../lib/talhoes";
+import EscolhaTalhoes from "./EscolhaTalhoes";
+import { CampoFoto } from "./Foto";
+import { CampoArquivo } from "./Comprovante";
 import ConsultaProduto from "./ConsultaProduto";
 import { Icone } from "./ui";
 
@@ -13,19 +17,19 @@ function sugestoesDoCampo(campo, dados) {
   return [...new Set([...fixas, ...usadas])].sort((a, b) => String(a).localeCompare(String(b)));
 }
 
-/** Reduz a foto (lado maior 1000 px, JPEG) para caber no registro e sincronizar rápido. */
+/** Reduz a foto (lado maior 800 px, JPEG) para caber no registro e sincronizar rápido. */
 function reduzirFoto(arquivo) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(arquivo);
     const img = new Image();
     img.onload = () => {
-      const escala = Math.min(1, 1000 / Math.max(img.width, img.height));
+      const escala = Math.min(1, 800 / Math.max(img.width, img.height));
       const tela = document.createElement("canvas");
       tela.width = Math.round(img.width * escala);
       tela.height = Math.round(img.height * escala);
       tela.getContext("2d").drawImage(img, 0, 0, tela.width, tela.height);
       URL.revokeObjectURL(url);
-      resolve(tela.toDataURL("image/jpeg", 0.7));
+      resolve(tela.toDataURL("image/jpeg", 0.6));
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não consegui abrir essa foto.")); };
     img.src = url;
@@ -71,11 +75,12 @@ function Fotos({ valor, aoMudar }) {
   );
 }
 
-function Campo({ chave, campo, reg, dados, aoMudar }) {
+function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
   const id = useId();
+  const [achar, setAchar] = useState("");
   const valor = reg[chave];
   const obrig = campoObrigatorio(campo, reg);
-  const largo = campo.tipo === "textoLongo" || campo.tipo === "fotos";
+  const largo = ["textoLongo", "fotos", "foto", "arquivo"].includes(campo.tipo);
   const set = (v) => aoMudar(chave, v);
 
   if (campo.tipo === "booleano") {
@@ -102,6 +107,9 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
           onChange={(e) => set(e.target.value)} placeholder={campo.tipo === "dinheiro" ? "R$" : ""} />
       );
       break;
+    case "foto":
+      controle = <CampoFoto valor={valor} aoMudar={set} lado={campo.lado} />;
+      break;
     case "data":
       controle = <input id={id} type="date" value={valor ?? ""} onChange={(e) => set(e.target.value)} />;
       break;
@@ -115,17 +123,63 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
       break;
     case "ref": {
       const def = ESQUEMA[campo.colecao];
+      const deProduto = campo.colecao === "insumos";
+      const termo = achar.trim().toLowerCase();
       const opcoes = (dados[campo.colecao] ?? [])
         .filter((x) => x.id === valor || (x.ativo !== false && (!campo.filtro || campo.filtro(x))))
+        // Produto: dá para achar pelo nome, fabricante, tipo ou princípio ativo.
+        .filter((x) => !deProduto || !termo || x.id === valor
+          || [x.nome, x.fabricante, x.tipo, x.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(termo)))
         .sort(def.ordem ?? (() => 0));
+      const rotuloOpcao = (x) => `${def.resumo?.(x) ?? x.nome}${deProduto && x.fabricante ? ` — ${x.fabricante}` : ""}`;
+      const opcao = (x) => <option key={x.id} value={x.id}>{rotuloOpcao(x)}</option>;
+      // Talhão: só os da cultura já escolhida, separados por fazenda.
+      const deTalhao = campo.colecao === "talhoes";
+      const lista = deTalhao && reg.cultura_id ? opcoes.filter((x) => x.id === valor || x.cultura_id === reg.cultura_id) : opcoes;
+      const nomeFazenda = (x) => dados.fazendas?.find((f) => f.id === x.fazenda_id)?.nome || "Sem fazenda";
+      const fazendas = deTalhao ? [...new Set(lista.map(nomeFazenda))].sort((a, b) => a.localeCompare(b, "pt-BR")) : [];
       controle = (
-        <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
-          <option value="">{opcoes.length ? "— escolha —" : `Nenhum ${def.singular} cadastrado`}</option>
-          {opcoes.map((x) => <option key={x.id} value={x.id}>{def.resumo?.(x) ?? x.nome}</option>)}
-        </select>
+        <>
+          {deProduto && (
+            <input type="search" placeholder="Buscar produto ou fabricante…" value={achar} onChange={(e) => setAchar(e.target.value)} aria-label="Buscar produto" autoComplete="off" />
+          )}
+          <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
+            <option value="">
+              {lista.length ? "— escolha —" : termo ? "Nenhum produto encontrado" : deTalhao && opcoes.length ? "Nenhum talhão desta cultura" : `Nenhum ${def.singular} cadastrado`}
+            </option>
+            {deTalhao && fazendas.length > 1
+              ? fazendas.map((f) => <optgroup key={f} label={f}>{lista.filter((x) => nomeFazenda(x) === f).map(opcao)}</optgroup>)
+              : lista.map(opcao)}
+          </select>
+        </>
       );
       break;
     }
+    case "refs": {
+      const def = ESQUEMA[campo.colecao];
+      const marcados = Array.isArray(valor) ? valor : [];
+      const opcoes = (dados[campo.colecao] ?? [])
+        .filter((x) => marcados.includes(x.id) || (x.ativo !== false && (!campo.filtro || campo.filtro(x))))
+        .sort(def.ordem ?? (() => 0));
+      controle = (
+        <div className="escolhas" id={id}>
+          {opcoes.length === 0 && <small>Nenhum {def.singular} cadastrado.</small>}
+          {opcoes.map((x) => {
+            const ativa = marcados.includes(x.id);
+            return (
+              <button type="button" key={x.id} className={ativa ? "ativa" : ""} aria-pressed={ativa}
+                onClick={() => set(ativa ? marcados.filter((m) => m !== x.id) : [...marcados, x.id])}>
+                {ativa ? "✓ " : ""}{def.resumo?.(x) ?? x.nome}
+              </button>
+            );
+          })}
+        </div>
+      );
+      break;
+    }
+    case "arquivo":
+      controle = <CampoArquivo id={id} colecao={colecao} valor={valor} set={set} />;
+      break;
     case "sugestao": {
       const lista = sugestoesDoCampo(campo, dados);
       controle = (
@@ -152,9 +206,11 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
 /**
  * Formulário gerado do esquema. `reg` é o rascunho; cada mudança passa pelos
  * `aoMudar` do esquema (que completam outros campos) e os campos calculados
- * são refeitos para aparecer já preenchidos.
+ * são refeitos para aparecer já preenchidos. `somente` mostra só esses campos,
+ * nessa ordem. `escolha` (do useEscolhaTalhoes) troca cultura e talhão pela
+ * escolha cultura → fazendas → talhões no lançamento novo.
  */
-export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
+export default function Formulario({ colecao, reg, setReg, dados, contexto, somente, escolha }) {
   const def = ESQUEMA[colecao];
 
   const aoMudar = (chave, v) => {
@@ -166,13 +222,32 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
     });
   };
 
-  const campos = useMemo(() => Object.entries(def.campos), [def]);
+  const campos = useMemo(
+    () => (somente ? somente.map((c) => [c, def.campos[c]]) : Object.entries(def.campos)),
+    [def, somente]
+  );
+
+  const comEscolha = escolha?.ativo(reg);
+  const visiveis = campos.filter(([, c]) => campoVisivel(c, reg));
+  // A escolha entra no lugar do primeiro dos dois (cultura ou talhão); o outro some.
+  const lugar = comEscolha && visiveis.find(([c]) => c === "cultura_id" || c === "talhao_id")?.[0];
 
   return (
     <div className="form">
-      {campos.filter(([, c]) => campoVisivel(c, reg)).map(([chave, campo]) => (
-        <Campo key={chave} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />
-      ))}
+      {visiveis.map(([chave, campo]) => {
+        if (comEscolha && (chave === "cultura_id" || chave === "talhao_id")) {
+          if (chave !== lugar) return null;
+          return (
+            <EscolhaTalhoes key="escolha-talhoes" culturas={dados.culturas}
+              talhoes={dados.talhoes.filter((t) => t.ativo !== false || t.id in escolha.props.areas)}
+              nomeFazenda={fazendaDoTalhao(dados)} cultura={escolha.props.cultura}
+              aoMudarCultura={(c) => { escolha.props.setCultura(c); aoMudar("cultura_id", c && c !== SEM_CULTURA ? c : null); }}
+              areas={escolha.props.areas} setAreas={escolha.props.setAreas} rotuloCultura={def.campos.cultura_id?.rotulo ?? "Cultura"}
+              obrigatorio={campoObrigatorio(def.campos.talhao_id, reg)} todasCulturas />
+          );
+        }
+        return <Campo key={chave} colecao={colecao} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />;
+      })}
       {colecao === "insumos" && <div className="largo"><ConsultaProduto reg={reg} setReg={setReg} /></div>}
     </div>
   );

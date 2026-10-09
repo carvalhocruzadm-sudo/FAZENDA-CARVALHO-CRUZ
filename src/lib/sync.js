@@ -11,7 +11,9 @@
  */
 
 import { supabase, supabaseConfigurado } from "./supabase";
-import { COLECOES, MAX_TENTATIVAS, apagarOp, atualizarOp, gravarMeta, gravarTodasColecoes, lerFila, lerMeta, lerTodasColecoes } from "./db";
+import { BUCKET } from "./arquivos";
+import { enviarFoto } from "./fotos";
+import { COLECOES, MAX_TENTATIVAS, apagarArquivo, apagarOp, atualizarOp, gravarMeta, gravarTodasColecoes, lerArquivo, lerFila, lerMeta, lerTodasColecoes } from "./db";
 
 const INTERVALO_AUTO_SYNC = 60_000;
 
@@ -53,7 +55,36 @@ export async function atualizarContadores() {
 
 // ─── Envio ──────────────────────────────────────────────────────────────────
 
+const LIMITE_PAYLOAD_GRANDE = 300_000; // caracteres (~300 KB)
+
+function erroDeRede(err) {
+  return err instanceof TypeError || /load failed|failed to fetch|network/i.test(String(err?.message ?? err));
+}
+
+function tamanhoDoPayload(op) {
+  try {
+    return JSON.stringify(op.payload).length;
+  } catch {
+    return 0;
+  }
+}
+
 async function executarOp(op) {
+  if (op.acao === "foto") {
+    await enviarFoto(op.payload.id);
+    return;
+  }
+  if (op.acao === "upload") {
+    // Comprovante: sobe o arquivo guardado no aparelho e apaga a cópia local.
+    const caminho = op.payload.id;
+    const local = await lerArquivo(caminho);
+    if (!local) return; // já foi enviado numa rodada anterior
+    const { error } = await supabase.storage.from(BUCKET)
+      .upload(caminho, local.arquivo, { upsert: true, contentType: local.tipo || undefined });
+    if (error) throw error;
+    await apagarArquivo(caminho);
+    return;
+  }
   if (op.acao === "delete") {
     const { error } = await supabase.from(op.tabela).delete().eq("id", op.payload.id);
     if (error) throw error;
@@ -80,7 +111,12 @@ export async function enviarFila() {
       await apagarOp(op.id);
       enviadas++;
     } catch (err) {
-      const tentativas = op.tentativas + 1;
+      // Sinal fraco ("Load failed" no iPhone, "Failed to fetch" nos outros) não
+      // é culpa do lançamento: não gasta tentativa, senão o sinal ruim marca
+      // tudo como erro definitivo. Registro muito grande (com fotos) conta,
+      // porque pode ser ele mesmo que não passa.
+      const soRede = erroDeRede(err) && tamanhoDoPayload(op) < LIMITE_PAYLOAD_GRANDE;
+      const tentativas = soRede ? op.tentativas : op.tentativas + 1;
       await atualizarOp({ ...op, tentativas, erro: String(err?.message ?? err) });
       await atualizarContadores();
       // Interrompe esta rodada: a próxima operação pode depender desta.

@@ -30,8 +30,11 @@ export function exibir(campo, valor, dados) {
     case "data": return data(valor);
     case "fotos": return `${valor.length} ${valor.length === 1 ? "foto" : "fotos"}`;
     case "booleano": return valor ? "Sim" : "Não";
+    case "foto": return "📷";
     case "opcoes": return campo.opcoes.find(([v]) => v === valor)?.[1] ?? valor;
     case "ref": return nomeRef(dados, campo.colecao, valor);
+    case "refs": return valor.length ? valor.map((id) => nomeRef(dados, campo.colecao, id)).join(", ") : "—";
+    case "arquivo": return "📎 Anexado";
     default: return String(valor);
   }
 }
