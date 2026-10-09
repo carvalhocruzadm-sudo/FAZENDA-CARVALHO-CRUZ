@@ -12,6 +12,7 @@
  *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
  *   sugestao → texto livre com sugestões (dá para criar uma categoria nova)
  *   ref      → aponta para outra coleção (`colecao`, `filtro` opcional)
+ *   refs     → aponta para vários da outra coleção (lista de ids; marca-se tocando)
  *   foto     → foto tirada no celular; guarda o caminho no Storage (`lado`:
  *              tamanho máximo em pixels, maior para foto que precisa ser lida)
  *
@@ -276,20 +277,23 @@ export const ESQUEMA = {
 
   turmas: {
     titulo: "Turmas de colheita", singular: "turma", icone: "pessoas", campo: "le",
-    descricao: "As turmas que colhem por tonelada (laranja). Aparecem no ticket do celular com a foto e o valor por tonelada. O que cada uma tem a receber está na aba \"A pagar por semana\".",
+    descricao: "As turmas que colhem por tonelada (laranja). Aparecem no ticket do celular com a foto. O valor por tonelada não fica aqui porque muda a cada colheita: é informado em cada ticket. O que cada uma tem a receber está na aba \"A pagar por semana\".",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome da turma", obrigatorio: true, dica: "Ex.: Turma do Tião. É o nome que aparece no celular" },
       encarregado: { tipo: "texto", rotulo: "Encarregado / gato" },
       telefone: { tipo: "texto", rotulo: "Telefone" },
       pix: { tipo: "texto", rotulo: "Chave PIX" },
       cpf: { tipo: "texto", rotulo: "CPF / CNPJ" },
-      cultura_id: { ...refCultura, rotulo: "Cultura que colhe", dica: "Em branco: aparece em todas as culturas colhidas por turma" },
-      valor_ton: { tipo: "dinheiro", rotulo: "Valor por tonelada", dica: "O ticket do celular já vem com ele" },
+      culturas: { tipo: "refs", colecao: "culturas", rotulo: "Culturas que colhe", dica: "Toque para marcar uma ou mais. Nenhuma marcada: aparece em todas as culturas colhidas por turma" },
+      // Antes era uma cultura só; quem foi cadastrado assim continua valendo (ver culturasDaTurma).
+      cultura_id: { ...refCultura, rotulo: "Cultura que colhe (antiga)", mostrarSe: () => false },
       foto: { tipo: "foto", rotulo: "Foto (aparece no celular)" },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "foto", "encarregado", "telefone", "pix", "cultura_id", "valor_ton", "ativo"],
+    // Mexeu nas culturas: a cultura única do cadastro antigo deixa de valer.
+    aoMudar: { culturas: () => ({ cultura_id: null }) },
+    colunas: ["nome", "foto", "encarregado", "telefone", "pix", "culturas", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR"),
     resumo: (r) => r.nome,
   },
@@ -859,7 +863,7 @@ export function prepararRegistro(colecao, bruto, dados) {
     if (!campoVisivel(campo, reg)) v = null;
     if (["numero", "dinheiro"].includes(campo.tipo)) v = v === "" || v == null ? null : Number(v);
     if (campo.tipo === "booleano") v = Boolean(v);
-    if ((campo.tipo === "fotos" || campo.tipo === "itens") && !v?.length) v = null;
+    if (["fotos", "itens", "refs"].includes(campo.tipo) && !v?.length) v = null;
     if (typeof v === "string") v = v.trim() || null;
     reg[chave] = v;
   }

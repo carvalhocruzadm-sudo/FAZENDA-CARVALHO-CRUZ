@@ -7,7 +7,7 @@ import { falar, operadores, paraNumero, vibrar } from "../lib/campo";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
 import { brl, data as dataBr, numero } from "../lib/formato";
 import { repartirTicket } from "../lib/ticketCampo";
-import { chaveTurma } from "../lib/turmas";
+import { chaveTurma, culturasDaTurma } from "../lib/turmas";
 
 /**
  * Modo Campo → Ticket da balança (/campo/ticket): o lançamento do ticket
@@ -108,7 +108,8 @@ function daCultura(dados, culturaId) {
 function turmasDaCultura(dados, cultura) {
   const ultima = {};
   for (const t of dados.turmas ?? []) {
-    if (t.ativo !== false && (!t.cultura_id || t.cultura_id === cultura.id)) ultima[t.nome.trim()] = "";
+    const delas = culturasDaTurma(t);
+    if (t.ativo !== false && (!delas.length || delas.includes(cultura.id))) ultima[t.nome.trim()] = "";
   }
   for (const nome of String(cultura.turmas ?? "").split(",").map((x) => x.trim()).filter(Boolean)) ultima[nome] = "";
   for (const v of dados.vendas) {
@@ -120,10 +121,12 @@ function turmasDaCultura(dados, cultura) {
 /** A turma no cadastro de Turmas de colheita, pelo nome. */
 const turmaDoCadastro = (dados, nome) => (dados.turmas ?? []).find((t) => chaveTurma(t.nome) === chaveTurma(nome));
 
-/** O valor por tonelada da turma: o do cadastro; sem ele, o último que ela cobrou; sem histórico, o padrão da cultura. */
+/**
+ * O valor por tonelada que já vem na tela (dá para mudar): o último que a
+ * turma cobrou; sem histórico, o padrão da cultura. Muda a cada colheita,
+ * por isso não fica no cadastro da turma.
+ */
 function valorDaTurma(dados, cultura, nome) {
-  const cadastro = turmaDoCadastro(dados, nome)?.valor_ton;
-  if (cadastro != null && cadastro !== "") return paraTeclado(cadastro);
   const ultima = dados.vendas
     .filter((v) => v.turma === nome && v.custo_ton != null)
     .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];

@@ -10,7 +10,7 @@ import { SEED } from "../src/lib/seed.js";
 
 const TIPO_SQL = {
   texto: "text", textoLongo: "text", sugestao: "text", opcoes: "text",
-  numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid", fotos: "jsonb", itens: "jsonb",
+  numero: "numeric", dinheiro: "numeric", data: "date", booleano: "boolean", ref: "uuid", refs: "jsonb", fotos: "jsonb", itens: "jsonb",
   arquivo: "text", foto: "text",
 };
 

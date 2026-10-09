@@ -5,7 +5,6 @@ import { Icone, TabelaSimples } from "../components/ui";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 import { dividirPorTalhoes, fazendaDoTalhao } from "../lib/talhoes";
-import { chaveTurma } from "../lib/turmas";
 
 /**
  * Lançamento rápido do ticket da balança que o Sinvaldo manda no grupo do
@@ -61,12 +60,10 @@ export default function Ticket({ dados, salvar }) {
     setF((a) => (a.cultura_id === id ? a : { ...a, cultura_id: id, custo_ton: padraoDaCultura(id) }));
   };
 
-  // A turma traz o valor por tonelada do cadastro de Turmas; sem ele, o último
-  // que ela cobrou; turma nova fica com o valor padrão do cadastro da cultura.
+  // A turma já usada antes traz o último valor por tonelada que ela cobrou;
+  // turma nova fica com o valor padrão do cadastro da cultura.
   const escolherTurma = (nome) => {
     set("turma", nome);
-    const cadastro = (dados.turmas ?? []).find((t) => chaveTurma(t.nome) === chaveTurma(nome))?.valor_ton;
-    if (cadastro != null) { setF((a) => ({ ...a, custo_ton: String(cadastro) })); return; }
     const ultima = dados.vendas
       .filter((v) => v.turma === nome && v.custo_ton != null)
       .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];

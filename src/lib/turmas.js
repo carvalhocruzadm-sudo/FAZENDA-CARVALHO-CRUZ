@@ -13,6 +13,9 @@ import { segundaDaSemana } from "./esquema";
 const n = (v) => Number(v) || 0;
 export const chaveTurma = (nome) => String(nome ?? "").trim().toLowerCase();
 
+/** As culturas que a turma colhe (cadastro antigo: uma só, em cultura_id). Lista vazia = todas. */
+export const culturasDaTurma = (t) => (t.culturas?.length ? t.culturas : t.cultura_id ? [t.cultura_id] : []);
+
 /** "2026-10-05" + dias. */
 export function somarDias(iso, dias) {
   const d = new Date(`${iso}T12:00:00Z`);
