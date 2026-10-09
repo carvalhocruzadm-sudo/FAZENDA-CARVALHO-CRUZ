@@ -212,7 +212,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
         <div className="conteudo">
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
           {!pronto ? <div className="vazio">Carregando…</div> : (
-            <Pagina key={tela} dados={dados} salvar={salvar} remover={remover} irPara={irPara}
+            <Pagina key={tela} dados={dados} salvar={salvar} remover={remover} irPara={irPara} email={email}
               sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} abrirCampo={abrirCampo} />
           )}
         </div>

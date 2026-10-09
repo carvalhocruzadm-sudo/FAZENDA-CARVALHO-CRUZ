@@ -459,3 +459,8 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .entrada.filtro.ativo { border-color: var(--verde-claro); background: var(--verde-pale); }
 td.acoes { white-space: nowrap; text-align: right; }
 td.acoes .btn + .btn { margin-left: 4px; }
+.foto-ticket-grande { display: block; max-width: 100%; max-height: 75vh; margin: 0 auto; border-radius: 8px; }
+.acoes-ticket { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+.acoes-ticket .btn { padding: 6px 10px; }
+.miniatura-ticket { height: 56px; border-radius: 6px; border: 1px solid var(--linha); }
+.foto-ticket-edicao { display: block; max-width: 100%; max-height: 45vh; margin: 0 auto 12px; border-radius: 8px; }

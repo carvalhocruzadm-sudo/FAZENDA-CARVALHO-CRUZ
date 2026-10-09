@@ -4,10 +4,11 @@ import {
   Cartao, EscolherPessoa, FotoComprovante, FotoOuInicial, Ouvir, Passos, Pergunta, Rodape, Teclado, Topo,
 } from "../components/CampoUI";
 import { falar, operadores, paraNumero, vibrar } from "../lib/campo";
-import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
+import { hoje } from "../lib/esquema";
 import { brl, data as dataBr, numero } from "../lib/formato";
-import { repartirTicket } from "../lib/ticketCampo";
-import { chaveTurma, culturasDaTurma } from "../lib/turmas";
+import {
+  SEM_FAZENDA, daCultura, registrosDoTicket, repartirTicket, turmaDoCadastro, ultimoValorDaTurma,
+} from "../lib/ticketCampo";
 
 /**
  * Modo Campo → Ticket da balança (/campo/ticket): o lançamento do ticket
@@ -19,10 +20,8 @@ import { chaveTurma, culturasDaTurma } from "../lib/turmas";
  * Bags e turmas só para cultura colhida por turma (laranja). A conta (peso de
  * cada bag, parte de cada talhão e turma) está em lib/ticketCampo.js. Vira
  * uma venda por talhão (e por turma), sem comprador e sem preço, marcada
- * "Falta completar": o escritório confere pela foto e completa.
+ * "Aguardando aprovação": o escritório confere pela foto, aprova e completa.
  */
-
-const SEM_FAZENDA = "sem";
 
 const FALA = {
   operador: "Quem é você? Toque na sua foto.",
@@ -77,58 +76,8 @@ const paraTeclado = (v) => (v == null || v === "" ? "" : String(v).replace(".", 
 /** Quem lança ticket: só os marcados em Funcionários → "Lança ticket da balança". */
 const lancadores = (dados) => operadores(dados).filter((f) => f.lanca_ticket);
 
-/**
- * O que muda conforme a cultura: os talhões dela (nenhum marcado com ela =
- * todos), as fazendas desses talhões e as turmas que o celular conhece.
- */
-function daCultura(dados, culturaId) {
-  const cultura = dados.culturas.find((c) => c.id === culturaId);
-  const emBags = Boolean(cultura?.turma_colheita);
-  const ativos = dados.talhoes.filter((t) => t.ativo !== false).sort(ESQUEMA.talhoes.ordem);
-  const daC = ativos.filter((t) => t.cultura_id === culturaId);
-  const talhoes = daC.length ? daC : ativos;
-  const ids = new Set(talhoes.map((t) => t.fazenda_id ?? SEM_FAZENDA));
-  const fazendas = dados.fazendas
-    .filter((f) => ids.has(f.id))
-    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }))
-    .map((f) => ({ id: f.id, nome: f.nome }));
-  if (ids.has(SEM_FAZENDA)) fazendas.push({ id: SEM_FAZENDA, nome: "Outros talhões" });
-  return { cultura, emBags, talhoes, fazendas, turmas: emBags && cultura ? turmasDaCultura(dados, cultura) : [] };
-}
-
-/**
- * As turmas que o celular mostra: as do cadastro de Turmas de colheita (desta
- * cultura ou sem cultura), a lista antiga da cultura e as dos tickets que ele
- * enxerga (o celular só baixa os que ainda faltam completar), as que colheram
- * por último primeiro.
- */
-function turmasDaCultura(dados, cultura) {
-  const ultima = {};
-  for (const t of dados.turmas ?? []) {
-    const delas = culturasDaTurma(t);
-    if (t.ativo !== false && (!delas.length || delas.includes(cultura.id))) ultima[t.nome.trim()] = "";
-  }
-  for (const nome of String(cultura.turmas ?? "").split(",").map((x) => x.trim()).filter(Boolean)) ultima[nome] = "";
-  for (const v of dados.vendas) {
-    if (v.cultura_id === cultura.id && v.turma && String(v.data ?? "") >= String(ultima[v.turma] ?? "")) ultima[v.turma] = v.data ?? "";
-  }
-  return Object.keys(ultima).sort((a, b) => String(ultima[b]).localeCompare(String(ultima[a])) || a.localeCompare(b, "pt-BR"));
-}
-
-/** A turma no cadastro de Turmas de colheita, pelo nome. */
-const turmaDoCadastro = (dados, nome) => (dados.turmas ?? []).find((t) => chaveTurma(t.nome) === chaveTurma(nome));
-
-/**
- * O valor por tonelada que já vem na tela (dá para mudar): o último que a
- * turma cobrou; sem histórico, o padrão da cultura. Muda a cada colheita,
- * por isso não fica no cadastro da turma.
- */
-function valorDaTurma(dados, cultura, nome) {
-  const ultima = dados.vendas
-    .filter((v) => v.turma === nome && v.custo_ton != null)
-    .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];
-  return paraTeclado(ultima ? ultima.custo_ton : cultura?.custo_turma_ton);
-}
+/** O valor por tonelada que já vem na tela (dá para mudar), no formato do teclado. */
+const valorDaTurma = (dados, cultura, nome) => paraTeclado(ultimoValorDaTurma(dados, cultura, nome));
 
 /**
  * A sequência de telas para o que já foi escolhido. Telas com dado:
@@ -249,23 +198,11 @@ export default function CampoTicket({ dados, salvar, irPara }) {
         emBags && r.naoSei ? "CONFERIR: turma não informada" : null,
         !r.foto ? "sem foto do ticket" : null,
       ].filter(Boolean).join(" · ");
-      const preparados = conta.linhas.map((l) => prepararRegistro("vendas", {
-        ...registroNovo("vendas"),
-        data: r.data,
-        cultura_id: l.talhao?.cultura_id ?? cultura.id,
-        unidade: cultura.unidade || "t",
-        talhao_id: l.talhao?.id ?? null,
-        peso_liquido: l.peso_liquido,
-        volumes: l.volumes,
-        turma: emBags ? l.turma : null,
-        custo_ton: emBags ? l.custo_ton ?? cultura.custo_turma_ton ?? null : null,
-        a_conferir: true,
-        foto_ticket: r.foto,
-        observacao: resumo,
-      }, dados));
-      const falha = preparados.find((p) => p.erro);
-      if (falha) throw new Error(falha.erro);
-      for (const { reg } of preparados) await salvar("vendas", reg);
+      const { regs, erro: falha } = registrosDoTicket(dados, {
+        cultura, emBags, linhas: conta.linhas, data: r.data, foto: r.foto, observacao: resumo, aConferir: true,
+      });
+      if (falha) throw new Error(falha);
+      for (const reg of regs) await salvar("vendas", reg);
       vibrar([60, 60, 120]);
       ir("pronto");
     } catch (e) {
