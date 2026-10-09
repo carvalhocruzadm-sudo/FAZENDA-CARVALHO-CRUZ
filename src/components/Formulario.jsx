@@ -155,6 +155,28 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
       );
       break;
     }
+    case "refs": {
+      const def = ESQUEMA[campo.colecao];
+      const marcados = Array.isArray(valor) ? valor : [];
+      const opcoes = (dados[campo.colecao] ?? [])
+        .filter((x) => marcados.includes(x.id) || (x.ativo !== false && (!campo.filtro || campo.filtro(x))))
+        .sort(def.ordem ?? (() => 0));
+      controle = (
+        <div className="escolhas" id={id}>
+          {opcoes.length === 0 && <small>Nenhum {def.singular} cadastrado.</small>}
+          {opcoes.map((x) => {
+            const ativa = marcados.includes(x.id);
+            return (
+              <button type="button" key={x.id} className={ativa ? "ativa" : ""} aria-pressed={ativa}
+                onClick={() => set(ativa ? marcados.filter((m) => m !== x.id) : [...marcados, x.id])}>
+                {ativa ? "✓ " : ""}{def.resumo?.(x) ?? x.nome}
+              </button>
+            );
+          })}
+        </div>
+      );
+      break;
+    }
     case "arquivo":
       controle = <CampoArquivo id={id} colecao={colecao} valor={valor} set={set} />;
       break;

@@ -7,7 +7,7 @@ import { falar, operadores, paraNumero, vibrar } from "../lib/campo";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
 import { brl, data as dataBr, numero } from "../lib/formato";
 import { repartirTicket } from "../lib/ticketCampo";
-import { chaveTurma } from "../lib/turmas";
+import { chaveTurma, culturasDaTurma } from "../lib/turmas";
 
 /**
  * Modo Campo → Ticket da balança (/campo/ticket): o lançamento do ticket
@@ -108,7 +108,8 @@ function daCultura(dados, culturaId) {
 function turmasDaCultura(dados, cultura) {
   const ultima = {};
   for (const t of dados.turmas ?? []) {
-    if (t.ativo !== false && (!t.cultura_id || t.cultura_id === cultura.id)) ultima[t.nome.trim()] = "";
+    const delas = culturasDaTurma(t);
+    if (t.ativo !== false && (!delas.length || delas.includes(cultura.id))) ultima[t.nome.trim()] = "";
   }
   for (const nome of String(cultura.turmas ?? "").split(",").map((x) => x.trim()).filter(Boolean)) ultima[nome] = "";
   for (const v of dados.vendas) {
