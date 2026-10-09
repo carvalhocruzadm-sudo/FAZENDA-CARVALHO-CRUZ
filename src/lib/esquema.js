@@ -276,7 +276,7 @@ export const ESQUEMA = {
 
   turmas: {
     titulo: "Turmas de colheita", singular: "turma", icone: "pessoas", campo: "le",
-    descricao: "As turmas que colhem por tonelada (laranja). Aparecem no ticket do celular com a foto e o valor por tonelada. O que cada uma tem a receber está na aba \"A pagar por semana\".",
+    descricao: "As turmas que colhem por tonelada (laranja). Aparecem no ticket do celular com a foto. O valor por tonelada não fica aqui porque muda a cada colheita: é informado em cada ticket. O que cada uma tem a receber está na aba \"A pagar por semana\".",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome da turma", obrigatorio: true, dica: "Ex.: Turma do Tião. É o nome que aparece no celular" },
       encarregado: { tipo: "texto", rotulo: "Encarregado / gato" },
@@ -284,12 +284,11 @@ export const ESQUEMA = {
       pix: { tipo: "texto", rotulo: "Chave PIX" },
       cpf: { tipo: "texto", rotulo: "CPF / CNPJ" },
       cultura_id: { ...refCultura, rotulo: "Cultura que colhe", dica: "Em branco: aparece em todas as culturas colhidas por turma" },
-      valor_ton: { tipo: "dinheiro", rotulo: "Valor por tonelada", dica: "O ticket do celular já vem com ele" },
       foto: { tipo: "foto", rotulo: "Foto (aparece no celular)" },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "foto", "encarregado", "telefone", "pix", "cultura_id", "valor_ton", "ativo"],
+    colunas: ["nome", "foto", "encarregado", "telefone", "pix", "cultura_id", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR"),
     resumo: (r) => r.nome,
   },

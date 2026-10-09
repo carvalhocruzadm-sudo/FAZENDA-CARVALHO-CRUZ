@@ -120,10 +120,12 @@ function turmasDaCultura(dados, cultura) {
 /** A turma no cadastro de Turmas de colheita, pelo nome. */
 const turmaDoCadastro = (dados, nome) => (dados.turmas ?? []).find((t) => chaveTurma(t.nome) === chaveTurma(nome));
 
-/** O valor por tonelada da turma: o do cadastro; sem ele, o último que ela cobrou; sem histórico, o padrão da cultura. */
+/**
+ * O valor por tonelada que já vem na tela (dá para mudar): o último que a
+ * turma cobrou; sem histórico, o padrão da cultura. Muda a cada colheita,
+ * por isso não fica no cadastro da turma.
+ */
 function valorDaTurma(dados, cultura, nome) {
-  const cadastro = turmaDoCadastro(dados, nome)?.valor_ton;
-  if (cadastro != null && cadastro !== "") return paraTeclado(cadastro);
   const ultima = dados.vendas
     .filter((v) => v.turma === nome && v.custo_ton != null)
     .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];

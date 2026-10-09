@@ -195,7 +195,6 @@ alter table public.turmas add column if not exists telefone text;
 alter table public.turmas add column if not exists pix text;
 alter table public.turmas add column if not exists cpf text;
 alter table public.turmas add column if not exists cultura_id uuid;
-alter table public.turmas add column if not exists valor_ton numeric;
 alter table public.turmas add column if not exists foto text;
 alter table public.turmas add column if not exists ativo boolean;
 alter table public.turmas add column if not exists observacao text;
