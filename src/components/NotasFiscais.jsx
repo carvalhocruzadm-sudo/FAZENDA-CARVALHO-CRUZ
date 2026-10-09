@@ -58,10 +58,14 @@ function Conexao({ conexao, recarregar }) {
   const [naturezas, setNaturezas] = useState(null);
   const [erro, setErro] = useState(null);
   const [ocupado, setOcupado] = useState(false);
+  // O aplicativo do Bling pode não ter a permissão de ler as naturezas de
+  // operação: aí a natureza é informada pelo número dela.
+  const [semLista, setSemLista] = useState(false);
+  const [manual, setManual] = useState({ id: "", nome: "" });
 
   useEffect(() => {
     if (!conexao?.conectado) return;
-    chamarBling({ acao: "naturezas" }).then((r) => setNaturezas(r.naturezas)).catch((e) => setErro(e.message));
+    chamarBling({ acao: "naturezas" }).then((r) => setNaturezas(r.naturezas)).catch(() => setSemLista(true));
   }, [conexao?.conectado]);
 
   const conectar = async () => {
@@ -80,13 +84,23 @@ function Conexao({ conexao, recarregar }) {
     }
   };
 
-  const escolher = async (id) => {
-    const n = naturezas.find((x) => String(x.id) === id);
+  const gravarNatureza = async (id, nome) => {
     setErro(null);
     try {
-      await chamarBling({ acao: "configurar", natureza_id: n ? n.id : null, natureza_nome: n?.descricao ?? null });
+      await chamarBling({ acao: "configurar", natureza_id: id, natureza_nome: nome });
       recarregar();
     } catch (e) { setErro(e.message); }
+  };
+
+  const escolher = (id) => {
+    const n = naturezas.find((x) => String(x.id) === id);
+    gravarNatureza(n ? n.id : null, n?.descricao ?? null);
+  };
+
+  const gravarManual = () => {
+    const id = Number(manual.id.replace(/\D/g, ""));
+    if (!id) { setErro("Digite o número da natureza de operação."); return; }
+    gravarNatureza(id, manual.nome.trim() || `Natureza nº ${id}`);
   };
 
   if (!conexao) return <div className="vazio">Verificando a conexão com o Bling…</div>;
@@ -108,7 +122,26 @@ function Conexao({ conexao, recarregar }) {
           aqui e clique em <b>Já autorizei</b>.
         </p>
       )}
-      {conexao.conectado && (
+      {conexao.conectado && semLista && (
+        <div className="form">
+          <p className="descricao largo">
+            O aplicativo do Bling não deixa listar as naturezas de operação: informe o número dela. No Bling, abra
+            <b> Preferências → Naturezas de operação</b>, clique na de venda da produção e copie o número que aparece no
+            fim do endereço da página (ex.: …/<b>15103123</b>).
+            {conexao.natureza_id && <> Hoje está usando: <b>{conexao.natureza_nome}</b> (nº {conexao.natureza_id}).</>}
+          </p>
+          <div className="campo">
+            <span><label htmlFor="nat-id">Número da natureza</label><em> *</em></span>
+            <input id="nat-id" inputMode="numeric" value={manual.id} onChange={(e) => setManual((m) => ({ ...m, id: e.target.value }))} />
+          </div>
+          <div className="campo">
+            <span><label htmlFor="nat-nome">Nome (para lembrar)</label></span>
+            <input id="nat-nome" value={manual.nome} placeholder="Venda de produção" onChange={(e) => setManual((m) => ({ ...m, nome: e.target.value }))} />
+          </div>
+          <div className="campo"><span>&nbsp;</span><button className="btn primario" onClick={gravarManual}>Guardar natureza</button></div>
+        </div>
+      )}
+      {conexao.conectado && !semLista && (
         <div className="form">
           <div className="campo largo">
             <span><label htmlFor="natureza">Natureza de operação das vendas</label><em> *</em></span>

@@ -76,8 +76,9 @@ pronta a de venda da produção). Configuração, uma vez só:
 
 1. **Criar o aplicativo no Bling**: no Bling, menu **Preferências → Sistema → Central de extensões → Área do
    integrador → Criar aplicativo** (tipo *Aplicativo privado/API*). Em **Link de redirecionamento** coloque
-   `https://SEU-PROJETO.supabase.co/functions/v1/bling`. Em **Escopos**, marque *Notas Fiscais Eletrônicas*,
-   *Naturezas de Operação* e *Contatos*. Salve e copie o **Client ID** e o **Client Secret**.
+   `https://SEU-PROJETO.supabase.co/functions/v1/bling`. Em **Escopos**, marque *Notas Fiscais* (com
+   as opções de dentro). Se existir, marque também *Naturezas de Operação*; se não existir, o app pede o número
+   da natureza em vez de mostrar a lista. Salve e copie o **Client ID** e o **Client Secret**.
 2. **Publicar a função no Supabase** (precisa do [Supabase CLI](https://supabase.com/docs/guides/cli)):
    ```bash
    supabase functions deploy bling --no-verify-jwt
