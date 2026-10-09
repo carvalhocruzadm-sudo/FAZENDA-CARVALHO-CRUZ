@@ -55,7 +55,7 @@ export default function Painel({ dados, irPara }) {
     const aConferir = dados.insumo_entradas.filter((e) => e.a_conferir).length;
     if (aConferir) alertas.push({ tipo: "atencao", texto: `${aConferir} entrada(s) de produto lançada(s) no depósito sem preço — falta conferir`, ir: "quimicos" });
     const ticketsCampo = dados.vendas.filter((v) => v.a_conferir).length;
-    if (ticketsCampo) alertas.push({ tipo: "atencao", texto: `${ticketsCampo} ticket(s) da balança lançado(s) no celular — falta completar comprador e preço`, ir: "vendas" });
+    if (ticketsCampo) alertas.push({ tipo: "atencao", texto: `${ticketsCampo} ticket(s) da balança lançado(s) pelos funcionários aguardando aprovação`, ir: "ticket" });
     for (const o of dados.pulverizacoes.filter((x) => x.situacao === "aberta")) {
       alertas.push({ tipo: "atencao", texto: `Pulverização em ${nomesTalhoesDaOrdem(dados, o)} (${data(o.data)}) esperando separar no depósito`, ir: "quimicos" });
     }
