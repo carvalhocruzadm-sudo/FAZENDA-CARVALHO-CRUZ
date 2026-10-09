@@ -11,7 +11,7 @@ import Agronomo from "./pages/Agronomo";
 import ModoCampo from "./pages/Campo";
 import Login, { NovaSenha } from "./pages/Login";
 import Painel from "./pages/Painel";
-import { CadastrosCampo, Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Usuarios, Vendas } from "./pages/Secoes";
+import { CadastrosCampo, Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Turmas, Usuarios, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 import Ticket, { LINK_TICKET } from "./pages/Ticket";
 
@@ -20,6 +20,7 @@ const MENU = [
   ["lavoura", "Lavoura e talhões", "cultura", Lavoura],
   ["ticket", "Ticket da balança", "cesto", Ticket],
   ["vendas", "Vendas", "venda", Vendas],
+  ["turmas", "Turmas de colheita", "pessoas", Turmas],
   ["financeiro", "Financeiro", "dinheiro", Financeiro],
   ["maquinas", "Máquinas e horímetro", "trator", Maquinas],
   ["diesel", "Diesel", "combustivel", Diesel],

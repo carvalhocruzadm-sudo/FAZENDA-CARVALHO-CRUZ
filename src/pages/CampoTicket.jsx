@@ -7,6 +7,7 @@ import { falar, operadores, paraNumero, vibrar } from "../lib/campo";
 import { ESQUEMA, hoje, prepararRegistro, registroNovo } from "../lib/esquema";
 import { brl, data as dataBr, numero } from "../lib/formato";
 import { repartirTicket } from "../lib/ticketCampo";
+import { chaveTurma } from "../lib/turmas";
 
 /**
  * Modo Campo → Ticket da balança (/campo/ticket): o lançamento do ticket
@@ -99,12 +100,16 @@ function daCultura(dados, culturaId) {
 }
 
 /**
- * As turmas que o celular mostra: as do cadastro da cultura e as dos tickets
- * que ele enxerga (o celular só baixa os que ainda faltam completar), as que
- * colheram por último primeiro.
+ * As turmas que o celular mostra: as do cadastro de Turmas de colheita (desta
+ * cultura ou sem cultura), a lista antiga da cultura e as dos tickets que ele
+ * enxerga (o celular só baixa os que ainda faltam completar), as que colheram
+ * por último primeiro.
  */
 function turmasDaCultura(dados, cultura) {
   const ultima = {};
+  for (const t of dados.turmas ?? []) {
+    if (t.ativo !== false && (!t.cultura_id || t.cultura_id === cultura.id)) ultima[t.nome.trim()] = "";
+  }
   for (const nome of String(cultura.turmas ?? "").split(",").map((x) => x.trim()).filter(Boolean)) ultima[nome] = "";
   for (const v of dados.vendas) {
     if (v.cultura_id === cultura.id && v.turma && String(v.data ?? "") >= String(ultima[v.turma] ?? "")) ultima[v.turma] = v.data ?? "";
@@ -112,8 +117,13 @@ function turmasDaCultura(dados, cultura) {
   return Object.keys(ultima).sort((a, b) => String(ultima[b]).localeCompare(String(ultima[a])) || a.localeCompare(b, "pt-BR"));
 }
 
-/** O valor por tonelada da turma: o último que ela cobrou; sem histórico, o padrão da cultura. */
+/** A turma no cadastro de Turmas de colheita, pelo nome. */
+const turmaDoCadastro = (dados, nome) => (dados.turmas ?? []).find((t) => chaveTurma(t.nome) === chaveTurma(nome));
+
+/** O valor por tonelada da turma: o do cadastro; sem ele, o último que ela cobrou; sem histórico, o padrão da cultura. */
 function valorDaTurma(dados, cultura, nome) {
+  const cadastro = turmaDoCadastro(dados, nome)?.valor_ton;
+  if (cadastro != null && cadastro !== "") return paraTeclado(cadastro);
   const ultima = dados.vendas
     .filter((v) => v.turma === nome && v.custo_ton != null)
     .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];
@@ -417,7 +427,7 @@ export default function CampoTicket({ dados, salvar, irPara }) {
                       : [...r.turmas, { nome, bags: "", valor: valorDaTurma(dados, cultura, nome) }],
                   });
                 }}>
-                  <FotoOuInicial nome={nome} />
+                  <FotoOuInicial caminho={turmaDoCadastro(dados, nome)?.foto} nome={nome} />
                   <span>{nome}</span>
                 </Cartao>
               );
@@ -450,7 +460,7 @@ export default function CampoTicket({ dados, salvar, irPara }) {
         unidade: "bags",
         antes: (
           <div className="resumo-linha">
-            <FotoOuInicial nome={turmaDaTela.nome} /><span>{turmaDaTela.nome}</span>
+            <FotoOuInicial caminho={turmaDoCadastro(dados, turmaDaTela.nome)?.foto} nome={turmaDaTela.nome} /><span>{turmaDaTela.nome}</span>
           </div>
         ),
         depois: <p className="dica-anterior">Carga: {totalBags} bags · {falta >= 0 ? `sobram ${falta} para esta turma` : `passou ${-falta}`}</p>,
@@ -470,7 +480,7 @@ export default function CampoTicket({ dados, salvar, irPara }) {
         casas: 2,
         antes: (
           <div className="resumo-linha">
-            <FotoOuInicial nome={turmaDaTela.nome} /><span>{turmaDaTela.nome} <small>· {t.bags} bags</small></span>
+            <FotoOuInicial caminho={turmaDoCadastro(dados, turmaDaTela.nome)?.foto} nome={turmaDaTela.nome} /><span>{turmaDaTela.nome} <small>· {t.bags} bags</small></span>
           </div>
         ),
         depois: <p className="dica-anterior">R$ por tonelada colhida</p>,
@@ -547,7 +557,7 @@ export default function CampoTicket({ dados, salvar, irPara }) {
           )}
           {conta.porTurma.map((k, n) => (
             <div key={k.nome} className="resumo-linha" onClick={() => ir(r.turmas.length > 1 ? `turmaBags:${n}` : `turmaValor:${n}`)}>
-              <FotoOuInicial nome={k.nome} />
+              <FotoOuInicial caminho={turmaDoCadastro(dados, k.nome)?.foto} nome={k.nome} />
               <span>
                 {k.nome}
                 <br /><small>🧺 {k.bags} bags · {numero(k.kg, 0)} kg · {brl(k.valor)}/t = {brl(k.pagar)}</small>
