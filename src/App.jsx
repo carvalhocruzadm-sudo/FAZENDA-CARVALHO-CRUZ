@@ -6,7 +6,7 @@ import { Icone, Modal } from "./components/ui";
 import { CulturaAtiva } from "./hooks/useCulturaAtiva";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
-import { lerCompartilhado } from "./lib/arquivos";
+import { daCaixa, lerCompartilhado, listarCaixa } from "./lib/arquivos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Agronomo from "./pages/Agronomo";
 import ModoCampo from "./pages/Campo";
@@ -194,6 +194,23 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
       .then((c) => setCompartilhado(c ?? { arquivo: null, texto: "" }))
       .catch(() => setCompartilhado({ arquivo: null, texto: "" }));
   }, []);
+
+  // Veio do Atalho do iPhone (/?comprovantes): o comprovante já subiu para a
+  // caixa de entrada; abre o lançamento do mais novo que ainda não virou despesa.
+  const [doAtalho] = useState(() => new URLSearchParams(location.search).has("comprovantes"));
+  useEffect(() => {
+    if (!doAtalho || !pronto) return;
+    history.replaceState(null, "", "/");
+    listarCaixa(dados.despesas)
+      .then((caixa) => {
+        if (!caixa.length) throw new Error("Nenhum comprovante novo na caixa de entrada.");
+        return daCaixa(caixa[0]);
+      })
+      .then(setCompartilhado)
+      .catch((err) => window.alert(err.message));
+    // Uma vez só, quando o banco do aparelho termina de abrir.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doAtalho, pronto]);
   const [trocandoSenha, setTrocandoSenha] = useState(false);
   const fecharTrocaSenha = useCallback(() => setTrocandoSenha(false), []);
 
