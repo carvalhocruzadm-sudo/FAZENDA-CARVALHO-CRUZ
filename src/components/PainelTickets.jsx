@@ -1,23 +1,16 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
-import { Foto } from "./Foto";
-import Formulario from "./Formulario";
-import { Icone, Modal, Stat, TabelaSimples } from "./ui";
-import useEscolhaTalhoes from "../hooks/useEscolhaTalhoes";
+import { Stat, TabelaSimples } from "./ui";
+import { quemLancou, SELOS, situacao, toneladas, useAcoesTickets } from "../hooks/useAcoesTickets";
 import { intervalo } from "../lib/calculos";
-import { hoje, prepararRegistro } from "../lib/esquema";
+import { hoje } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 
 /**
  * Os tickets / cargas vendidas num lugar só, fáceis de ler: filtro de
  * período, de cultura e de situação, os totais em cima e as cargas
- * separadas por dia (com o total de cada dia).
- *
- * Situação de cada carga:
- *   - Aguardando aprovação: lançada por funcionário (`a_conferir`). O
- *     escritório confere pela foto e aprova, edita ou apaga;
- *   - Falta preço: aprovada, mas ainda sem comprador ou preço;
- *   - Completa.
+ * separadas por dia (com o total de cada dia). A situação de cada carga e
+ * os botões Aprovar, Editar e Apagar estão em hooks/useAcoesTickets.jsx.
  */
 
 const PERIODOS_TICKET = [
@@ -26,18 +19,6 @@ const PERIODOS_TICKET = [
 ];
 
 const SITUACOES = [["todas", "Todas"], ["aprovar", "Aguardando aprovação"], ["preco", "Falta preço"], ["completas", "Completas"]];
-
-function situacao(v) {
-  if (v.a_conferir) return "aprovar";
-  if (!v.comprador || !(Number(v.preco_unitario) > 0)) return "preco";
-  return "completas";
-}
-
-const SELOS = {
-  aprovar: <span className="selo atencao">Aguardando aprovação</span>,
-  preco: <span className="selo neutro">Falta preço</span>,
-  completas: <span className="selo ok">Completa</span>,
-};
 
 function deAte(periodo) {
   if (periodo === "hoje") return [hoje(), hoje()];
@@ -49,21 +30,11 @@ function deAte(periodo) {
   return intervalo(periodo);
 }
 
-const toneladas = (v) => (Number(v.peso_liquido) || 0) / 1000;
-
-/** "Lançado no celular (Modo Campo) por Fulano · …" → "Fulano". */
-const quemLancou = (v) => /Lançado (?:no celular \(Modo Campo\)|no computador) por ([^·]+)/.exec(v.observacao ?? "")?.[1]?.trim() ?? "—";
-
 export default function PainelTickets({ dados, salvar, remover, periodoInicial = "7dias" }) {
   const [periodo, setPeriodo] = useState(periodoInicial);
   const [cultura, setCultura] = useState("todas");
   const [filtro, setFiltro] = useState("todas");
-  const [foto, setFoto] = useState(null);
-  const [rascunho, setRascunho] = useState(null);
-  const [erro, setErro] = useState(null);
-  const [trabalhando, setTrabalhando] = useState(false);
-
-  const escolha = useEscolhaTalhoes("vendas", dados);
+  const { aprovar, botoes, janelas, erro, editando, trabalhando } = useAcoesTickets({ dados, salvar, remover });
 
   const doPeriodo = useMemo(() => {
     const [de, ate] = deAte(periodo);
@@ -97,53 +68,6 @@ export default function PainelTickets({ dados, salvar, remover, periodoInicial =
     else dias.push({ data: v.data, cargas: [v] });
   }
 
-  const aprovar = async (vendas) => {
-    if (vendas.length > 1 && !window.confirm(`Aprovar ${vendas.length} tickets?`)) return;
-    setTrabalhando(true);
-    setErro(null);
-    try {
-      for (const v of vendas) {
-        const { reg, erro: e } = prepararRegistro("vendas", { ...v, a_conferir: false }, dados);
-        if (e) throw new Error(e);
-        await salvar("vendas", reg);
-      }
-    } catch (err) {
-      setErro(String(err?.message ?? err));
-    } finally {
-      setTrabalhando(false);
-    }
-  };
-
-  const apagar = async (v) => {
-    const texto = `${nomeRef(dados, "culturas", v.cultura_id)} · ${numero(toneladas(v), 3)} t · ${data(v.data)}`;
-    if (!window.confirm(`Apagar este ticket?\n${texto}`)) return;
-    setErro(null);
-    try {
-      await remover("vendas", v.id);
-      setRascunho((r) => (r?.id === v.id ? null : r));
-    } catch (err) {
-      setErro(String(err?.message ?? err));
-    }
-  };
-
-  const { iniciar } = escolha;
-  const editar = useCallback((v) => { setErro(null); setRascunho(v); iniciar(v); }, [iniciar]);
-  const fechar = useCallback(() => setRascunho(null), []);
-
-  const gravarEdicao = async () => {
-    const { regs, erro: e } = escolha.montar(rascunho);
-    if (e) { setErro(e); return; }
-    setTrabalhando(true);
-    try {
-      for (const reg of regs) await salvar("vendas", reg);
-      setRascunho(null);
-    } catch (err) {
-      setErro(String(err?.message ?? err));
-    } finally {
-      setTrabalhando(false);
-    }
-  };
-
   const talhao = (v) => {
     if (!v.talhao_id) return "—";
     const t = dados.talhoes.find((x) => x.id === v.talhao_id);
@@ -168,19 +92,7 @@ export default function PainelTickets({ dados, salvar, remover, periodoInicial =
         : "—"),
     },
     { rotulo: "Situação", valor: (v) => SELOS[situacao(v)] },
-    {
-      rotulo: "Ações",
-      valor: (v) => (
-        <div className="acoes-ticket">
-          {v.foto_ticket && <button type="button" className="btn" onClick={() => setFoto(v.foto_ticket)} title="Ver a foto do ticket">📷</button>}
-          {v.a_conferir && (
-            <button type="button" className="btn primario" onClick={() => aprovar([v])} disabled={trabalhando}>✓ Aprovar</button>
-          )}
-          <button type="button" className="btn" onClick={() => editar(v)} title="Editar" aria-label="Editar"><Icone nome="editar" /></button>
-          <button type="button" className="btn perigo" onClick={() => apagar(v)} title="Apagar" aria-label="Apagar"><Icone nome="lixo" /></button>
-        </div>
-      ),
-    },
+    { rotulo: "Ações", valor: botoes },
   ];
 
   return (
@@ -195,7 +107,7 @@ export default function PainelTickets({ dados, salvar, remover, periodoInicial =
           </button>
         </div>
       )}
-      {erro && !rascunho && <div className="aviso">{erro}</div>}
+      {erro && !editando && <div className="aviso">{erro}</div>}
 
       <div className="campo">
         <span>Período</span>
@@ -256,35 +168,7 @@ export default function PainelTickets({ dados, salvar, remover, periodoInicial =
         </div>
       ))}
 
-      {foto && (
-        <Modal titulo="Foto do ticket" aoFechar={() => setFoto(null)}>
-          <Foto caminho={foto} alt="Foto do ticket da balança" className="foto-ticket-grande"
-            reserva={<div className="vazio">Carregando a foto…</div>} />
-        </Modal>
-      )}
-
-      {rascunho && (
-        <Modal
-          titulo="Editar ticket"
-          aoFechar={fechar}
-          rodape={
-            <>
-              <button className="btn perigo" onClick={() => apagar(rascunho)}><Icone nome="lixo" /> Apagar</button>
-              <span className="espaco" />
-              <button className="btn" onClick={fechar}>Cancelar</button>
-              <button className="btn primario" onClick={gravarEdicao} disabled={trabalhando}>
-                <Icone nome="editar" /> {trabalhando ? "Salvando…" : "Salvar"}
-              </button>
-            </>
-          }
-        >
-          {erro && <div className="aviso">{erro}</div>}
-          {rascunho.foto_ticket && (
-            <Foto caminho={rascunho.foto_ticket} alt="Foto do ticket" className="foto-ticket-edicao" />
-          )}
-          <Formulario colecao="vendas" reg={rascunho} setReg={setRascunho} dados={dados} contexto={{}} escolha={escolha} />
-        </Modal>
-      )}
+      {janelas}
     </div>
   );
 }
