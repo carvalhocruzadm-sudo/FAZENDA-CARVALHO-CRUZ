@@ -170,6 +170,26 @@ supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic
 A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
 tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
 
+## 📷 Leitura da foto do ticket da balança
+
+A foto do ticket é lida pela IA: **placa, tipo de carro, tara (entrada), bruto (saída), peso líquido,
+desconto, comprador, motorista e nota fiscal** vêm preenchidos sozinhos.
+
+- No **Ticket da balança** (lançamento do gerente), é só mandar a foto: os campos aparecem preenchidos para conferir.
+- No **Editar venda** / **Editar ticket**, uma venda com foto e sem placa/pesos é lida sozinha ao abrir
+  (e o botão **Puxar os dados da foto do ticket** lê de novo). Só preenche o que está vazio.
+- Ticket repartido em vários talhões/turmas: tara e bruto são do caminhão inteiro, então vão para a observação.
+
+Usa a IA do Google (Gemini), no **plano gratuito**. Uma vez só:
+
+1. Em **aistudio.google.com**, entre com a conta Google → **Get API key** → **Create API key** e copie a chave.
+2. No Supabase → **Edge Functions → Secrets**: Name `GEMINI_API_KEY`, Value a chave → **Save**.
+3. Publique a função `ler-ticket` (Edge Functions → Deploy a new function → Via Editor, colando
+   `supabase/functions/ler-ticket/index.ts`; ou `supabase functions deploy ler-ticket`).
+
+O plano gratuito tem um limite por dia (bem acima do número de tickets da fazenda) e o Google pode usar
+as fotos para melhorar a IA dele.
+
 ## 🧾 Emissão de NF-e pelo Bling
 
 A nota é emitida na conta do Bling da fazenda: o sistema monta a nota a partir da venda e o Bling manda para a
