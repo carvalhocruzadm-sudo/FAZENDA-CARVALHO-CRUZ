@@ -76,6 +76,15 @@ const culturaDoTalhao = {
   },
 };
 
+// "1620" no tipo ou na descrição de uma despesa é o caminhão (MB 1620).
+// Mesmo id que a importação das planilhas dá ao caminhão.
+const CAMINHAO_1620 = "00000000-0000-4000-8300-000000000001";
+const tem1620 = (texto) => /(^|\D)1620(\D|$)/.test(texto ?? "");
+const caminhaoPelo1620 = (reg, dados) => {
+  if (reg.maquina_id || !(tem1620(reg.tipo) || tem1620(reg.descricao))) return {};
+  return dados.maquinas?.some((m) => m.id === CAMINHAO_1620) ? { maquina_id: CAMINHAO_1620 } : {};
+};
+
 export const ESQUEMA = {
   // ─── Cadastros ────────────────────────────────────────────────────────────
   culturas: {
@@ -365,6 +374,8 @@ export const ESQUEMA = {
     aoMudar: {
       ...culturaDoTalhao,
       centro: (r) => (r.centro === "geral" ? { cultura_id: null, talhao_id: null } : r.centro === "cultura" ? { talhao_id: null } : {}),
+      tipo: caminhaoPelo1620,
+      descricao: caminhaoPelo1620,
     },
     colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago"],
   },
