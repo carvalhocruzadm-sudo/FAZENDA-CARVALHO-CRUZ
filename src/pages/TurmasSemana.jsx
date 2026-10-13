@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Stat, TabelaSimples } from "../components/ui";
+import { quemLancou, useAcoesTickets } from "../hooks/useAcoesTickets";
 import { hoje, prepararRegistro, registroNovo, segundaDaSemana } from "../lib/esquema";
 import { baixarCSV, brl, data, nomeRef, numero } from "../lib/formato";
 import { somarDias, turmasDaSemana } from "../lib/turmas";
@@ -15,8 +16,11 @@ function lerValor(texto) {
  * Turmas de colheita → A pagar por semana: o que cada turma colheu na semana
  * (segunda a domingo), quanto tem a receber, quanto já foi pago e quanto
  * falta. O botão Pagar lança o que falta em Pagamentos.
+ *
+ * As cargas lançadas pelos funcionários chegam "Aguardando aprovação": ao
+ * abrir a turma dá para ver a foto do ticket e aprovar, editar ou apagar.
  */
-export default function TurmasSemana({ dados, salvar }) {
+export default function TurmasSemana({ dados, salvar, remover }) {
   const [segunda, setSegunda] = useState(() => segundaDaSemana(hoje()));
   const [aberta, setAberta] = useState(null);
   const [erro, setErro] = useState(null);
@@ -24,10 +28,16 @@ export default function TurmasSemana({ dados, salvar }) {
   const linhas = turmasDaSemana(dados, segunda);
   const comCarga = linhas.filter((l) => l.kg > 0 || l.pago > 0);
   const total = (campo) => linhas.reduce((a, l) => a + l[campo], 0);
+  const acoes = useAcoesTickets({ dados, salvar, remover });
+  const aAprovar = (l) => l.cargas.filter((v) => v.a_conferir);
+  // Uma carga dividida entre turmas aparece em mais de uma linha: conta uma vez só.
+  const pendentes = [...new Map(comCarga.flatMap(aAprovar).map((v) => [v.id, v])).values()];
 
   const pagar = async (l) => {
     setErro(null);
     if (!l.turma) { setErro(`Cadastre a turma "${l.nome}" na aba Cadastro para registrar o pagamento.`); return; }
+    const semAprovar = aAprovar(l).length;
+    if (semAprovar && !window.confirm(`A ${l.nome} tem ${semAprovar} carga(s) desta semana aguardando aprovação.\nPagar mesmo assim?`)) return;
     const valor = window.prompt(`Pagamento da ${l.nome}, semana ${data(segunda)} a ${data(domingo)}.\nValor pago (R$):`, String(l.falta.toFixed(2)).replace(".", ","));
     if (valor == null) return;
     const { reg, erro: e } = prepararRegistro("pagamentos_turmas", {
@@ -64,6 +74,22 @@ export default function TurmasSemana({ dados, salvar }) {
       </div>
 
       {erro && <div className="aviso">{erro}</div>}
+      {acoes.erro && !acoes.editando && <div className="aviso">{acoes.erro}</div>}
+      {pendentes.length > 0 && (
+        <div className="aviso">
+          <b>
+            {pendentes.length === 1
+              ? "1 carga lançada pelos funcionários nesta semana aguarda a sua aprovação."
+              : `${pendentes.length} cargas lançadas pelos funcionários nesta semana aguardam a sua aprovação.`}
+          </b>{" "}
+          Toque no nome da turma para ver a foto do ticket e aprovar, editar ou apagar.{" "}
+          {pendentes.length > 1 && (
+            <button type="button" className="btn" onClick={() => acoes.aprovar(pendentes)} disabled={acoes.trabalhando}>
+              ✓ Aprovar todas as {pendentes.length}
+            </button>
+          )}
+        </div>
+      )}
       {total("semValor") > 0 && (
         <div className="aviso info">
           {numero(total("semValor") / 1000, 3)} t colhidas nesta semana estão sem valor por tonelada e não entram no “A pagar”.
@@ -84,6 +110,7 @@ export default function TurmasSemana({ dados, salvar }) {
                   <b>{aberta === l.chave ? "▾" : "▸"} {l.nome}</b>
                   {l.turma?.encarregado && <small style={{ display: "block", opacity: 0.7 }}>{l.turma.encarregado}</small>}
                   {!l.turma && <small style={{ display: "block", color: "var(--amarelo)" }}>não cadastrada</small>}
+                  {aAprovar(l).length > 0 && <span className="selo atencao">{aAprovar(l).length} a aprovar</span>}
                 </button>
               ),
             },
@@ -105,6 +132,13 @@ export default function TurmasSemana({ dados, salvar }) {
       {comCarga.filter((l) => l.chave === aberta).map((l) => (
         <div className="cartao" key={l.chave} style={{ marginTop: 16 }}>
           <h2>Cargas da {l.nome} na semana</h2>
+          {aAprovar(l).length > 1 && (
+            <div className="barra">
+              <button type="button" className="btn primario" onClick={() => acoes.aprovar(aAprovar(l))} disabled={acoes.trabalhando}>
+                ✓ Aprovar as {aAprovar(l).length} cargas da {l.nome}
+              </button>
+            </div>
+          )}
           <TabelaSimples
             vazio="Nenhuma carga nesta semana."
             linhas={[...l.cargas].sort((a, b) => String(a.data).localeCompare(String(b.data)))}
@@ -115,6 +149,9 @@ export default function TurmasSemana({ dados, salvar }) {
               { rotulo: "Kg", num: true, valor: (v) => numero(v.peso_liquido, 0) },
               { rotulo: "R$/t", num: true, valor: (v) => (v.custo_ton != null ? brl(v.custo_ton) : <span className="negativo">sem valor</span>) },
               { rotulo: "A pagar", num: true, valor: (v) => (v.custo_ton != null ? brl((Number(v.peso_liquido) || 0) / 1000 * Number(v.custo_ton)) : "—") },
+              { rotulo: "Lançado por", valor: quemLancou },
+              { rotulo: "Situação", valor: (v) => (v.a_conferir ? <span className="selo atencao">Aguardando aprovação</span> : <span className="selo ok">Aprovada</span>) },
+              { rotulo: "Ações", valor: acoes.botoes },
             ]}
           />
           {l.pagamentos.length > 0 && (
@@ -124,6 +161,8 @@ export default function TurmasSemana({ dados, salvar }) {
           )}
         </div>
       ))}
+
+      {acoes.janelas}
     </>
   );
 }

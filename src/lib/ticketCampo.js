@@ -137,9 +137,10 @@ export function ultimoValorDaTurma(dados, cultura, nome) {
 /**
  * As vendas de um ticket (uma por talhão e por turma, de `repartirTicket`),
  * sem comprador e sem preço. `aConferir`: fica esperando a aprovação do
- * escritório. Devolve { regs } ou { erro }.
+ * escritório. `extras`: campos iguais em todas as linhas (placa, pesos da
+ * balança…). Devolve { regs } ou { erro }.
  */
-export function registrosDoTicket(dados, { cultura, emBags, linhas, data, foto, observacao, aConferir }) {
+export function registrosDoTicket(dados, { cultura, emBags, linhas, data, foto, observacao, aConferir, extras }) {
   const regs = [];
   for (const l of linhas) {
     const { reg, erro } = prepararRegistro("vendas", {
@@ -155,6 +156,8 @@ export function registrosDoTicket(dados, { cultura, emBags, linhas, data, foto, 
       a_conferir: Boolean(aConferir),
       foto_ticket: foto ?? null,
       observacao,
+      // Da foto do ticket ou digitado: placa, tipo de carro, comprador… (e tara/bruto se a carga não foi repartida).
+      ...extras,
     }, dados);
     if (erro) return { erro };
     regs.push(reg);
