@@ -456,6 +456,7 @@ insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values 
 insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000005', 'Silagem', 'agricola', 'saco', true, null) on conflict (id) do nothing;
 insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000006', 'Milho verde', 'agricola', 'unidade', true, null) on conflict (id) do nothing;
 insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000007', 'Confinamento', 'pecuaria', 'arroba', true, null) on conflict (id) do nothing;
+insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000008', 'Laranja de terceiros', 'agricola', 't', true, null) on conflict (id) do nothing;
 insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, observacao) values ('00000000-0000-4000-8100-000000000001', 'São Raimundo', 'propria', null, null, null, true, null) on conflict (id) do nothing;
 insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, observacao) values ('00000000-0000-4000-8100-000000000002', 'Murtinha', 'propria', null, null, null, true, null) on conflict (id) do nothing;
 insert into public.fazendas (id, nome, posse, socio, area_ha, municipio, ativo, observacao) values ('00000000-0000-4000-8100-000000000003', 'Triunfo / Juerana', 'propria', null, null, null, true, null) on conflict (id) do nothing;

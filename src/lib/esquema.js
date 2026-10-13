@@ -85,6 +85,14 @@ const caminhaoPelo1620 = (reg, dados) => {
   return dados.maquinas?.some((m) => m.id === CAMINHAO_1620) ? { maquina_id: CAMINHAO_1620 } : {};
 };
 
+// Compra de laranja é sempre laranja de terceiros (compra e revenda), separada
+// da laranja dos sítios da fazenda. Mesmo id do cadastro inicial (seed.js).
+const LARANJA_TERCEIROS = "00000000-0000-4000-8000-000000000008";
+const laranjaDeTerceiros = (reg, dados) =>
+  reg.categoria === "Compra de laranja" && dados.culturas?.some((c) => c.id === LARANJA_TERCEIROS)
+    ? { centro: "cultura", cultura_id: LARANJA_TERCEIROS, talhao_id: null }
+    : {};
+
 export const ESQUEMA = {
   // ─── Cadastros ────────────────────────────────────────────────────────────
   culturas: {
@@ -374,6 +382,7 @@ export const ESQUEMA = {
     aoMudar: {
       ...culturaDoTalhao,
       centro: (r) => (r.centro === "geral" ? { cultura_id: null, talhao_id: null } : r.centro === "cultura" ? { talhao_id: null } : {}),
+      categoria: laranjaDeTerceiros,
       tipo: caminhaoPelo1620,
       descricao: caminhaoPelo1620,
     },

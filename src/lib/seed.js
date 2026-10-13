@@ -14,6 +14,7 @@ export const CULTURAS = [
   ["Silagem", "agricola", "saco"],
   ["Milho verde", "agricola", "unidade"],
   ["Confinamento", "pecuaria", "arroba"],
+  ["Laranja de terceiros", "agricola", "t"],
 ].map(([nome, tipo, unidade], i) => ({ id: id("8000", i + 1), nome, tipo, unidade, ativo: true, observacao: null }));
 
 const [MILHO, LARANJA] = CULTURAS.map((c) => c.id);
