@@ -203,7 +203,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
     history.replaceState(null, "", "/");
     listarCaixa(dados.despesas)
       .then((caixa) => {
-        if (!caixa.length) throw new Error("Nenhum comprovante novo na caixa de entrada.");
+        if (!caixa.length) throw new Error("Nenhum comprovante novo chegou. Se você acabou de enviar, o envio falhou: veja a notificação do Atalho ou abra /api/comprovante no navegador para conferir a configuração.");
         return daCaixa(caixa[0]);
       })
       .then(setCompartilhado)
