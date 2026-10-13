@@ -5,6 +5,7 @@ import { PERIODOS, aReceber, diesel, estoqueInsumos, intervalo, situacaoRevisao,
 import { brl, baixarCSV, data, numero } from "../lib/formato";
 import { KG_CAIXA, NOMES_MESES, anosComDados, indicadores, mesLegivel } from "../lib/indicadores";
 import { nomesTalhoesDaOrdem } from "../lib/talhoes";
+import useCulturaAtiva from "../hooks/useCulturaAtiva";
 
 /** Data ISO daqui a `dias` (fora do componente: o painel se refaz quando os dados mudam). */
 function diaISO(dias) {
@@ -696,7 +697,8 @@ function lerAba() {
 export default function Painel({ dados, irPara }) {
   const anos = useMemo(() => anosComDados(dados), [dados]);
   const [periodo, setPeriodo] = useState(() => anos[0] ?? "ano");
-  const [cultura, setCultura] = useState("");
+  // A cultura é a escolhida no alto da tela (vale para o app todo).
+  const { cultura } = useCulturaAtiva();
   const [fazenda, setFazenda] = useState("");
   const [aba, setAba] = useState(lerAba);
 
@@ -709,16 +711,11 @@ export default function Painel({ dados, irPara }) {
   const r = useMemo(() => indicadores(dados, filtros), [dados, filtros]);
   const [de, ate] = intervalo(periodo);
   const Conteudo = (ABAS.find(([id]) => id === aba) ?? ABAS[0])[2];
-  const culturasAtivas = dados.culturas.filter((c) => c.ativo !== false);
 
   return (
     <>
       <div className="barra filtros-painel">
         <SeletorPeriodoPainel anos={anos} valor={periodo} aoMudar={setPeriodo} />
-        <select className="entrada" value={cultura} onChange={(e) => setCultura(e.target.value)} aria-label="Cultura">
-          <option value="">Todas as culturas</option>
-          {culturasAtivas.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-        </select>
         <select className="entrada" value={fazenda} onChange={(e) => setFazenda(e.target.value)} aria-label="Fazenda">
           <option value="">Todas as fazendas</option>
           {dados.fazendas.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
