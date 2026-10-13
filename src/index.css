@@ -242,3 +242,8 @@ table { border-collapse: collapse; }
 .participacao li span { width: 52px; text-align: right; color: var(--texto-2); font-size: 12px; }
 .grade-2 > * { min-width: 0; }
 .cartao { min-width: 0; }
+
+.cascata { width: 100%; font-size: 13px; border-collapse: collapse; }
+.cascata td { padding: 7px 4px; border-bottom: 1px solid #f0f0ea; }
+.cascata td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cascata tr.total td { font-weight: 700; border-top: 2px solid var(--linha); border-bottom: 0; }

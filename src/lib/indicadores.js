@@ -35,6 +35,19 @@ export function kgDaVenda(v) {
   return kg ? n(v.quantidade) * kg : 0;
 }
 
+/**
+ * Do bruto ao líquido de uma carga, como nas planilhas de venda:
+ * bruto − desconto (refugo) − custo de colheita/carregamento (custo/t × t)
+ * − juros − frete pago − comissão (+ frete cobrado do comprador).
+ */
+export function descontosDaVenda(v) {
+  return {
+    custoColheita: (n(v.peso_liquido) / 1000) * n(v.custo_ton),
+    juros: n(v.juros),
+    outros: n(v.frete) + n(v.comissao) - n(v.frete_cobrado),
+  };
+}
+
 export function kgDaColheita(c) {
   const kg = KG_POR_UNIDADE[c.unidade];
   return kg ? n(c.quantidade) * kg : 0;
@@ -176,7 +189,7 @@ export function indicadores(dados, { periodo, cultura, fazenda }) {
       const c = dados.culturas.find((x) => x.id === id);
       porCultura.set(k, {
         id: k, cultura: c ?? null, nome: c?.nome ?? "Geral da fazenda (sem cultura)", unidade: c?.unidade ?? null,
-        cargas: 0, kg: 0, quantidade: 0, bruto: 0, desconto: 0, liquido: 0, recebido: 0, custo: 0,
+        cargas: 0, kg: 0, quantidade: 0, bruto: 0, desconto: 0, custoColheita: 0, juros: 0, outrosDescontos: 0, liquido: 0, recebido: 0, custo: 0,
         area: 0, pes: 0, kgComPe: 0, pesProdutivos: 0, kgComArea: 0, areaProdutiva: 0, liquidoComArea: 0, porClassificacao: {}, porOrigem: {},
       });
     }
@@ -187,6 +200,8 @@ export function indicadores(dados, { periodo, cultura, fazenda }) {
     const kg = kgDaVenda(v);
     x.cargas++; x.kg += kg; x.quantidade += n(v.quantidade);
     x.bruto += n(v.valor_bruto); x.desconto += n(v.valor_desconto); x.liquido += n(v.valor);
+    const d = descontosDaVenda(v);
+    x.custoColheita += d.custoColheita; x.juros += d.juros; x.outrosDescontos += d.outros;
     const cl = v.classificacao || "Sem tipo";
     x.porClassificacao[cl] = (x.porClassificacao[cl] ?? 0) + kg;
   }
@@ -306,6 +321,12 @@ export function indicadores(dados, { periodo, cultura, fazenda }) {
       kg: talhoes.reduce((t, x) => t + x.kg, 0),
       liquido: vendas.reduce((t, v) => t + n(v.valor), 0),
       bruto: vendas.reduce((t, v) => t + n(v.valor_bruto), 0),
+      desconto: vendas.reduce((t, v) => t + n(v.valor_desconto), 0),
+      custoColheita: vendas.reduce((t, v) => t + descontosDaVenda(v).custoColheita, 0),
+      juros: vendas.reduce((t, v) => t + descontosDaVenda(v).juros, 0),
+      outrosDescontos: vendas.reduce((t, v) => t + descontosDaVenda(v).outros, 0),
+      saidas: saidas.total,
+      entradas: ent.total,
       custo: custosLinhas.reduce((t, l) => t + l.valor, 0),
       recebido: recebimentos.reduce((t, r) => t + n(r.valor), 0),
     },

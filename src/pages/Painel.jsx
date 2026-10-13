@@ -118,7 +118,8 @@ function Participacao({ partes, formato = F.t }) {
 // ─── Tabela com ordenação e "baixar planilha" ───────────────────────────────
 
 /**
- * colunas: [{ rotulo, v(linha) → valor cru (ordena e vai para a planilha), f(valor) → texto }]
+ * colunas: [{ rotulo, v(linha) → valor cru (ordena e vai para a planilha), f(valor) → texto,
+ *             fl(linha) → texto, quando cada linha tem um formato (R$, t, nº…) }]
  * Clicar no título da coluna ordena (de novo inverte).
  */
 function Tabela({ titulo, arquivo, colunas, linhas, rodape, ordemInicial, vazio = "Nada para mostrar com esses filtros." }) {
@@ -158,7 +159,7 @@ function Tabela({ titulo, arquivo, colunas, linhas, rodape, ordemInicial, vazio 
                 {colunas.map((c, i) => {
                   const ativa = ordem?.[0] === i;
                   return (
-                    <th key={c.rotulo} className={c.f ? "num ordenavel" : "ordenavel"}
+                    <th key={i} className={c.f ? "num ordenavel" : "ordenavel"}
                       onClick={() => setOrdem(ativa ? [i, !ordem[1]] : [i, Boolean(c.f)])}>
                       {c.rotulo}{ativa ? (ordem[1] ? " ▼" : " ▲") : ""}
                     </th>
@@ -169,11 +170,11 @@ function Tabela({ titulo, arquivo, colunas, linhas, rodape, ordemInicial, vazio 
             <tbody>
               {ordenadas.map((l, k) => (
                 <tr key={l.id ?? k}>
-                  {colunas.map((c) => <td key={c.rotulo} data-rotulo={c.rotulo} className={c.f ? "num" : ""}>{c.f ? c.f(c.v(l)) : (c.v(l) ?? "—")}</td>)}
+                  {colunas.map((c, i) => <td key={i} data-rotulo={c.rotulo} className={c.f ? "num" : ""}>{c.fl ? c.fl(l) : c.f ? c.f(c.v(l)) : (c.v(l) ?? "—")}</td>)}
                 </tr>
               ))}
             </tbody>
-            {rodape && <tfoot><tr>{colunas.map((c, i) => <td key={c.rotulo} className={c.f ? "num" : ""}>{rodape[i] ?? ""}</td>)}</tr></tfoot>}
+            {rodape && <tfoot><tr>{colunas.map((c, i) => <td key={i} className={c.f ? "num" : ""}>{rodape[i] ?? ""}</td>)}</tr></tfoot>}
           </table>
         </div>
       )}
@@ -182,6 +183,60 @@ function Tabela({ titulo, arquivo, colunas, linhas, rodape, ordemInicial, vazio 
 }
 
 const somaF = (lista, campo, f) => f(soma(lista, (x) => x[campo]));
+
+/** Período: os atalhos (este mês, este ano…), cada ano inteiro e cada mês. */
+function SeletorPeriodoPainel({ anos, valor, aoMudar, rotulo = "Período" }) {
+  return (
+    <select className="entrada" value={valor} onChange={(e) => aoMudar(e.target.value)} aria-label={rotulo}>
+      <optgroup label="Período">
+        {PERIODOS.map(([v, rot]) => <option key={v} value={v}>{rot}</option>)}
+      </optgroup>
+      {anos.length > 0 && (
+        <optgroup label="Ano inteiro">
+          {anos.map((a) => <option key={a} value={a}>Ano {a}</option>)}
+        </optgroup>
+      )}
+      {anos.map((a) => (
+        <optgroup key={`m${a}`} label={`Meses de ${a}`}>
+          {NOMES_MESES.map((m, i) => <option key={m} value={`${a}-${String(i + 1).padStart(2, "0")}`}>{m}/{a}</option>)}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
+/** Nome do período para os títulos ("Ano 2025", "out/2025", "Este mês"…). */
+function nomePeriodo(p) {
+  if (/^\d{4}$/.test(p)) return `Ano ${p}`;
+  if (/^\d{4}-\d{2}$/.test(p)) return mesLegivel(p);
+  return PERIODOS.find(([v]) => v === p)?.[1] ?? p;
+}
+
+/** Do bruto ao líquido, como o DASHBOARD da planilha de laranja. */
+function BrutoAoLiquido({ t }) {
+  const linhas = [
+    ["Venda bruta", t.bruto, ""],
+    ["Descontos (refugo)", -t.desconto, ""],
+    ["Custo de colheita / carregamento", -t.custoColheita, ""],
+    ["Juros / antecipação", -t.juros, ""],
+    ["Frete e comissão", -t.outrosDescontos, ""],
+    ["Venda líquida", t.liquido, "total"],
+  ].filter(([, v, tipo]) => tipo || Math.abs(v) >= 0.01);
+  const porT = (v) => (t.kg ? `${brl(v / (t.kg / 1000))}/t` : "");
+  return (
+    <table className="cascata">
+      <tbody>
+        {linhas.map(([rot, v, tipo]) => (
+          <tr key={rot} className={tipo}>
+            <td>{rot}</td>
+            <td className={`num ${v < 0 ? "negativo" : ""}`}>{brl(v)}</td>
+            <td className="num apagado">{porT(Math.abs(v))}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 // ─── Abas ───────────────────────────────────────────────────────────────────
 
@@ -219,7 +274,8 @@ function Resumo({ dados, r, irPara }) {
     <>
       <div className="grade">
         <Stat rotulo="Vendas (líquido)" valor={brl(r.totais.liquido)} sub={`${r.totais.cargas} ${r.totais.cargas === 1 ? "carga" : "cargas"} · ${toneladas(r.totais.kg)}`} cor="laranja" />
-        <Stat rotulo="Preço médio" valor={r.totais.kg ? `${brl(r.totais.liquido / (r.totais.kg / 1000))}/t` : "—"} sub="líquido por tonelada" />
+        <Stat rotulo="Venda bruta" valor={brl(r.totais.bruto)} sub={r.totais.kg ? `preço bruto ${brl(r.totais.bruto / (r.totais.kg / 1000))}/t` : undefined} />
+        <Stat rotulo="Preço médio líquido" valor={r.totais.kg ? `${brl(r.totais.liquido / (r.totais.kg / 1000))}/t` : "—"} sub="depois de descontos, colheita e juros" />
         <Stat rotulo="Custo apropriado" valor={brl(r.totais.custo)} sub="despesas (inclusive retiradas e investimentos) + químicos + diesel" cor="vermelho" />
         <Stat rotulo="Resultado (vendas − custo)" valor={brl(resultado)} cor={resultado < 0 ? "vermelho" : ""} sub={r.totais.liquido ? `margem ${numero((resultado / r.totais.liquido) * 100, 1)}%` : undefined} />
         <Stat rotulo="Entrou no caixa" valor={brl(r.entradas.total)} sub="recebimentos + fretes + aditivos" />
@@ -240,6 +296,10 @@ function Resumo({ dados, r, irPara }) {
             { nome: "Entrou", cor: COR_A, valor: (m) => m.entrou },
             { nome: "Saiu", cor: COR_B, valor: (m) => m.saiu },
           ]} />
+        </div>
+        <div className="cartao">
+          <h2>Das vendas: do bruto ao líquido</h2>
+          <BrutoAoLiquido t={r.totais} />
         </div>
         <div className="cartao">
           <h2>Avisos</h2>
@@ -287,6 +347,8 @@ function PorCultura({ r }) {
         { rotulo: "Preço médio", v: (x) => x.precoT, f: ou((v) => `${brl(v)}/t`) },
         { rotulo: "Bruto", v: (x) => x.bruto, f: F.brl },
         { rotulo: "Descontos", v: (x) => x.desconto, f: F.brl },
+        { rotulo: "Colheita/carreg.", v: (x) => x.custoColheita, f: F.brl },
+        { rotulo: "Juros", v: (x) => x.juros, f: F.brl },
         { rotulo: "Líquido", v: (x) => x.liquido, f: F.brl },
         { rotulo: "Recebido", v: (x) => x.recebido, f: F.brl },
         { rotulo: "A receber", v: (x) => x.aReceber, f: F.brl },
@@ -297,7 +359,7 @@ function PorCultura({ r }) {
         { rotulo: "t/ha", v: (x) => x.tHa, f: F.n1 },
         { rotulo: "kg/pé", v: (x) => x.kgPe, f: F.n1 },
         { rotulo: "R$/ha", v: (x) => x.receitaHa, f: F.brl },
-      ]} rodape={["Total", somaF(r.culturas, "cargas", F.n0), somaF(r.culturas, "kg", F.t), "", somaF(r.culturas, "bruto", F.brl), somaF(r.culturas, "desconto", F.brl), somaF(r.culturas, "liquido", F.brl), somaF(r.culturas, "recebido", F.brl), somaF(r.culturas, "aReceber", F.brl), somaF(r.culturas, "custo", F.brl), somaF(r.culturas, "resultado", F.brl)]} />
+      ]} rodape={["Total", somaF(r.culturas, "cargas", F.n0), somaF(r.culturas, "kg", F.t), "", somaF(r.culturas, "bruto", F.brl), somaF(r.culturas, "desconto", F.brl), somaF(r.culturas, "custoColheita", F.brl), somaF(r.culturas, "juros", F.brl), somaF(r.culturas, "liquido", F.brl), somaF(r.culturas, "recebido", F.brl), somaF(r.culturas, "aReceber", F.brl), somaF(r.culturas, "custo", F.brl), somaF(r.culturas, "resultado", F.brl)]} />
 
       <div className="grade-2" style={{ marginTop: 16 }}>
         {comTipo.map((c) => (
@@ -520,11 +582,103 @@ function PorMes({ dados, r }) {
   );
 }
 
+/**
+ * Compara dois períodos com os mesmos filtros de cultura e fazenda, como a aba
+ * COMPARATIVO da planilha. O período A é o do filtro de cima.
+ */
+function Comparativo({ dados, r, filtros, anos }) {
+  // Começa no ano anterior ao do filtro de cima (ou no outro ano com dados).
+  const [periodoB, setPeriodoB] = useState(() => {
+    const anterior = /^\d{4}$/.test(filtros.periodo) ? String(Number(filtros.periodo) - 1) : null;
+    return anos.includes(anterior) ? anterior : anos.find((a) => a !== filtros.periodo) ?? "mes_passado";
+  });
+  const b = useMemo(() => indicadores(dados, { ...filtros, periodo: periodoB }), [dados, filtros, periodoB]);
+  const a = r;
+  const nA = nomePeriodo(filtros.periodo), nB = nomePeriodo(periodoB);
+  const porT = (x) => (x.kg ? x.bruto / (x.kg / 1000) : null);
+  const porTLiq = (x) => (x.kg ? x.liquido / (x.kg / 1000) : null);
+  const ind = [
+    ["Volume vendido", (x) => x.totais.kg, F.t],
+    ["Cargas", (x) => x.totais.cargas, F.n0],
+    ["Venda bruta", (x) => x.totais.bruto, F.brl],
+    ["Descontos (refugo)", (x) => x.totais.desconto, F.brl],
+    ["Venda após desconto", (x) => x.totais.bruto - x.totais.desconto, F.brl],
+    ["Preço bruto (R$/t)", (x) => porT(x.totais), F.brl],
+    ["Custo de colheita / carregamento", (x) => x.totais.custoColheita, F.brl],
+    ["Juros / antecipação", (x) => x.totais.juros, F.brl],
+    ["Venda líquida", (x) => x.totais.liquido, F.brl],
+    ["Preço líquido (R$/t)", (x) => porTLiq(x.totais), F.brl],
+    ["Recebido dos compradores", (x) => x.totais.recebido, F.brl],
+    ["Custo apropriado", (x) => x.totais.custo, F.brl],
+    ["Entrou no caixa", (x) => x.totais.entradas, F.brl],
+    ["Saiu do caixa", (x) => x.totais.saidas, F.brl],
+  ].map(([nome, v, f]) => ({ id: nome, nome, a: v(a), b: v(b), f }));
+  const varia = (x) => (x.a && x.b != null ? ((x.b - x.a) / Math.abs(x.a)) * 100 : null);
+
+  const juntar = (la, lb, chave) => {
+    const m = new Map();
+    for (const x of la) m.set(x[chave], { id: x[chave], nome: x.nome, a: x, b: null });
+    for (const x of lb) {
+      if (m.has(x[chave])) m.get(x[chave]).b = x;
+      else m.set(x[chave], { id: x[chave], nome: x.nome, a: null, b: x });
+    }
+    return [...m.values()];
+  };
+  const culturas = juntar(a.culturas.filter((c) => c.cargas), b.culturas.filter((c) => c.cargas), "id");
+  const talhoes = juntar(a.talhoes.filter((t) => t.talhao && t.kg), b.talhoes.filter((t) => t.talhao && t.kg), "id");
+  const dif = (fa, fb) => (x) => (fa(x) != null && fb(x) != null ? fb(x) - fa(x) : null);
+
+  return (
+    <>
+      <div className="barra filtros-painel">
+        <span>Comparar <b>{nA}</b> (filtro de cima) com</span>
+        <SeletorPeriodoPainel anos={anos} valor={periodoB} aoMudar={setPeriodoB} rotulo="Período B" />
+      </div>
+      <p className="descricao">
+        Mesma cultura e fazenda nos dois lados. Mês em andamento ainda não está fechado: compare com cuidado.
+        Em 2025 a planilha de laranja não separava o custo de colheita e os juros como em 2026 — para comparar safras, use a venda bruta e o preço bruto.
+      </p>
+      <Tabela titulo={`${nA} × ${nB}`} arquivo="painel-comparativo" linhas={ind} colunas={[
+        { rotulo: "Indicador", v: (x) => x.nome },
+        { rotulo: nA, v: (x) => x.a, f: F.n2, fl: (x) => x.f(x.a) },
+        { rotulo: nB, v: (x) => x.b, f: F.n2, fl: (x) => x.f(x.b) },
+        { rotulo: "Diferença", v: (x) => (x.a != null && x.b != null ? x.b - x.a : null), f: F.n2, fl: (x) => (x.a != null && x.b != null ? x.f(x.b - x.a) : "—") },
+        { rotulo: "Variação", v: varia, f: F.pct },
+      ]} />
+      <div style={{ marginTop: 16 }}>
+        <Tabela titulo="Por cultura" arquivo="painel-comparativo-culturas" linhas={culturas} vazio="Nenhuma venda nos dois períodos." colunas={[
+          { rotulo: "Cultura", v: (x) => x.nome },
+          { rotulo: `Peso ${nA}`, v: (x) => x.a?.kg ?? null, f: F.t },
+          { rotulo: `Peso ${nB}`, v: (x) => x.b?.kg ?? null, f: F.t },
+          { rotulo: `Bruto ${nA}`, v: (x) => x.a?.bruto ?? null, f: F.brl },
+          { rotulo: `Bruto ${nB}`, v: (x) => x.b?.bruto ?? null, f: F.brl },
+          { rotulo: `R$/t bruto ${nA}`, v: (x) => (x.a ? porT(x.a) : null), f: F.brl },
+          { rotulo: `R$/t bruto ${nB}`, v: (x) => (x.b ? porT(x.b) : null), f: F.brl },
+          { rotulo: "Variação do bruto", v: (x) => (x.a?.bruto && x.b ? ((x.b.bruto - x.a.bruto) / x.a.bruto) * 100 : null), f: F.pct },
+        ]} />
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <Tabela titulo="Por talhão: produção e kg/pé" arquivo="painel-comparativo-talhoes" linhas={talhoes} ordemInicial={[2, true]} vazio="Nenhuma produção nos dois períodos." colunas={[
+          { rotulo: "Talhão", v: (x) => x.nome },
+          { rotulo: `Produção ${nA}`, v: (x) => x.a?.kg ?? null, f: F.t },
+          { rotulo: `Produção ${nB}`, v: (x) => x.b?.kg ?? null, f: F.t },
+          { rotulo: `kg/pé ${nA}`, v: (x) => x.a?.kgPe ?? null, f: F.n1 },
+          { rotulo: `kg/pé ${nB}`, v: (x) => x.b?.kgPe ?? null, f: F.n1 },
+          { rotulo: "Diferença kg/pé", v: dif((x) => x.a?.kgPe ?? null, (x) => x.b?.kgPe ?? null), f: F.n1 },
+          { rotulo: `t/ha ${nA}`, v: (x) => x.a?.tHa ?? null, f: F.n1 },
+          { rotulo: `t/ha ${nB}`, v: (x) => x.b?.tHa ?? null, f: F.n1 },
+        ]} />
+      </div>
+    </>
+  );
+}
+
 // ─── Painel ─────────────────────────────────────────────────────────────────
 
 const ABAS = [
   ["resumo", "Resumo", Resumo], ["cultura", "Por cultura", PorCultura], ["fazenda", "Por fazenda", PorFazenda],
   ["talhao", "Por talhão", PorTalhao], ["rankings", "Rankings", Rankings], ["mes", "Por mês", PorMes],
+  ["comparativo", "Comparativo", Comparativo],
 ];
 
 function lerAba() {
@@ -543,7 +697,8 @@ export default function Painel({ dados, irPara }) {
     try { localStorage.setItem("painel-aba", id); } catch { /* sem armazenamento: só não lembra a aba */ }
   };
 
-  const r = useMemo(() => indicadores(dados, { periodo, cultura, fazenda }), [dados, periodo, cultura, fazenda]);
+  const filtros = useMemo(() => ({ periodo, cultura, fazenda }), [periodo, cultura, fazenda]);
+  const r = useMemo(() => indicadores(dados, filtros), [dados, filtros]);
   const [de, ate] = intervalo(periodo);
   const Conteudo = (ABAS.find(([id]) => id === aba) ?? ABAS[0])[2];
   const culturasAtivas = dados.culturas.filter((c) => c.ativo !== false);
@@ -551,21 +706,7 @@ export default function Painel({ dados, irPara }) {
   return (
     <>
       <div className="barra filtros-painel">
-        <select className="entrada" value={periodo} onChange={(e) => setPeriodo(e.target.value)} aria-label="Período">
-          <optgroup label="Período">
-            {PERIODOS.map(([v, rot]) => <option key={v} value={v}>{rot}</option>)}
-          </optgroup>
-          {anos.length > 0 && (
-            <optgroup label="Ano inteiro">
-              {anos.map((a) => <option key={a} value={a}>Ano {a}</option>)}
-            </optgroup>
-          )}
-          {anos.map((a) => (
-            <optgroup key={`m${a}`} label={`Meses de ${a}`}>
-              {NOMES_MESES.map((m, i) => <option key={m} value={`${a}-${String(i + 1).padStart(2, "0")}`}>{m}/{a}</option>)}
-            </optgroup>
-          ))}
-        </select>
+        <SeletorPeriodoPainel anos={anos} valor={periodo} aoMudar={setPeriodo} />
         <select className="entrada" value={cultura} onChange={(e) => setCultura(e.target.value)} aria-label="Cultura">
           <option value="">Todas as culturas</option>
           {culturasAtivas.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
@@ -579,7 +720,7 @@ export default function Painel({ dados, irPara }) {
       </div>
 
       <Abas abas={ABAS.map(([id, rot]) => [id, rot])} atual={aba} aoTrocar={trocarAba} />
-      <Conteudo dados={dados} r={r} irPara={irPara} />
+      <Conteudo dados={dados} r={r} irPara={irPara} filtros={filtros} anos={anos} />
     </>
   );
 }
