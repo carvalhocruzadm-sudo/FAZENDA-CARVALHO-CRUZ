@@ -52,14 +52,37 @@ function tipoDoArquivo(b) {
 }
 
 export default async function handler(req, res) {
+  const token = (process.env.COMPROVANTE_TOKEN ?? "").trim();
+  const chave = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+  // Igual a src/lib/supabase.js: aceita a URL colada com sobras ("/rest/v1/", barra no fim).
+  const url = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "")
+    .trim().replace(/\/+$/, "").replace(/\/(rest|auth)\/v1$/, "");
+
+  // Abrir o endereço no navegador mostra o que falta configurar (sem mostrar
+  // nenhuma senha) — para conferir quando o Atalho não entrega.
+  if (req.method === "GET") {
+    let pasta = "não deu para conferir";
+    if (chave && url) {
+      try {
+        const r = await fetch(`${url}/storage/v1/bucket/${BUCKET}`, { headers: { apikey: chave, Authorization: `Bearer ${chave}` } });
+        pasta = r.ok ? "ok" : `não existe ou a chave service_role está errada (${r.status}) — rode o supabase/schema.sql e confira a chave`;
+      } catch (erro) {
+        pasta = `o endereço do Supabase não respondeu (${String(erro)})`;
+      }
+    }
+    res.status(200).json({
+      COMPROVANTE_TOKEN: token ? "ok" : "FALTA",
+      SUPABASE_SERVICE_ROLE_KEY: chave ? "ok" : "FALTA",
+      endereco_supabase: url || "FALTA",
+      pasta_comprovantes: pasta,
+    });
+    return;
+  }
+
   if (req.method !== "POST") {
     res.status(405).json({ erro: "Método não permitido" });
     return;
   }
-
-  const token = process.env.COMPROVANTE_TOKEN;
-  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
   if (!token || !chave || !url) {
     res.status(500).json({ erro: "COMPROVANTE_TOKEN, SUPABASE_SERVICE_ROLE_KEY e SUPABASE_URL precisam estar configurados no servidor" });
     return;
