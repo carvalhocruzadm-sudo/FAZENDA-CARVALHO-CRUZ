@@ -14,13 +14,21 @@ const ESSENCIAIS = ["descricao", "valor", "data", "favorecido", "forma_pagamento
  * Abre quando alguém compartilha um comprovante do app do banco com o app da
  * fazenda: mostra o comprovante e pede categoria e descrição para virar uma
  * despesa (no lugar de mandar no grupo do WhatsApp).
+ *
+ * Do Atalho do iPhone o arquivo já está na nuvem (caixa de entrada): chega
+ * `caminho` no lugar de `arquivo`, e `lido` traz valor, data e favorecido
+ * lidos do PDF. Cancelar deixa o comprovante na caixa para depois.
  */
 export default function LancarComprovante({ compartilhado, dados, salvar, aoFechar, aoSalvar }) {
   const [reg, setReg] = useState(() => {
     const novo = registroNovo("despesas");
     if (compartilhado.arquivo) novo.comprovante = anexar("despesas", compartilhado.arquivo);
-    const valor = valorDoTexto(compartilhado.texto);
+    if (compartilhado.caminho) Object.assign(novo, { comprovante: compartilhado.caminho, forma_pagamento: "PIX" });
+    const valor = compartilhado.lido?.valor ?? valorDoTexto(compartilhado.texto);
     if (valor) novo.valor = valor;
+    const { data, favorecido } = compartilhado.lido ?? {};
+    if (data) novo.data = data;
+    if (favorecido) Object.assign(novo, { favorecido, descricao: `PIX ${favorecido}` });
     return novo;
   });
   const [erro, setErro] = useState(null);
@@ -28,9 +36,10 @@ export default function LancarComprovante({ compartilhado, dados, salvar, aoFech
   const [tudo, setTudo] = useState(false);
   const escolha = useEscolhaTalhoes("despesas", dados);
 
+  const naCaixa = Boolean(compartilhado.caminho);
   const fechar = useCallback(() => {
-    if (window.confirm("Descartar este comprovante sem lançar?")) aoFechar();
-  }, [aoFechar]);
+    if (naCaixa || window.confirm("Descartar este comprovante sem lançar?")) aoFechar();
+  }, [aoFechar, naCaixa]);
 
   const gravar = async () => {
     const { regs, erro: e } = escolha.montar(reg);
@@ -59,7 +68,7 @@ export default function LancarComprovante({ compartilhado, dados, salvar, aoFech
         </>
       }
     >
-      {compartilhado.arquivo
+      {compartilhado.arquivo || naCaixa
         ? <div className="aviso ok">Comprovante recebido. Escolha a categoria, escreva a descrição e confira o valor.</div>
         : <div className="aviso info">Nenhum arquivo chegou junto. Dá para lançar assim mesmo e anexar o comprovante abaixo.</div>}
       {reg.comprovante && <div style={{ marginBottom: 14 }}><PreviaComprovante caminho={reg.comprovante} /></div>}

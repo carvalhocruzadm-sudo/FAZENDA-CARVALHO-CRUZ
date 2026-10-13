@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import CaixaComprovantes from "../components/CaixaComprovantes";
 import Crud from "../components/Crud";
 import NotasFiscais from "../components/NotasFiscais";
 import OrdensPulverizacao from "../components/OrdensPulverizacao";
@@ -798,11 +799,21 @@ function Custos({ dados }) {
   );
 }
 
+/** Despesas com a caixa de entrada dos comprovantes do Atalho do iPhone em cima. */
+function Despesas(props) {
+  return (
+    <>
+      <CaixaComprovantes dados={props.dados} salvar={props.salvar} />
+      <Crud colecao="despesas" {...props} />
+    </>
+  );
+}
+
 export function Financeiro(props) {
   return (
     <Secao props={props} abas={[
       ["resumo", "Resumo do mês", ResumoFinanceiro],
-      ["despesas", "Despesas"],
+      ["despesas", "Despesas", Despesas],
       ["entradas", "Outras entradas"],
       ["custos", "Custo por cultura e talhão", Custos],
     ]} />

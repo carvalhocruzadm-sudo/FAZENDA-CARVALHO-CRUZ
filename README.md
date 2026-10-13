@@ -109,8 +109,26 @@ Chrome): no app do banco, toque em **Compartilhar** no comprovante e escolha **F
 com o comprovante na tela; é só tocar na **categoria**, escrever a **descrição**, conferir o valor e
 **Salvar despesa**. Funciona sem internet: o comprovante sobe para a nuvem na próxima sincronização.
 
-No **iPhone** o sistema não deixa app de navegador aparecer no Compartilhar: lance a despesa em
-Financeiro → Despesas → Novo e use **Anexar foto ou PDF** no campo Comprovante.
+No **iPhone** o sistema não deixa app de navegador aparecer no Compartilhar, então o caminho é um
+**Atalho** (app *Atalhos*), igual ao da Distribuidora: no app do banco, **Compartilhar → Comprovante
+Fazenda**. O Atalho manda o arquivo para `api/comprovante.js`, que o guarda na pasta `caixa/`, e abre
+o app, que já mostra a tela *Lançar comprovante* com PIX e — se for PDF — **valor, data e favorecido**
+lidos dele. O que não for lançado fica em **Comprovantes recebidos**, no alto de Financeiro → Despesas
+(*Ver*, *Lançar* ou jogar fora). Precisa de internet.
+
+Configuração (uma vez):
+1. Vercel → Settings → Environment Variables, sem `VITE_` na frente: `COMPROVANTE_TOKEN` (uma senha
+   longa inventada; vai no Atalho) e `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API
+   Keys → *service_role*; fica só na Vercel). Depois, Redeploy.
+2. No iPhone, app **Atalhos** → **+**, nome **Comprovante Fazenda** (ou duplique o da Distribuidora):
+   - **ⓘ** → ligue **Mostrar na Planilha de Compartilhamento**, tipos **Imagens** e **PDFs**.
+   - **Se** *Entrada do Atalho* **é** *Imagem* → **Converter Imagem** → **JPEG** (foto HEIC é recusada).
+   - **Obter Conteúdo da URL**: `https://fazenda-carvalho-cruz.vercel.app/api/comprovante`, método
+     **POST**, cabeçalho `Authorization` = `Bearer SUA-SENHA`, corpo **Arquivo**.
+   - **Mostrar Notificação** com o *Conteúdo da URL* (mostra "ok" ou o erro).
+   - **Abrir URLs**: `https://fazenda-carvalho-cruz.vercel.app/?comprovantes`.
+
+Limite de 4 MB por arquivo. Se o celular for perdido, troque o `COMPROVANTE_TOKEN` na Vercel.
 
 Os arquivos ficam no Storage do Supabase, numa pasta privada (`comprovantes`) criada pelo
 `supabase/schema.sql` — rode o SQL de novo depois de atualizar.

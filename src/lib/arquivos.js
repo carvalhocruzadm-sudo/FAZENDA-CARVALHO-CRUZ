@@ -95,3 +95,66 @@ export async function lerCompartilhado() {
   const texto = [form.get("titulo"), form.get("texto"), form.get("link")].filter(Boolean).join(" ").trim();
   return { arquivo: arquivo instanceof File && arquivo.size ? arquivo : null, texto };
 }
+
+// ─── Caixa de entrada (o que chega pelo Atalho do iPhone) ──────────────────
+//
+// O iPhone não deixa o app aparecer no "Compartilhar", então quem manda é um
+// Atalho (app Atalhos) que faz um POST para api/comprovante.js. O arquivo cai
+// na pasta caixa/ do bucket e espera aqui até virar despesa (a despesa passa a
+// apontar para ele) ou ser descartado. Precisa de internet.
+
+/** Comprovantes da caixa que nenhuma despesa usa ainda, o mais novo primeiro: `[{ caminho, criadoEm }]`. */
+export async function listarCaixa(despesas) {
+  if (!supabaseConfigurado) return [];
+  const { data, error } = await supabase.storage.from(BUCKET)
+    .list("caixa", { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+  if (error) throw new Error(`Não deu para ver os comprovantes recebidos: ${error.message}`);
+  const usados = new Set((despesas ?? []).map((d) => d.comprovante).filter(Boolean));
+  return (data ?? [])
+    .filter((f) => f.name && !f.name.startsWith("."))
+    .map((f) => ({ caminho: `caixa/${f.name}`, criadoEm: f.created_at }))
+    .filter((f) => !usados.has(f.caminho));
+}
+
+/** Tira da caixa um comprovante que não vai virar despesa. */
+export async function descartarDaCaixa(caminho) {
+  const { error } = await supabase.storage.from(BUCKET).remove([caminho]);
+  if (error) throw new Error(`Não deu para descartar: ${error.message}`);
+}
+
+/**
+ * Lê valor, data e favorecido do PDF do banco (foto não é lida: aí é digitar).
+ * Nunca dá erro: se não leu, volta tudo `null`.
+ */
+export async function lerComprovante(caminho) {
+  const vazio = { valor: null, data: null, favorecido: null };
+  if (!ehPdf(caminho)) return vazio;
+  try {
+    const resposta = await fetch(await enderecoDoArquivo(caminho));
+    if (!resposta.ok) return vazio;
+    const [pdfjs, { default: workerUrl }, { interpretarComprovante }] = await Promise.all([
+      import("pdfjs-dist/legacy/build/pdf.mjs"),
+      import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url"),
+      import("./comprovanteTexto"),
+    ]);
+    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(await resposta.arrayBuffer()) }).promise;
+    const partes = [];
+    for (let n = 1; n <= Math.min(doc.numPages, 3); n++) {
+      const { items } = await (await doc.getPage(n)).getTextContent();
+      partes.push(items.map((i) => i.str).join(" "));
+    }
+    return interpretarComprovante(partes.join(" "));
+  } catch {
+    return vazio;
+  }
+}
+
+/** Data (AAAA-MM-DD, no fuso do aparelho) em que o comprovante chegou. */
+export const diaQueChegou = (criadoEm) => (criadoEm ? new Date(criadoEm).toLocaleDateString("sv-SE") : null);
+
+/** Prepara o que a tela "Lançar comprovante" recebe a partir de um item da caixa. */
+export async function daCaixa(item) {
+  const lido = await lerComprovante(item.caminho);
+  return { arquivo: null, texto: "", caminho: item.caminho, lido: { ...lido, data: lido.data ?? diaQueChegou(item.criadoEm) } };
+}
