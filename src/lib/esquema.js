@@ -103,6 +103,43 @@ export const MEDIDAS_PRODUTIVIDADE = [
   ["nenhuma", "Não se aplica"],
 ];
 
+/**
+ * O que muda conforme o tipo da cultura escolhida no lançamento. Num campo
+ * do esquema:
+ *   paraCultura(c)          → o campo só aparece para essas culturas
+ *   opcoesDaCultura(c)      → só essas opções da lista (as outras somem)
+ *   sugestoesDaCultura(c)   → sugestões próprias da cultura
+ *   historicoDaCultura      → as sugestões do que já foi digitado vêm só dessa cultura
+ * Enquanto a cultura não foi escolhida, os campos com `paraCultura` ficam
+ * escondidos. Cultura sem tipo ou do tipo "Outra" mostra tudo.
+ */
+const soGrupos = (...grupos) => (c) => !c.grupo || c.grupo === "outra" || grupos.includes(c.grupo);
+
+/** Em que unidade cada tipo de cultura costuma ser vendido/colhido. */
+const UNIDADES_POR_GRUPO = {
+  citros: ["t", "kg", "cx408", "caixa"],
+  graos: ["saca", "sc60", "t", "kg"],
+  hortalicas: ["kg", "caixa", "t", "unidade"],
+  forragem: ["t", "kg", "saco"],
+  pecuaria: ["arroba", "kg", "cabeca", "unidade"],
+};
+const unidadesDaCultura = (c) => UNIDADES_POR_GRUPO[c.grupo];
+
+const CLASSIFICACOES_POR_GRUPO = {
+  citros: ["BOA", "SUKITA", "CASQUINOL", "Indústria", "Mesa"],
+  graos: ["Grão", "Tipo 1", "Tipo 2", "Fora de tipo"],
+  forragem: ["Silagem", "Feno", "Capim"],
+  hortalicas: ["Extra", "Primeira", "Segunda"],
+  pecuaria: ["Boi gordo", "Vaca", "Novilha", "Bezerro"],
+};
+
+/** Fases do planejamento dos citros (as outras culturas usam FASES). */
+export const FASES_CITROS = [
+  "Calagem / gessagem", "Adubação de solo", "Adubação foliar", "Herbicida",
+  "Psilídeo / greening", "Fungicida", "Inseticida / ácaro", "Poda / desbrota",
+  "Colheita", "Operacional",
+];
+
 const PADROES_GRUPO = {
   citros: { unidade: "t", produtividade: "kg_pe", turma_colheita: true },
   graos: { unidade: "saca", peso_saca: 60, produtividade: "sc_ha", turma_colheita: false },
@@ -687,7 +724,7 @@ export const ESQUEMA = {
       cultura_id: { ...refCultura, obrigatorio: true },
       talhao_id: { ...refTalhao, obrigatorio: true },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2, obrigatorio: true },
-      unidade: { tipo: "opcoes", rotulo: "Unidade", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
+      unidade: { tipo: "opcoes", rotulo: "Unidade", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t", opcoesDaCultura: unidadesDaCultura },
       responsavel_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Responsável" },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
@@ -746,22 +783,29 @@ export const ESQUEMA = {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       comprador: { tipo: "sugestao", rotulo: "Comprador", sugestoesDe: ["vendas", "comprador"] },
       cultura_id: { ...refCultura, obrigatorio: true },
-      safra: { tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"] },
+      safra: { tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"], historicoDaCultura: true },
       talhao_id: { ...refTalhao, rotulo: "Talhão / sítio" },
-      classificacao: { tipo: "sugestao", rotulo: "Tipo / classificação", sugestoes: ["BOA", "SUKITA", "CASQUINOL", "Grão", "Silagem"], sugestoesDe: ["vendas", "classificacao"] },
+      classificacao: {
+        tipo: "sugestao", rotulo: "Tipo / classificação", sugestoes: ["BOA", "SUKITA", "CASQUINOL", "Grão", "Silagem"], sugestoesDe: ["vendas", "classificacao"],
+        sugestoesDaCultura: (c) => CLASSIFICACOES_POR_GRUPO[c.grupo], historicoDaCultura: true,
+      },
       placa: { tipo: "sugestao", rotulo: "Placa", sugestoesDe: ["vendas", "placa"] },
       tipo_carro: { tipo: "sugestao", rotulo: "Tipo de carro", sugestoes: ["Rodocaçamba", "Graneleiro", "Caçambão", "9 eixos", "Truck", "Toco"] },
       peso_entrada: { tipo: "numero", rotulo: "Peso entrada / tara (kg)", casas: 1 },
       peso_saida: { tipo: "numero", rotulo: "Peso saída / bruto (kg)", casas: 1 },
       peso_liquido: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1, dica: "Sai da entrada e saída; sem elas, digite o peso do ticket" },
-      volumes: { tipo: "numero", rotulo: "Nº de sacos / volumes", casas: 1 },
+      volumes: { tipo: "numero", rotulo: "Nº de sacos / volumes", casas: 1, paraCultura: soGrupos("graos", "forragem", "hortalicas") },
       desconto_kg: { tipo: "numero", rotulo: "Desconto (kg)", casas: 1 },
-      unidade: { tipo: "opcoes", rotulo: "Preço por", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
+      unidade: { tipo: "opcoes", rotulo: "Preço por", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t", opcoesDaCultura: unidadesDaCultura },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 3, dica: "Calculada pelo peso quando o preço é por peso" },
       preco_unitario: { tipo: "dinheiro", rotulo: "Preço", casas: 4 },
       valor_bruto: { tipo: "dinheiro", rotulo: "Valor bruto", somenteLeitura: true },
       valor_desconto: { tipo: "dinheiro", rotulo: "Valor do desconto", somenteLeitura: true },
-      turma: { tipo: "sugestao", rotulo: "Turma de colheita", dica: "Laranja: a turma que colheu", sugestoesDe: ["vendas", "turma"] },
+      turma: {
+        tipo: "sugestao", rotulo: "Turma de colheita", dica: "A turma que colheu", sugestoesDe: ["vendas", "turma"], historicoDaCultura: true,
+        // Só nas culturas colhidas por turma (no cadastro da cultura; a laranja vem marcada).
+        paraCultura: (c) => Boolean(c.turma_colheita),
+      },
       custo_ton: { tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
       frete_cobrado: { tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
       frete: { tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
@@ -885,10 +929,10 @@ export const ESQUEMA = {
     titulo: "Planejamento da safra", singular: "item do planejamento", icone: "lista",
     descricao: "Como a aba PLANEJAMENTO: por fase, produto, dose por hectare e preço. O total é dose × hectares × preço.",
     campos: {
-      safra: { tipo: "sugestao", rotulo: "Safra", obrigatorio: true, dica: "Ex.: Milho 2026", sugestoesDe: ["planejamento", "safra"] },
+      safra: { tipo: "sugestao", rotulo: "Safra", obrigatorio: true, dica: "Ex.: Milho 2026", sugestoesDe: ["planejamento", "safra"], historicoDaCultura: true },
       cultura_id: { ...refCultura, obrigatorio: true },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
-      fase: { tipo: "sugestao", rotulo: "Fase", sugestoes: FASES, obrigatorio: true },
+      fase: { tipo: "sugestao", rotulo: "Fase", sugestoes: FASES, obrigatorio: true, sugestoesDaCultura: (c) => (c.grupo === "citros" ? FASES_CITROS : FASES) },
       insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
       dose_ha: { tipo: "numero", rotulo: "Quantidade por ha", casas: 3, obrigatorio: true },
       hectares: { tipo: "numero", rotulo: "Hectares", casas: 2, obrigatorio: true },
@@ -901,11 +945,16 @@ export const ESQUEMA = {
       return { quantidade_total: +q.toFixed(3), total: +(q * num(r.preco_unitario)).toFixed(2) };
     },
     colunas: ["safra", "fazenda_id", "fase", "insumo_id", "dose_ha", "hectares", "quantidade_total", "preco_unitario", "total"],
-    ordem: (a, b) => (a.safra || "").localeCompare(b.safra || "") || FASES.indexOf(a.fase) - FASES.indexOf(b.fase),
+    ordem: (a, b) => (a.safra || "").localeCompare(b.safra || "") || ordemFase(a.fase) - ordemFase(b.fase),
   },
 };
 
 export const COLECOES = Object.keys(ESQUEMA);
+
+function ordemFase(fase) {
+  const i = FASES.indexOf(fase);
+  return i >= 0 ? i : FASES.length + FASES_CITROS.indexOf(fase);
+}
 
 /** Registro novo com os valores padrão do esquema. */
 export function registroNovo(colecao) {
@@ -921,8 +970,19 @@ export function campoObrigatorio(campo, reg) {
   return typeof campo.obrigatorio === "function" ? campo.obrigatorio(reg) : Boolean(campo.obrigatorio);
 }
 
-export function campoVisivel(campo, reg) {
-  return !campo.mostrarSe || campo.mostrarSe(reg);
+/** A cultura escolhida no registro (null se ainda não tem ou se não dá para saber). */
+export function culturaDoRegistro(reg, dados) {
+  return (reg?.cultura_id && dados?.culturas?.find((c) => c.id === reg.cultura_id)) || null;
+}
+
+/**
+ * O campo aparece? `mostrarSe` olha o próprio registro; `paraCultura` olha a
+ * cultura escolhida (sem `dados` ou sem cultura, não esconde nada aqui).
+ */
+export function campoVisivel(campo, reg, dados) {
+  if (campo.mostrarSe && !campo.mostrarSe(reg)) return false;
+  const cultura = campo.paraCultura && culturaDoRegistro(reg, dados);
+  return !cultura || campo.paraCultura(cultura);
 }
 
 /**
@@ -935,7 +995,7 @@ export function prepararRegistro(colecao, bruto, dados) {
   const reg = { ...bruto };
   for (const [chave, campo] of Object.entries(def.campos)) {
     let v = reg[chave];
-    if (!campoVisivel(campo, reg)) v = null;
+    if (!campoVisivel(campo, reg, dados)) v = null;
     if (["numero", "dinheiro"].includes(campo.tipo)) v = v === "" || v == null ? null : Number(v);
     if (campo.tipo === "booleano") v = Boolean(v);
     if (["fotos", "itens", "refs"].includes(campo.tipo) && !v?.length) v = null;
@@ -945,7 +1005,7 @@ export function prepararRegistro(colecao, bruto, dados) {
   Object.assign(reg, def.calcular?.(reg, dados) ?? {});
 
   for (const [chave, campo] of Object.entries(def.campos)) {
-    if (campoVisivel(campo, reg) && campoObrigatorio(campo, reg) && (reg[chave] == null || reg[chave] === "")) {
+    if (campoVisivel(campo, reg, dados) && campoObrigatorio(campo, reg) && (reg[chave] == null || reg[chave] === "")) {
       return { reg, erro: `Preencha: ${campo.rotulo}` };
     }
   }

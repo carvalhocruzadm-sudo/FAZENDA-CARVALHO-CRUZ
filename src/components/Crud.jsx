@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
+import useCulturaAtiva, { daCultura } from "../hooks/useCulturaAtiva";
 import useEscolhaTalhoes from "../hooks/useEscolhaTalhoes";
-import { ESQUEMA, hoje, registroNovo } from "../lib/esquema";
+import { ESQUEMA, campoVisivel, hoje, registroNovo } from "../lib/esquema";
 import { baixarCSV, exibir, numero } from "../lib/formato";
 import Formulario from "./Formulario";
 import { Icone, Modal, SeletorPeriodo } from "./ui";
@@ -55,6 +56,10 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   const [salvando, setSalvando] = useState(false);
 
   const colunas = colunasProp ?? def.colunas;
+  const { cultura, setCultura } = useCulturaAtiva();
+  // A coleção tem cultura? Então segue a cultura escolhida no topo.
+  const porCultura = Boolean(def.campos.cultura_id || def.campos.culturas?.tipo === "refs");
+  const nomeCultura = cultura && porCultura ? dados.culturas?.find((c) => c.id === cultura)?.nome : null;
   const contexto = useMemo(() => ({ ultimaLeitura: (id) => ultimaLeitura(dados, id) }), [dados]);
 
   // Lista antes dos filtros de caixinha (fazenda, cultura…), para montar as opções deles.
@@ -62,8 +67,9 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
     let lista = dados[colecao] ?? [];
     if (filtro) lista = lista.filter(filtro);
     if (def.lancamento) lista = noPeriodo(lista, periodo);
+    if (cultura && colecao !== "culturas") lista = lista.filter((l) => daCultura(def, l, cultura));
     return lista;
-  }, [dados, colecao, filtro, def, periodo]);
+  }, [dados, colecao, filtro, def, periodo, cultura]);
 
   /** Filtros de caixinha: cada um lista os valores que aparecem (ex.: as fazendas que têm talhão). */
   const filtros = useMemo(() => (def.filtros ?? colunas.filter((c) => FILTRAVEIS.has(def.campos[c].tipo))).map((c) => {
@@ -98,7 +104,16 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   const escolha = useEscolhaTalhoes(colecao, dados);
   const { iniciar } = escolha;
   const abrir = useCallback((reg) => { setErro(null); setRascunho(reg); iniciar(reg); }, [iniciar]);
-  const novo = () => abrir({ ...registroNovo(colecao), ...(padrao ?? {}) });
+  const novo = () => {
+    let reg = { ...registroNovo(colecao), ...(padrao ?? {}) };
+    // Lançamento novo já vem com a cultura escolhida no topo (e o que ela traz: unidade, custo da turma…).
+    if (nomeCultura && def.campos.cultura_id && !reg.cultura_id && campoVisivel(def.campos.cultura_id, reg, dados)) {
+      reg = { ...reg, cultura_id: cultura };
+      reg = { ...reg, ...(def.aoMudar?.cultura_id?.(reg, dados) ?? {}) };
+      reg = { ...reg, ...(def.calcular?.(reg, dados) ?? {}) };
+    }
+    abrir(reg);
+  };
   const repetir = (reg) => abrir({ ...reg, id: undefined, data: hoje() });
   const fechar = useCallback(() => setRascunho(null), []);
 
@@ -149,6 +164,11 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
           </select>
         ))}
         {temFiltro && <button className="btn" onClick={() => setEscolhas({})}>Limpar filtros</button>}
+        {nomeCultura && colecao !== "culturas" && (
+          <button className="btn cultura-ativa ativo" onClick={() => setCultura("")} title="Mostrar todas as culturas">
+            Só {nomeCultura} ✕
+          </button>
+        )}
         <span className="espaco" />
         <button className="btn" onClick={() => exportarCSV(colecao, colunas, def, linhas, dados)} disabled={!linhas.length} title="Baixar planilha (CSV)">
           <Icone nome="exportar" /> Planilha
@@ -158,7 +178,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
 
       {linhas.length === 0 ? (
         <div className="vazio">
-          Nenhum registro {temFiltro ? "com esses filtros" : def.lancamento && periodo !== "tudo" ? "neste período" : ""}.{" "}
+          Nenhum registro {nomeCultura ? `de ${nomeCultura} ` : ""}{temFiltro ? "com esses filtros" : def.lancamento && periodo !== "tudo" ? "neste período" : ""}.{" "}
           <button className="btn" onClick={novo} style={{ marginLeft: 8 }}>Lançar {def.singular}</button>
         </div>
       ) : (
