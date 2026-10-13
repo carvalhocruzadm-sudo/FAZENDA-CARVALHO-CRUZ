@@ -5,6 +5,7 @@ import PainelTickets from "../components/PainelTickets";
 import { Icone } from "../components/ui";
 import { hoje } from "../lib/esquema";
 import { brl, numero } from "../lib/formato";
+import { completarVenda, lerTicketDaFoto } from "../lib/leituraTicket";
 import { supabaseConfigurado } from "../lib/supabase";
 import {
   SEM_FAZENDA, daCultura, registrosDoTicket, repartirTicket, ultimoValorDaTurma,
@@ -16,7 +17,11 @@ import {
  * (CampoTicket.jsx) e faz a mesma conta (lib/ticketCampo.js):
  *
  *   dia → venda de quê → fazendas → talhões → bags de cada talhão
- *   → turmas (bags e R$ por tonelada de cada uma) → peso → foto do ticket
+ *   → turmas (bags e R$ por tonelada de cada uma) → foto do ticket → peso
+ *
+ * A foto do ticket é lida pela IA (lib/leituraTicket.js): placa, tipo de
+ * carro, tara, bruto e peso líquido já vêm preenchidos (dá para corrigir), e
+ * comprador, motorista e nota fiscal que estiverem no ticket vão para a venda.
  *
  * Vira uma venda por talhão (e por turma), sem comprador e sem preço. Quem
  * não é administrador nem gerente lança "Aguardando aprovação"; a aprovação
@@ -28,7 +33,11 @@ export const LINK_TICKET = "/ticket";
 const vazio = (anterior) => ({
   data: anterior?.data ?? hoje(), cultura_id: null, fazendas: [], talhoes: [],
   bags: {}, naoSei: false, turmas: [], peso: "", foto: null, observacao: "",
+  placa: "", tipo_carro: "", tara: "", bruto: "", leitura: null,
 });
+
+/** Só o que muda a cada carga (o resto fica para o próximo ticket). */
+const cargaNova = { bags: {}, peso: "", foto: null, observacao: "", placa: "", tipo_carro: "", tara: "", bruto: "", leitura: null };
 
 const num = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
 
@@ -55,6 +64,7 @@ export default function Ticket({ dados, salvar, remover, email }) {
   const [salvo, setSalvo] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [lendo, setLendo] = useState(null); // { caminho } enquanto lê; { erro } se falhou
 
   const mudar = (patch) => { setSalvo(null); setErro(null); setR((x) => ({ ...x, ...patch })); };
   const mudarTurma = (i, patch) => mudar({ turmas: r.turmas.map((k, j) => (j === i ? { ...k, ...patch } : k)) });
@@ -104,6 +114,36 @@ export default function Ticket({ dados, salvar, remover, email }) {
     // Desmarcou a fazenda: saem os talhões dela.
     const talhoes = r.talhoes.filter((t) => fazendas.includes(dados.talhoes.find((x) => x.id === t)?.fazenda_id ?? SEM_FAZENDA));
     mudar({ fazendas, talhoes });
+  };
+
+  /** Tara ou bruto mudou: o peso líquido é a diferença. */
+  const mudarPesagem = (patch) => {
+    const novo = { ...r, ...patch };
+    const tara = num(novo.tara), bruto = num(novo.bruto);
+    mudar(tara > 0 && bruto > 0 ? { ...patch, peso: String(Math.abs(bruto - tara)) } : patch);
+  };
+
+  /** Foto escolhida: a IA lê o ticket e preenche o que estiver vazio. */
+  const escolherFoto = async (caminho) => {
+    mudar({ foto: caminho, leitura: null });
+    setLendo({ caminho });
+    try {
+      const t = await lerTicketDaFoto(caminho);
+      setR((a) => {
+        if (a.foto !== caminho) return a; // trocou a foto enquanto lia
+        const tara = a.tara || (t.tara != null ? String(t.tara) : "");
+        const bruto = a.bruto || (t.bruto != null ? String(t.bruto) : "");
+        const peso = a.peso || (num(tara) > 0 && num(bruto) > 0 ? String(Math.abs(num(bruto) - num(tara))) : t.liquido != null ? String(t.liquido) : "");
+        return {
+          ...a, leitura: t, tara, bruto, peso,
+          placa: a.placa || t.placa || "", tipo_carro: a.tipo_carro || t.tipo_carro || "",
+          data: t.data && a.data === hoje() && t.data <= hoje() ? t.data : a.data,
+        };
+      });
+      setLendo(null);
+    } catch (err) {
+      setLendo({ erro: String(err?.message ?? err) });
+    }
   };
 
   const tocarTalhao = (id) => mudar({ talhoes: r.talhoes.includes(id) ? r.talhoes.filter((x) => x !== id) : [...r.talhoes, id] });
@@ -156,8 +196,19 @@ export default function Ticket({ dados, salvar, remover, email }) {
       !r.foto ? "sem foto do ticket" : null,
       r.observacao.trim() || null,
     ].filter(Boolean).join(" · ");
+    // Placa, pesos da balança, comprador… (da foto ou digitados) iguais em todas as linhas.
+    const sozinha = conta.linhas.length === 1;
+    const ticket = {
+      ...(r.leitura ?? {}), placa: r.placa.trim().toUpperCase() || null, tipo_carro: r.tipo_carro.trim() || null,
+      tara: num(r.tara), bruto: num(r.bruto), liquido: kg,
+    };
+    if (ticket.tara == null || ticket.bruto == null) { ticket.tara = null; ticket.bruto = null; }
+    const { patch: extras } = completarVenda({}, ticket, dados, { sozinha });
+    // Repartido: tara e bruto ficam anotados na observação.
+    const observacao = [resumo, extras.observacao].filter(Boolean).join(" · ");
     const { regs, erro: e2 } = registrosDoTicket(dados, {
-      cultura, emBags, linhas: conta.linhas, data: r.data, foto: r.foto, observacao: resumo, aConferir: !aprovaDireto,
+      cultura, emBags, linhas: conta.linhas, data: r.data, foto: r.foto, aConferir: !aprovaDireto,
+      extras: { ...extras, observacao },
     });
     if (e2) { setErro(e2); return; }
 
@@ -166,7 +217,8 @@ export default function Ticket({ dados, salvar, remover, email }) {
       for (const reg of regs) await salvar("vendas", reg);
       setSalvo({ cultura: cultura.nome, kg, talhoes: talhoesEscolhidos.map((t) => t.nome).join(", ") });
       // Próximo ticket: mesmo dia, cultura, talhões, turmas e valores; bags, peso e foto novos.
-      setR((a) => ({ ...a, bags: {}, peso: "", foto: null, observacao: "", turmas: a.turmas.map((k) => ({ ...k, bags: "" })) }));
+      setR((a) => ({ ...a, ...cargaNova, turmas: a.turmas.map((k) => ({ ...k, bags: "" })) }));
+      setLendo(null);
       window.scrollTo(0, 0);
     } catch (err) {
       setErro(String(err?.message ?? err));
@@ -280,20 +332,43 @@ export default function Ticket({ dados, salvar, remover, email }) {
 
         {cultura && (
           <div className="form">
-            <label className="campo"><span>Peso líquido do ticket (kg) <em>*</em></span>
-              <input type="number" inputMode="decimal" step="any" min="0" value={r.peso} onChange={(e) => mudar({ peso: e.target.value })} />
-              {kg > 0 && <small>= {numero(kg / 1000, 3)} toneladas{kgPorBag ? ` · cada bag: ${numero(kgPorBag, 0)} kg` : ""}</small>}
-            </label>
-            <div className="campo">
+            <div className="campo largo">
               <span>Foto do ticket</span>
               <div className="barra" style={{ marginBottom: 0 }}>
-                <BotaoFoto aoTirar={(c) => mudar({ foto: c })} lado={1600} className="btn">
+                <BotaoFoto aoTirar={escolherFoto} lado={1600} className="btn">
                   📷 {r.foto ? "Trocar a foto" : "Escolher / tirar a foto"}
                 </BotaoFoto>
                 {r.foto && <Foto caminho={r.foto} alt="Foto do ticket" className="miniatura-ticket" />}
+                {r.foto && !lendo?.caminho && (
+                  <button type="button" className="btn" onClick={() => escolherFoto(r.foto)}>Ler a foto de novo</button>
+                )}
               </div>
-              {!r.foto && <small>Sem a foto o ticket entra marcado "sem foto do ticket".</small>}
+              {!r.foto && <small>Mande a foto primeiro: placa e pesos já vêm preenchidos dela. Sem a foto o ticket entra marcado "sem foto do ticket".</small>}
+              {lendo?.caminho && <small>Lendo a foto do ticket…</small>}
+              {lendo?.erro && <small className="negativo">Não deu para ler a foto ({lendo.erro}). Preencha à mão.</small>}
+              {r.leitura && !lendo && <small>Dados lidos da foto: confira se estão certos.</small>}
             </div>
+            <label className="campo"><span>Placa</span>
+              <input value={r.placa} onChange={(e) => mudar({ placa: e.target.value.toUpperCase() })} />
+            </label>
+            <label className="campo"><span>Tipo de carro</span>
+              <input value={r.tipo_carro} list="tipos-carro" onChange={(e) => mudar({ tipo_carro: e.target.value })} />
+              <datalist id="tipos-carro">
+                {["Rodocaçamba", "Graneleiro", "Caçambão", "9 eixos", "Truck", "Toco"].map((t) => <option key={t} value={t} />)}
+              </datalist>
+            </label>
+            <label className="campo"><span>Peso entrada / tara (kg)</span>
+              <input type="number" inputMode="decimal" step="any" min="0" value={r.tara} onChange={(e) => mudarPesagem({ tara: e.target.value })} />
+            </label>
+            <label className="campo"><span>Peso saída / bruto (kg)</span>
+              <input type="number" inputMode="decimal" step="any" min="0" value={r.bruto} onChange={(e) => mudarPesagem({ bruto: e.target.value })} />
+            </label>
+            <label className="campo"><span>Peso líquido do ticket (kg) <em>*</em></span>
+              <input type="number" inputMode="decimal" step="any" min="0" value={r.peso}
+                readOnly={num(r.tara) > 0 && num(r.bruto) > 0} onChange={(e) => mudar({ peso: e.target.value })} />
+              {kg > 0 && <small>= {numero(kg / 1000, 3)} toneladas{kgPorBag ? ` · cada bag: ${numero(kgPorBag, 0)} kg` : ""}</small>}
+              {num(r.tara) > 0 && num(r.bruto) > 0 && <small>Saída − entrada.</small>}
+            </label>
             <label className="campo largo"><span>Observação</span>
               <textarea rows={2} value={r.observacao} onChange={(e) => mudar({ observacao: e.target.value })} />
             </label>

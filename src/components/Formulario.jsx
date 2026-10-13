@@ -6,6 +6,7 @@ import EscolhaTalhoes from "./EscolhaTalhoes";
 import { CampoFoto } from "./Foto";
 import { CampoArquivo } from "./Comprovante";
 import ConsultaProduto from "./ConsultaProduto";
+import LeituraTicket from "./LeituraTicket";
 import { Icone } from "./ui";
 
 /** Sugestões de um campo: a lista fixa + o que já foi digitado antes. */
@@ -222,6 +223,12 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
     });
   };
 
+  // Vários campos de uma vez (leitura da foto do ticket), com os cálculos refeitos.
+  const preencher = (patch) => setReg((atual) => {
+    const novo = { ...atual, ...patch };
+    return { ...novo, ...(def.calcular?.(novo, dados) ?? {}) };
+  });
+
   const campos = useMemo(
     () => (somente ? somente.map((c) => [c, def.campos[c]]) : Object.entries(def.campos)),
     [def, somente]
@@ -234,6 +241,9 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
 
   return (
     <div className="form">
+      {colecao === "vendas" && reg.foto_ticket && (
+        <div className="largo"><LeituraTicket reg={reg} dados={dados} preencher={preencher} /></div>
+      )}
       {visiveis.map(([chave, campo]) => {
         if (comEscolha && (chave === "cultura_id" || chave === "talhao_id")) {
           if (chave !== lugar) return null;

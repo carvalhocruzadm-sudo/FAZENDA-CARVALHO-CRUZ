@@ -170,6 +170,22 @@ supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic
 A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
 tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
 
+## 📷 Leitura da foto do ticket da balança
+
+A foto do ticket é lida pela IA: **placa, tipo de carro, tara (entrada), bruto (saída), peso líquido,
+desconto, comprador, motorista e nota fiscal** vêm preenchidos sozinhos.
+
+- No **Ticket da balança** (lançamento do gerente), é só mandar a foto: os campos aparecem preenchidos para conferir.
+- No **Editar venda** / **Editar ticket**, uma venda com foto e sem placa/pesos é lida sozinha ao abrir
+  (e o botão **Puxar os dados da foto do ticket** lê de novo). Só preenche o que está vazio.
+- Ticket repartido em vários talhões/turmas: tara e bruto são do caminhão inteiro, então vão para a observação.
+
+Usa a mesma chave da consulta de produto. Uma vez só:
+
+```bash
+supabase functions deploy ler-ticket
+```
+
 ## 🧾 Emissão de NF-e pelo Bling
 
 A nota é emitida na conta do Bling da fazenda: o sistema monta a nota a partir da venda e o Bling manda para a
