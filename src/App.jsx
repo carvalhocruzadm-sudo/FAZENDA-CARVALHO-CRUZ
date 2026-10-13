@@ -50,7 +50,7 @@ function AvisoAtualizacao() {
 }
 
 function Sistema({ sair, email, virarCampo }) {
-  const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
+  const { dados, pronto, erro, salvar, salvarVarios, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
   const [tela, setTela] = useState(() => {
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
   });
@@ -98,7 +98,7 @@ function Sistema({ sair, email, virarCampo }) {
         <div className="conteudo">
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
           {!pronto ? <div className="vazio">Carregando…</div> : (
-            <Pagina key={tela} dados={dados} salvar={salvar} remover={remover} irPara={irPara}
+            <Pagina key={tela} dados={dados} salvar={salvar} salvarVarios={salvarVarios} remover={remover} irPara={irPara}
               sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} />
           )}
         </div>

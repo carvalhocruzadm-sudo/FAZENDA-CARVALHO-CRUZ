@@ -91,6 +91,13 @@ de WhatsApp *COMPROVANTES - CARVALHO CRUZ* (dez/2025 a set/2026), lidas dos comp
 planilhas FINANCEIRO — o que já estava nelas não entra de novo. Para desfazer:
 `delete from public.despesas where importado = 'WHATSAPP';`.
 
+### Clientes e fornecedores (Bling)
+
+Em **Vendas → Clientes e fornecedores**, o botão **Importar do Bling** lê a planilha de contatos
+exportada do Bling (Contatos → Exportar, CSV). Importar de novo atualiza quem já está cadastrado em vez
+de duplicar. Os dados vão direto para o banco, sem passar pelo GitHub — este repositório é público e a
+planilha tem CPF/CNPJ, então ela não fica aqui.
+
 ## ☁️ Publicar no Vercel
 
 1. Em [vercel.com](https://vercel.com), **Add New → Project** e escolha este repositório.

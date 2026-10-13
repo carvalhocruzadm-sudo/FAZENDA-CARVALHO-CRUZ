@@ -32,6 +32,7 @@ const P = {
   sair: "M15 17l5-5-5-5M20 12H9M12 21H5a2 2 0 01-2-2V5a2 2 0 012-2h7",
   nuvem: "M7 18a5 5 0 01-.5-10A6 6 0 0118 9a4.5 4.5 0 01-.5 9z",
   exportar: "M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4",
+  importar: "M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4",
 };
 
 export function Icone({ nome, tamanho = 18, className }) {
