@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PERIODOS, noPeriodo } from "../lib/calculos";
-import { SITUACOES_NFE, UNIDADES_VENDA, kgPorUnidade } from "../lib/esquema";
+import { NCM_SUGESTOES, SITUACOES_NFE, UNIDADES_VENDA, kgPorUnidade } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 import { supabase, supabaseConfigurado } from "../lib/supabase";
 import { Icone, Modal, SeletorPeriodo, TabelaSimples } from "./ui";
@@ -247,6 +247,178 @@ function Emitir({ venda, nota, dados, conexao, salvar, sincronizarAgora, aoFecha
   );
 }
 
+// ─── Nota avulsa (sem venda) ────────────────────────────────────────────────
+
+const FRETE_POR_CONTA = [
+  ["", "Automático (comprador busca; com valor de frete, por conta da fazenda)"],
+  ["0", "Por conta da fazenda (CIF)"],
+  ["1", "Por conta do comprador (FOB)"],
+  ["3", "Caminhão próprio da fazenda"],
+  ["9", "Sem frete"],
+];
+
+const NOTA_VAZIA = {
+  comprador: "", cultura_id: "", descricao: "", ncm: "", codigo: "", unidade: "kg", quantidade: "",
+  preco_unitario: "", peso_kg: "", placa: "", frete: "", frete_por_conta: "", observacoes: "",
+};
+
+function EmitirAvulsa({ nota, dados, conexao, sincronizarAgora, aoFechar }) {
+  const [form, setForm] = useState(() => ({ ...NOTA_VAZIA, ...(nota?.pedido ?? {}) }));
+  const [estado, setEstado] = useState({ ocupado: false, erro: null, nota });
+  const atual = estado.nota;
+  const esperando = atual && ESPERANDO.includes(Number(atual.situacao));
+  const autorizada = atual && AUTORIZADA.includes(Number(atual.situacao));
+  const travada = autorizada || esperando;
+
+  const compradores = dados.compradores.filter((c) => c.ativo !== false).sort((a, b) => String(a.nome).localeCompare(String(b.nome)));
+  const culturas = dados.culturas.filter((c) => c.ativo !== false);
+  const cultura = dados.culturas.find((c) => c.id === form.cultura_id);
+  const muda = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
+
+  // Escolher a cultura já traz o nome e o NCM do cadastro (dá para trocar).
+  const escolherCultura = (e) => {
+    const c = dados.culturas.find((x) => x.id === e.target.value);
+    setForm((f) => ({ ...f, cultura_id: e.target.value, descricao: c?.nome ?? "", ncm: c?.ncm ?? "", codigo: c?.codigo_nf ?? "" }));
+  };
+
+  const valor = (Number(form.quantidade) || 0) * (Number(form.preco_unitario) || 0);
+  const falta = [];
+  if (!form.comprador) falta.push("o comprador");
+  if (!form.descricao.trim()) falta.push("o produto");
+  if (String(form.ncm).replace(/\D/g, "").length !== 8) falta.push("o NCM (8 números)");
+  if (!(Number(form.quantidade) > 0)) falta.push("a quantidade");
+  if (!(Number(form.preco_unitario) > 0)) falta.push("o preço");
+
+  const executar = async (acao) => {
+    setEstado((s) => ({ ...s, ocupado: true, erro: null }));
+    try {
+      const corpo = acao === "consultar"
+        ? { acao, nota_id: atual.id }
+        : { acao: "emitir_avulsa", nota_id: atual?.id ?? null, nota: { ...form, cultura_id: form.cultura_id || null } };
+      const { nota: n } = await chamarBling(corpo);
+      await sincronizarAgora();
+      setEstado({ ocupado: false, erro: null, nota: n });
+    } catch (e) {
+      setEstado((s) => ({ ...s, ocupado: false, erro: e.message }));
+    }
+  };
+
+  return (
+    <Modal titulo="Nota fiscal avulsa (sem venda)" aoFechar={aoFechar}
+      rodape={(
+        <>
+          <span className="espaco" />
+          <button className="btn" onClick={aoFechar}>Fechar</button>
+          {esperando && <button className="btn" onClick={() => executar("consultar")} disabled={estado.ocupado}><Icone nome="sync" /> Ver se já autorizou</button>}
+          {!travada && (
+            <button className="btn primario" onClick={() => executar("emitir")}
+              disabled={estado.ocupado || falta.length > 0 || !conexao?.conectado || !conexao?.natureza_id}>
+              <Icone nome="entrada" /> {estado.ocupado ? "Enviando…" : atual ? "Emitir de novo" : "Emitir NF-e"}
+            </button>
+          )}
+        </>
+      )}>
+      <p className="descricao">
+        Para vender algo que não está lançado em Vendas. O comprador precisa estar cadastrado em <b>Compradores</b>.
+        Esta nota não cria venda nem conta a receber.
+      </p>
+      <div className="form">
+        <div className="campo largo">
+          <span><label htmlFor="av-comp">Comprador</label><em> *</em></span>
+          <select id="av-comp" value={form.comprador} onChange={muda("comprador")} disabled={travada}>
+            <option value="">— escolha —</option>
+            {compradores.map((c) => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+          </select>
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-cult">Cultura</label></span>
+          <select id="av-cult" value={form.cultura_id ?? ""} onChange={escolherCultura} disabled={travada}>
+            <option value="">— outro produto —</option>
+            {culturas.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-desc">Produto (como sai na nota)</label><em> *</em></span>
+          <input id="av-desc" value={form.descricao} onChange={muda("descricao")} disabled={travada} placeholder="Ex.: Milho em grão" />
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-ncm">NCM</label><em> *</em></span>
+          <input id="av-ncm" inputMode="numeric" list="av-ncms" value={form.ncm} onChange={muda("ncm")} disabled={travada} />
+          <datalist id="av-ncms">{NCM_SUGESTOES.map((x) => <option key={x} value={x} />)}</datalist>
+          <small>Só os números. Confirme com o contador.</small>
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-cod">Código do produto no Bling</label></span>
+          <input id="av-cod" value={form.codigo} onChange={muda("codigo")} disabled={travada} />
+          <small>Vazio = o nome do produto.</small>
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-un">Unidade</label><em> *</em></span>
+          <select id="av-un" value={form.unidade} onChange={muda("unidade")} disabled={travada}>
+            {UNIDADES_VENDA.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
+          </select>
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-qtd">Quantidade</label><em> *</em></span>
+          <input id="av-qtd" type="number" inputMode="decimal" step="any" value={form.quantidade} onChange={muda("quantidade")} disabled={travada} />
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-preco">Preço por unidade (R$)</label><em> *</em></span>
+          <input id="av-preco" type="number" inputMode="decimal" step="any" value={form.preco_unitario} onChange={muda("preco_unitario")} disabled={travada} />
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-peso">Peso líquido (kg)</label></span>
+          <input id="av-peso" type="number" inputMode="decimal" step="any" value={form.peso_kg} onChange={muda("peso_kg")} disabled={travada} />
+          <small>Opcional. Vai no transporte da nota.</small>
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-placa">Placa do caminhão</label></span>
+          <input id="av-placa" value={form.placa} onChange={muda("placa")} disabled={travada} placeholder="ABC1D23" />
+        </div>
+        <div className="campo">
+          <span><label htmlFor="av-frete">Frete cobrado (R$)</label></span>
+          <input id="av-frete" type="number" inputMode="decimal" step="any" value={form.frete} onChange={muda("frete")} disabled={travada} />
+        </div>
+        <div className="campo largo">
+          <span><label htmlFor="av-fpc">Frete por conta de</label></span>
+          <select id="av-fpc" value={form.frete_por_conta} onChange={muda("frete_por_conta")} disabled={travada}>
+            {FRETE_POR_CONTA.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
+          </select>
+        </div>
+        <div className="campo largo">
+          <span><label htmlFor="av-obs">Informações complementares (opcional)</label></span>
+          <textarea id="av-obs" rows={2} value={form.observacoes} onChange={muda("observacoes")} disabled={travada} />
+          <small>Saem no rodapé da nota.</small>
+        </div>
+      </div>
+
+      <TabelaSimples
+        linhas={[
+          ["Valor da mercadoria", brl(valor)],
+          ...(Number(form.frete) ? [["Frete cobrado", brl(form.frete)]] : []),
+          ["Natureza de operação", conexao?.natureza_nome ?? "—"],
+          ...(cultura && form.unidade === "saca" && !cultura.peso_saca ? [["Atenção", `Peso da saca de ${cultura.nome} não cadastrado`]] : []),
+        ].map(([r, v]) => ({ id: r, r, v }))}
+        colunas={[{ rotulo: "Item", valor: (l) => l.r }, { rotulo: "Valor", valor: (l) => l.v }]}
+      />
+      {!conexao?.conectado && <div className="aviso">Conecte ao Bling primeiro (no alto da aba Notas fiscais).</div>}
+      {conexao?.conectado && !conexao.natureza_id && <div className="aviso">Escolha a natureza de operação no alto da aba Notas fiscais.</div>}
+      {!travada && falta.length > 0 && <div className="aviso info">Falta: {falta.join("; ")}.</div>}
+
+      {atual && (
+        <div className={`aviso ${autorizada ? "ok" : "info"}`}>
+          <SeloNota nota={atual} />{" "}
+          {autorizada && <>NF-e autorizada pela SEFAZ.{" "}</>}
+          {esperando && <>A SEFAZ ainda está processando. Espere um pouco e clique em “Ver se já autorizou”.{" "}</>}
+          {atual.mensagem && <><br />{atual.mensagem}</>}
+          {atual.link_danfe && <><br /><a href={atual.link_danfe} target="_blank" rel="noreferrer">Abrir o DANFE (PDF da nota)</a></>}
+        </div>
+      )}
+      {estado.erro && <div className="aviso">{estado.erro}</div>}
+    </Modal>
+  );
+}
+
 // ─── Aba ────────────────────────────────────────────────────────────────────
 
 export default function NotasFiscais({ dados, salvar, sincronizarAgora }) {
@@ -254,7 +426,10 @@ export default function NotasFiscais({ dados, salvar, sincronizarAgora }) {
   const [conexao, setConexao] = useState(null);
   const [erroConexao, setErroConexao] = useState(null);
   const [aberta, setAberta] = useState(null);
+  // Nota avulsa aberta: "nova" ou o id da nota.
+  const [avulsa, setAvulsa] = useState(null);
   const fechar = useCallback(() => setAberta(null), []);
+  const fecharAvulsa = useCallback(() => setAvulsa(null), []);
 
   const verificar = useCallback(() => {
     setErroConexao(null);
@@ -266,7 +441,15 @@ export default function NotasFiscais({ dados, salvar, sincronizarAgora }) {
     chamarBling({ acao: "situacao" }).then(setConexao).catch((e) => setErroConexao(e.message));
   }, []);
 
-  const notaDe = useMemo(() => new Map(dados.notas_fiscais.map((n) => [n.venda_id, n])), [dados.notas_fiscais]);
+  const notaDe = useMemo(
+    () => new Map(dados.notas_fiscais.filter((n) => n.venda_id).map((n) => [n.venda_id, n])),
+    [dados.notas_fiscais],
+  );
+  const avulsas = useMemo(
+    () => [...noPeriodo(dados.notas_fiscais.filter((n) => !n.venda_id), periodo)]
+      .sort((a, b) => String(b.data).localeCompare(String(a.data))),
+    [dados.notas_fiscais, periodo],
+  );
   const vendas = useMemo(
     () => [...noPeriodo(dados.vendas, periodo)].sort((a, b) => String(b.data).localeCompare(String(a.data))),
     [dados.vendas, periodo],
@@ -277,6 +460,7 @@ export default function NotasFiscais({ dados, salvar, sincronizarAgora }) {
   }
 
   const vendaAberta = aberta && dados.vendas.find((v) => v.id === aberta);
+  const avulsaAberta = avulsa && avulsa !== "nova" ? dados.notas_fiscais.find((n) => n.id === avulsa) : null;
 
   return (
     <>
@@ -287,9 +471,14 @@ export default function NotasFiscais({ dados, salvar, sincronizarAgora }) {
       <div className="cartao">
         <p className="descricao">
           Escolha a venda e clique em <b>Nota</b>. A nota sai com o comprador do cadastro de Compradores, o NCM da cultura e a
-          quantidade da venda (já tirado o desconto em kg).
+          quantidade da venda (já tirado o desconto em kg). Para uma nota que não tem venda lançada, clique em
+          <b> Nova nota avulsa</b>.
         </p>
-        <div className="barra"><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
+        <div className="barra">
+          <SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} />
+          <span className="espaco" />
+          <button className="btn primario" onClick={() => setAvulsa("nova")}><Icone nome="entrada" /> Nova nota avulsa</button>
+        </div>
         <TabelaSimples
           vazio="Nenhuma venda neste período."
           linhas={vendas}
@@ -322,6 +511,36 @@ export default function NotasFiscais({ dados, salvar, sincronizarAgora }) {
           ]}
         />
       </div>
+
+      {avulsas.length > 0 && (
+        <div className="cartao">
+          <h3 style={{ margin: "0 0 10px", fontSize: 15 }}>Notas avulsas (sem venda)</h3>
+          <TabelaSimples
+            linhas={avulsas}
+            colunas={[
+              { rotulo: "Data", valor: (n) => data(n.data) },
+              { rotulo: "Comprador", valor: (n) => n.comprador },
+              { rotulo: "Produto", valor: (n) => n.pedido?.descricao ?? "—" },
+              { rotulo: "Valor", num: true, valor: (n) => brl(n.valor) },
+              { rotulo: "NF-e", valor: (n) => <SeloNota nota={n} /> },
+              {
+                rotulo: "",
+                valor: (n) => (
+                  <span style={{ display: "inline-flex", gap: 6 }}>
+                    {n.link_danfe && <a className="btn" href={n.link_danfe} target="_blank" rel="noreferrer">DANFE</a>}
+                    <button className="btn" onClick={() => setAvulsa(n.id)}><Icone nome="lista" /> Nota</button>
+                  </span>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
+
+      {avulsa && (
+        <EmitirAvulsa key={avulsa} nota={avulsaAberta} dados={dados} conexao={conexao}
+          sincronizarAgora={sincronizarAgora} aoFechar={fecharAvulsa} />
+      )}
 
       {vendaAberta && (
         <Emitir key={vendaAberta.id} venda={vendaAberta} nota={notaDe.get(vendaAberta.id)} dados={dados} conexao={conexao}

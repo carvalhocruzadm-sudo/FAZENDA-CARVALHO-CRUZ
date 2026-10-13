@@ -824,6 +824,7 @@ alter table public.notas_fiscais add column if not exists chave_acesso text;
 alter table public.notas_fiscais add column if not exists link_danfe text;
 alter table public.notas_fiscais add column if not exists valor numeric;
 alter table public.notas_fiscais add column if not exists mensagem text;
+alter table public.notas_fiscais add column if not exists pedido jsonb;
 create index if not exists notas_fiscais_data_idx on public.notas_fiscais (data);
 alter table public.notas_fiscais enable row level security;
 drop policy if exists "equipe acessa notas_fiscais" on public.notas_fiscais;
