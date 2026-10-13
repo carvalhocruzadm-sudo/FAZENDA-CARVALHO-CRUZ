@@ -12,11 +12,10 @@
  * período: pomar novo (ainda sem colheita) não puxa a média para baixo. O
  * mesmo vale para t/ha e R$/ha: só a área dos talhões que produziram.
  */
-import { UNIDADES_VENDA } from "./esquema";
+import { kgPorUnidade } from "./esquema";
 import { entradasDoPeriodo, linhasDeCusto, noPeriodo, saidasDoPeriodo } from "./calculos";
 
 const n = (v) => Number(v) || 0;
-const KG_POR_UNIDADE = Object.fromEntries(UNIDADES_VENDA.map(([v, , kg]) => [v, kg]));
 
 /** Caixa de laranja (40,8 kg) e saca de milho (60 kg), como nas planilhas. */
 export const KG_CAIXA = 40.8;
@@ -28,10 +27,13 @@ export const mesLegivel = (chave) => {
   return `${NOMES_MESES[Number(m) - 1]}/${a.slice(2)}`;
 };
 
-/** Peso de uma carga: a pesagem; sem pesagem, quantidade × kg da unidade. */
-export function kgDaVenda(v) {
+/**
+ * Peso de uma carga: a pesagem; sem pesagem, quantidade × kg da unidade (a
+ * "saca" pesa o que estiver no cadastro da cultura).
+ */
+export function kgDaVenda(v, cultura) {
   if (n(v.peso_liquido)) return n(v.peso_liquido);
-  const kg = KG_POR_UNIDADE[v.unidade];
+  const kg = kgPorUnidade(v.unidade, cultura);
   return kg ? n(v.quantidade) * kg : 0;
 }
 
@@ -48,8 +50,8 @@ export function descontosDaVenda(v) {
   };
 }
 
-export function kgDaColheita(c) {
-  const kg = KG_POR_UNIDADE[c.unidade];
+export function kgDaColheita(c, cultura) {
+  const kg = kgPorUnidade(c.unidade, cultura);
   return kg ? n(c.quantidade) * kg : 0;
 }
 
@@ -81,6 +83,7 @@ function mesesEntre(de, ate) {
  */
 export function indicadores(dados, { periodo, cultura, fazenda }) {
   const talhaoPorId = new Map(dados.talhoes.map((t) => [t.id, t]));
+  const culturaPorId = new Map(dados.culturas.map((c) => [c.id, c]));
   const fazendaDoTalhao = (id) => talhaoPorId.get(id)?.fazenda_id ?? null;
   const passaCultura = (id) => !cultura || id === cultura;
   const passaFazenda = (id) => !fazenda || id === fazenda;
@@ -114,7 +117,7 @@ export function indicadores(dados, { periodo, cultura, fazenda }) {
   }
   for (const v of vendas) {
     const x = obterT(v.talhao_id);
-    const kg = kgDaVenda(v);
+    const kg = kgDaVenda(v, culturaPorId.get(v.cultura_id));
     x.culturas.add(v.cultura_id);
     x.cargas++; x.kgVendido += kg; x.bruto += n(v.valor_bruto); x.liquido += n(v.valor);
     const cl = v.classificacao || "Sem tipo";
@@ -123,7 +126,7 @@ export function indicadores(dados, { periodo, cultura, fazenda }) {
   for (const c of colheitas) {
     const x = obterT(c.talhao_id);
     x.culturas.add(c.cultura_id);
-    x.kgColhido += kgDaColheita(c);
+    x.kgColhido += kgDaColheita(c, culturaPorId.get(c.cultura_id));
   }
   for (const l of custosLinhas) if (l.talhao_id) obterT(l.talhao_id).custo += l.valor;
 
@@ -197,7 +200,7 @@ export function indicadores(dados, { periodo, cultura, fazenda }) {
   };
   for (const v of vendas) {
     const x = obterC(v.cultura_id);
-    const kg = kgDaVenda(v);
+    const kg = kgDaVenda(v, culturaPorId.get(v.cultura_id));
     x.cargas++; x.kg += kg; x.quantidade += n(v.quantidade);
     x.bruto += n(v.valor_bruto); x.desconto += n(v.valor_desconto); x.liquido += n(v.valor);
     const d = descontosDaVenda(v);
@@ -262,7 +265,7 @@ export function indicadores(dados, { periodo, cultura, fazenda }) {
   const mes = (d) => porMes.get(d?.slice(0, 7));
   for (const v of vendas) {
     const x = mes(v.data); if (!x) continue;
-    const kg = kgDaVenda(v);
+    const kg = kgDaVenda(v, culturaPorId.get(v.cultura_id));
     x.cargas++; x.kg += kg; x.liquido += n(v.valor);
     const t = v.talhao_id ?? "sem";
     x.porTalhao[t] = (x.porTalhao[t] ?? 0) + kg;
@@ -294,7 +297,7 @@ export function indicadores(dados, { periodo, cultura, fazenda }) {
   };
   for (const v of vendas) {
     const x = obterComprador(v.comprador);
-    x.cargas++; x.kg += kgDaVenda(v); x.liquido += n(v.valor);
+    x.cargas++; x.kg += kgDaVenda(v, culturaPorId.get(v.cultura_id)); x.liquido += n(v.valor);
   }
   for (const r of recebimentos) obterComprador(r.comprador).recebido += n(r.valor);
   const compradores = [...porComprador.values()]

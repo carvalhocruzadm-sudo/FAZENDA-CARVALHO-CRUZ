@@ -4,6 +4,7 @@ import { Abas, Icone, Stat } from "../components/ui";
 import { PERIODOS, aReceber, diesel, estoqueInsumos, intervalo, situacaoRevisao, soma } from "../lib/calculos";
 import { brl, baixarCSV, data, numero } from "../lib/formato";
 import { KG_CAIXA, NOMES_MESES, anosComDados, indicadores, mesLegivel } from "../lib/indicadores";
+import { nomesTalhoesDaOrdem } from "../lib/talhoes";
 
 /** Data ISO daqui a `dias` (fora do componente: o painel se refaz quando os dados mudam). */
 function diaISO(dias) {
@@ -255,6 +256,13 @@ function Resumo({ dados, r, irPara }) {
     for (const x of estoqueInsumos(dados)) {
       if (x.negativo) lista.push({ tipo: "ruim", texto: `${x.insumo.nome}: estoque negativo (${numero(x.saldo)} ${x.insumo.unidade}) — falta lançar entrada`, ir: "quimicos" });
       else if (x.baixo) lista.push({ tipo: "atencao", texto: `${x.insumo.nome}: estoque baixo (${numero(x.saldo)} ${x.insumo.unidade})`, ir: "quimicos" });
+    }
+    const aConferir = dados.insumo_entradas.filter((e) => e.a_conferir).length;
+    if (aConferir) lista.push({ tipo: "atencao", texto: `${aConferir} entrada(s) de produto lançada(s) no depósito sem preço — falta conferir`, ir: "quimicos" });
+    const ticketsCampo = dados.vendas.filter((v) => v.a_conferir).length;
+    if (ticketsCampo) lista.push({ tipo: "atencao", texto: `${ticketsCampo} ticket(s) da balança lançado(s) pelos funcionários aguardando aprovação`, ir: "ticket" });
+    for (const o of dados.pulverizacoes.filter((x) => x.situacao === "aberta")) {
+      lista.push({ tipo: "atencao", texto: `Pulverização em ${nomesTalhoesDaOrdem(dados, o)} (${data(o.data)}) esperando separar no depósito`, ir: "quimicos" });
     }
     if (tanque.litrosEntrada && tanque.saldo < 0) lista.push({ tipo: "ruim", texto: `Tanque de diesel negativo (${numero(tanque.saldo, 0)} L) — falta lançar compra`, ir: "diesel" });
     for (const d of dados.despesas.filter((x) => !x.pago && x.vencimento)) {
