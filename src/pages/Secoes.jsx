@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import Crud from "../components/Crud";
 import NotasFiscais from "../components/NotasFiscais";
 import OrdensPulverizacao from "../components/OrdensPulverizacao";
+import PainelTickets from "../components/PainelTickets";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
@@ -589,10 +590,13 @@ function VendasPorCultura({ dados }) {
   );
 }
 
+const TicketsPorDia = (props) => <PainelTickets periodoInicial="mes" {...props} />;
+
 export function Vendas(props) {
   return (
     <Secao props={props} abas={[
       ["vendas", "Cargas vendidas"],
+      ["tickets", "Tickets por dia", TicketsPorDia],
       ["recebimentos", "Recebimentos"],
       ["areceber", "A receber", AReceber],
       ["resumo", "Resumo por cultura", VendasPorCultura],

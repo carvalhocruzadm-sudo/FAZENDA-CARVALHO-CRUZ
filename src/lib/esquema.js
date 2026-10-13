@@ -741,7 +741,7 @@ export const ESQUEMA = {
     // O celular do Modo Campo lança o ticket e só enxerga os que ainda não foram completados (sem preço).
     // Só os logins de campo marcados em Usuários → "Lança ticket da balança".
     campo: "grava", campoSql: "a_conferir = true and (select public.campo_ticket())",
-    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos. Os tickets da balança lançados pelo link rápido chegam aqui sem comprador e sem preço: é só abrir e completar. Os lançados no celular (Modo Campo) vêm com a foto do ticket e marcados \"Falta completar\": complete e desmarque.",
+    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos. Os tickets da balança lançados pelo link rápido chegam aqui sem comprador e sem preço: é só abrir e completar. Os lançados pelos funcionários (celular ou link) vêm com a foto do ticket e ficam \"Aguardando aprovação\": confira em Ticket da balança → Tickets lançados e aprove, edite ou apague.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       comprador: { tipo: "sugestao", rotulo: "Comprador", sugestoesDe: ["vendas", "comprador"] },
@@ -772,7 +772,7 @@ export const ESQUEMA = {
       caminhao_id: { tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio", filtro: (m) => m.categoria === "caminhao" },
       vencimento: { tipo: "data", rotulo: "Vencimento" },
       nota_fiscal: { tipo: "texto", rotulo: "Nº da nota fiscal" },
-      a_conferir: { tipo: "booleano", rotulo: "Falta completar (ticket lançado no celular)" },
+      a_conferir: { tipo: "booleano", rotulo: "Aguardando aprovação (ticket lançado por funcionário)" },
       foto_ticket: { tipo: "foto", rotulo: "Foto do ticket da balança", lado: 1600 },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },

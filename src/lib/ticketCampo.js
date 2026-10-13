@@ -13,7 +13,9 @@
  * Cultura sem bags (milho, silagem…) em vários talhões: divide pela área.
  */
 
+import { ESQUEMA, prepararRegistro, registroNovo } from "./esquema";
 import { dividirQuantidade } from "./talhoes";
+import { chaveTurma, culturasDaTurma } from "./turmas";
 
 const n = (v) => Number(v) || 0;
 
@@ -73,4 +75,89 @@ export function repartirTicket({ talhoes, bagsTalhao, turmas, peso, emBags }) {
   const porTalhao = talhoes.map((t, i) => ({ talhao: t, bags: bags[i], kg: pesoTalhao[i] }));
 
   return { linhas, totalBags, kgPorBag, porTurma, porTalhao };
+}
+
+// ─── O que o celular e o computador usam igual ──────────────────────────────
+
+/** "Sem fazenda" para os talhões que não têm fazenda no cadastro. */
+export const SEM_FAZENDA = "sem";
+
+/**
+ * O que muda conforme a cultura: os talhões dela (nenhum marcado com ela =
+ * todos), as fazendas desses talhões e as turmas conhecidas.
+ */
+export function daCultura(dados, culturaId) {
+  const cultura = dados.culturas.find((c) => c.id === culturaId);
+  const emBags = Boolean(cultura?.turma_colheita);
+  const ativos = dados.talhoes.filter((t) => t.ativo !== false).sort(ESQUEMA.talhoes.ordem);
+  const daC = ativos.filter((t) => t.cultura_id === culturaId);
+  const talhoes = daC.length ? daC : ativos;
+  const ids = new Set(talhoes.map((t) => t.fazenda_id ?? SEM_FAZENDA));
+  const fazendas = dados.fazendas
+    .filter((f) => ids.has(f.id))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }))
+    .map((f) => ({ id: f.id, nome: f.nome }));
+  if (ids.has(SEM_FAZENDA)) fazendas.push({ id: SEM_FAZENDA, nome: "Outros talhões" });
+  return { cultura, emBags, talhoes, fazendas, turmas: emBags && cultura ? turmasDaCultura(dados, cultura) : [] };
+}
+
+/**
+ * As turmas da cultura: as do cadastro de Turmas de colheita (desta cultura
+ * ou sem cultura), a lista antiga da cultura e as dos tickets já lançados,
+ * as que colheram por último primeiro.
+ */
+export function turmasDaCultura(dados, cultura) {
+  const ultima = {};
+  for (const t of dados.turmas ?? []) {
+    const delas = culturasDaTurma(t);
+    if (t.ativo !== false && (!delas.length || delas.includes(cultura.id))) ultima[t.nome.trim()] = "";
+  }
+  for (const nome of String(cultura.turmas ?? "").split(",").map((x) => x.trim()).filter(Boolean)) ultima[nome] = "";
+  for (const v of dados.vendas) {
+    if (v.cultura_id === cultura.id && v.turma && String(v.data ?? "") >= String(ultima[v.turma] ?? "")) ultima[v.turma] = v.data ?? "";
+  }
+  return Object.keys(ultima).sort((a, b) => String(ultima[b]).localeCompare(String(ultima[a])) || a.localeCompare(b, "pt-BR"));
+}
+
+/** A turma no cadastro de Turmas de colheita, pelo nome. */
+export const turmaDoCadastro = (dados, nome) => (dados.turmas ?? []).find((t) => chaveTurma(t.nome) === chaveTurma(nome));
+
+/**
+ * O valor por tonelada que já vem preenchido: o último que a turma cobrou;
+ * sem histórico, o padrão da cultura. Muda a cada colheita, por isso não fica
+ * no cadastro da turma.
+ */
+export function ultimoValorDaTurma(dados, cultura, nome) {
+  const ultima = dados.vendas
+    .filter((v) => v.turma === nome && v.custo_ton != null)
+    .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];
+  return ultima ? ultima.custo_ton : cultura?.custo_turma_ton ?? null;
+}
+
+/**
+ * As vendas de um ticket (uma por talhão e por turma, de `repartirTicket`),
+ * sem comprador e sem preço. `aConferir`: fica esperando a aprovação do
+ * escritório. Devolve { regs } ou { erro }.
+ */
+export function registrosDoTicket(dados, { cultura, emBags, linhas, data, foto, observacao, aConferir }) {
+  const regs = [];
+  for (const l of linhas) {
+    const { reg, erro } = prepararRegistro("vendas", {
+      ...registroNovo("vendas"),
+      data,
+      cultura_id: l.talhao?.cultura_id ?? cultura.id,
+      unidade: cultura.unidade || "t",
+      talhao_id: l.talhao?.id ?? null,
+      peso_liquido: l.peso_liquido,
+      volumes: l.volumes,
+      turma: emBags ? l.turma : null,
+      custo_ton: emBags ? l.custo_ton ?? cultura.custo_turma_ton ?? null : null,
+      a_conferir: Boolean(aConferir),
+      foto_ticket: foto ?? null,
+      observacao,
+    }, dados);
+    if (erro) return { erro };
+    regs.push(reg);
+  }
+  return { regs };
 }
