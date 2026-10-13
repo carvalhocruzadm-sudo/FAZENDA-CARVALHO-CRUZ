@@ -14,6 +14,10 @@
 
 begin;
 
+-- Marca do que veio das planilhas (já existe se a importação do histórico rodou).
+alter table public.vendas add column if not exists importado text;
+alter table public.recebimentos add column if not exists importado text;
+
 insert into public.vendas (id, data, comprador, cultura_id, safra, talhao_id, classificacao, placa, tipo_carro, peso_entrada, peso_saida, peso_liquido, unidade, quantidade, preco_unitario, valor_bruto, valor_desconto, valor, volumes, observacao, importado) values ('c10148b5-e335-5642-a3b9-dd3dbf73b9e6', '2026-10-01', 'NEWTON', '00000000-0000-4000-8000-000000000001', 'Milho 2026', '00000000-0000-4000-8200-000000000013', 'Grão', 'RQX0H78', '9 EIXO', 0.0, 72360.0, 72360.0, 'sc60', 1206.0, 72.0, 86832.0, 0, 86832.0, 1206.0, null, 'MILHO_2026/VENDAS') on conflict (id) do nothing;
 insert into public.vendas (id, data, comprador, cultura_id, safra, talhao_id, classificacao, placa, tipo_carro, peso_entrada, peso_saida, peso_liquido, unidade, quantidade, preco_unitario, valor_bruto, valor_desconto, valor, volumes, observacao, importado) values ('ab884f95-0dca-55a7-ac71-24d364160b77', '2026-10-06', 'NEWTON', '00000000-0000-4000-8000-000000000001', 'Milho 2026', '00000000-0000-4000-8200-000000000013', 'Grão', 'RQX0H78', '9 EIXO', 17160.0, 52720.0, 35560.0, 'sc60', 592.666667, 72.0, 42672.0, 0, 42672.0, 592.666667, null, 'MILHO_2026/VENDAS') on conflict (id) do nothing;
 insert into public.vendas (id, data, comprador, cultura_id, safra, talhao_id, classificacao, placa, tipo_carro, peso_entrada, peso_saida, peso_liquido, unidade, quantidade, preco_unitario, valor_bruto, valor_desconto, valor, volumes, observacao, importado) values ('0abaeada-a5c9-5483-ac7e-27bba5cad71f', '2026-10-06', 'NEWTON', '00000000-0000-4000-8000-000000000001', 'Milho 2026', '00000000-0000-4000-8200-000000000014', 'Grão', 'RQX0H78', '9 EIXO', 9580.0, 46040.0, 36460.0, 'sc60', 607.666667, 72.0, 43752.0, 0, 43752.0, 607.666667, null, 'MILHO_2026/VENDAS') on conflict (id) do nothing;

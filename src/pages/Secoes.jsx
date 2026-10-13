@@ -4,7 +4,7 @@ import Crud from "../components/Crud";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
-  noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
+  GRUPOS_PLANEJAMENTO, noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
 } from "../lib/calculos";
 import { ESQUEMA, hoje } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
@@ -36,18 +36,65 @@ const unidadeDe = (m) => (m.medidor === "km" ? "km" : "h");
 
 function Planejamento(props) {
   const { dados } = props;
-  const resumo = resumoPlanejamento(dados);
+  const resumos = useMemo(() => resumoPlanejamento(dados).sort((a, b) => b.safra.localeCompare(a.safra)), [dados]);
+  const [escolhida, setEscolhida] = useState(null);
+  const r = resumos.find((x) => x.safra === escolhida) ?? resumos[0];
+  if (!r) return <Crud colecao="planejamento" {...props} />;
+
+  const nomeArea = (a) => (a.talhao_id ? `${nomeRef(dados, "fazendas", a.fazenda_id)} › ${nomeRef(dados, "talhoes", a.talhao_id)}` : nomeRef(dados, "fazendas", a.fazenda_id));
+  const areas = [...r.areas].sort((a, b) => b.total - a.total);
+  const grupos = [...GRUPOS_PLANEJAMENTO, ...Object.keys(r.realizado).filter((g) => !GRUPOS_PLANEJAMENTO.includes(g))]
+    .map((g) => ({ id: g, g, plan: r.porGrupo[g] ?? 0, real: r.realizado[g] ?? 0 }))
+    .filter((x) => x.plan || x.real);
   return (
     <>
-      {resumo.length > 0 && (
-        <div className="grade">
-          {resumo.map((s) => (
-            <Stat key={s.safra} rotulo={s.safra} valor={brl(s.total)}
-              sub={s.porHa ? `${numero(s.hectares)} ha · ${brl(s.porHa)}/ha` : `${s.itens} itens`} />
-          ))}
-        </div>
-      )}
-      <Crud colecao="planejamento" {...props} />
+      <div className="barra">
+        <select className="entrada" style={{ width: "auto" }} value={r.safra} onChange={(e) => setEscolhida(e.target.value)} aria-label="Safra">
+          {resumos.map((x) => <option key={x.safra} value={x.safra}>{x.safra}</option>)}
+        </select>
+      </div>
+      <div className="grade">
+        <Stat rotulo="Planejado" valor={brl(r.total)} sub={`${r.itens} itens`} />
+        <Stat rotulo="Área" valor={`${numero(r.hectares, 1)} ha`} sub={`${r.areas.length} ${r.areas.length === 1 ? "área" : "áreas"}`} />
+        <Stat rotulo="Planejado por hectare" valor={r.porHa ? brl(r.porHa) : "—"} />
+        <Stat rotulo={`Lançado na cultura em ${r.ano ?? "—"}`} valor={brl(r.totalRealizado)} sub="despesas com centro de custo na cultura + químicos aplicados" cor="laranja" />
+      </div>
+      <div className="cartao">
+        <h2>{r.safra}: por fazenda / área</h2>
+        <TabelaSimples
+          linhas={areas}
+          colunas={[
+            { rotulo: "Fazenda / área", valor: nomeArea },
+            { rotulo: "Hectares", num: true, valor: (a) => numero(a.hectares, 1) },
+            ...GRUPOS_PLANEJAMENTO.filter((g) => r.porGrupo[g]).map((g) => ({ rotulo: g, num: true, valor: (a) => (a.porGrupo[g] ? brl(a.porGrupo[g]) : "—") })),
+            { rotulo: "Total", num: true, valor: (a) => brl(a.total) },
+            { rotulo: "R$/ha", num: true, valor: (a) => (a.porHa ? brl(a.porHa) : "—") },
+          ]}
+          rodape={["Total", numero(r.hectares, 1), ...GRUPOS_PLANEJAMENTO.filter((g) => r.porGrupo[g]).map((g) => brl(r.porGrupo[g])), brl(r.total), r.porHa ? brl(r.porHa) : "—"]}
+        />
+      </div>
+      <div className="cartao">
+        <h2>Planejado × lançado</h2>
+        <p className="descricao">
+          Lançado = despesas de {r.ano} com centro de custo na cultura (ou num talhão dela) + químicos aplicados nos talhões dela.
+          Despesa lançada como “Geral da fazenda” não entra aqui: para o comparativo ficar completo, lance as compras da safra com a cultura.
+        </p>
+        <TabelaSimples
+          linhas={grupos}
+          colunas={[
+            { rotulo: "Grupo", valor: (x) => x.g },
+            { rotulo: "Planejado", num: true, valor: (x) => brl(x.plan) },
+            { rotulo: "Planejado/ha", num: true, valor: (x) => (r.hectares ? brl(x.plan / r.hectares) : "—") },
+            { rotulo: "Lançado", num: true, valor: (x) => brl(x.real) },
+            { rotulo: "Falta / passou", num: true, valor: (x) => <span className={x.real > x.plan ? "negativo" : ""}>{brl(x.plan - x.real)}</span> },
+            { rotulo: "% usado", num: true, valor: (x) => (x.plan ? `${numero((x.real / x.plan) * 100, 1)}%` : "—") },
+          ]}
+          rodape={["Total", brl(r.total), r.hectares ? brl(r.total / r.hectares) : "—", brl(r.totalRealizado), brl(r.total - r.totalRealizado), r.total ? `${numero((r.totalRealizado / r.total) * 100, 1)}%` : "—"]}
+        />
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <Crud key={r.safra} colecao="planejamento" {...props} filtro={(p) => (p.safra || "(sem safra)") === r.safra} padrao={{ safra: r.safra, cultura_id: r.cultura_id }} />
+      </div>
     </>
   );
 }

@@ -41,8 +41,11 @@ export const FORMAS_PAGAMENTO = ["PIX", "Boleto", "Cartão", "Dinheiro", "Transf
 export const FASES = [
   "Pré-plantio / dessecação", "Plantio (adubação, TS, semente)", "Herbicida",
   "1ª cobertura", "1ª pulverização", "2ª cobertura", "2ª pulverização",
-  "3ª pulverização", "Colheita", "Operacional",
+  "3ª pulverização", "Colheita", "Operacional", "Arrendamento", "Juros / financiamento",
 ];
+
+/** Itens do planejamento que não são produto (o resumo à direita da aba PLANEJAMENTO). */
+export const ITENS_PLANEJAMENTO = ["Operacional", "Colheita", "Arrendamento", "Juros"];
 
 /** Unidades de preço de venda e quantos kg cabem em cada uma. */
 export const UNIDADES_VENDA = [
@@ -505,13 +508,15 @@ export const ESQUEMA = {
 
   planejamento: {
     titulo: "Planejamento da safra", singular: "item do planejamento", icone: "lista",
-    descricao: "Como a aba PLANEJAMENTO: por fase, produto, dose por hectare e preço. O total é dose × hectares × preço.",
+    descricao: "Como a aba PLANEJAMENTO: por fase, produto, dose por hectare e preço. O total é dose × hectares × preço. Custo que não é produto (operacional, colheita, arrendamento, juros) vai em Item, com o valor por hectare no preço.",
     campos: {
       safra: { tipo: "sugestao", rotulo: "Safra", obrigatorio: true, dica: "Ex.: Milho 2026", sugestoesDe: ["planejamento", "safra"] },
       cultura_id: { ...refCultura, obrigatorio: true },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
+      talhao_id: { ...refTalhao, rotulo: "Talhão / área", dica: "Quando o plano é de uma área da fazenda (ex.: Gameleira)" },
       fase: { tipo: "sugestao", rotulo: "Fase", sugestoes: FASES, obrigatorio: true },
-      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
+      descricao: { tipo: "sugestao", rotulo: "Item (sem produto)", sugestoes: ITENS_PLANEJAMENTO, dica: "Operacional, colheita, arrendamento, juros… Deixe vazio quando for produto." },
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: (r) => !r.descricao },
       dose_ha: { tipo: "numero", rotulo: "Quantidade por ha", casas: 3, obrigatorio: true },
       hectares: { tipo: "numero", rotulo: "Hectares", casas: 2, obrigatorio: true },
       quantidade_total: { tipo: "numero", rotulo: "Quantidade total", casas: 2, somenteLeitura: true },
@@ -522,7 +527,13 @@ export const ESQUEMA = {
       const q = num(r.dose_ha) * num(r.hectares);
       return { quantidade_total: +q.toFixed(3), total: +(q * num(r.preco_unitario)).toFixed(2) };
     },
-    colunas: ["safra", "fazenda_id", "fase", "insumo_id", "dose_ha", "hectares", "quantidade_total", "preco_unitario", "total"],
+    aoMudar: {
+      talhao_id: (reg, dados) => {
+        const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
+        return t?.fazenda_id ? { fazenda_id: t.fazenda_id } : {};
+      },
+    },
+    colunas: ["safra", "fazenda_id", "talhao_id", "fase", "insumo_id", "descricao", "dose_ha", "hectares", "preco_unitario", "total"],
     ordem: (a, b) => (a.safra || "").localeCompare(b.safra || "") || FASES.indexOf(a.fase) - FASES.indexOf(b.fase),
   },
 };

@@ -268,23 +268,79 @@ export function resumoFretes(dados, periodo) {
   });
 }
 
-/** Planejado × realizado por safra: o planejamento soma dose × ha × preço. */
+// ─── Planejamento da safra ──────────────────────────────────────────────────
+
+/** Os grupos do resumo da aba PLANEJAMENTO, na ordem da planilha. */
+export const GRUPOS_PLANEJAMENTO = ["Adubação", "Sementes", "Químicos", "Operacional", "Colheita", "Arrendamento", "Juros"];
+
+const GRUPO_DO_TIPO = { adubo: "Adubação", corretivo: "Adubação", semente: "Sementes" };
+const GRUPO_DO_ITEM = { operacional: "Operacional", colheita: "Colheita", arrendamento: "Arrendamento", juros: "Juros" };
+
+/**
+ * Grupo de um item planejado, como na planilha: adubo sólido em Adubação,
+ * semente em Sementes, o resto dos produtos (inclusive foliar) em Químicos.
+ */
+export function grupoDoPlanejamento(p, tipoInsumo) {
+  if (!p.insumo_id && p.descricao) return GRUPO_DO_ITEM[String(p.descricao).trim().toLowerCase()] ?? "Operacional";
+  return GRUPO_DO_TIPO[tipoInsumo.get(p.insumo_id)] ?? "Químicos";
+}
+
+/** Grupo de uma despesa lançada, para o planejado × realizado. */
+const GRUPO_DA_CATEGORIA = {
+  Adubos: "Adubação", Sementes: "Sementes", "Produtos químicos": "Químicos", Arrendamentos: "Arrendamento",
+  Combustíveis: "Operacional", Salários: "Operacional", Peças: "Operacional", Serviços: "Operacional",
+  Alimentação: "Operacional", Fretes: "Operacional",
+};
+
+/**
+ * Planejado × realizado por safra. Planejado: soma dos itens (dose × ha ×
+ * preço). A área conta cada fazenda/talhão uma vez (os itens repetem o
+ * hectare). Realizado: o que foi lançado com a cultura da safra no ano dela
+ * (despesas com centro de custo na cultura/talhão + químicos aplicados).
+ */
 export function resumoPlanejamento(dados) {
+  const tipoInsumo = new Map(dados.insumos.map((i) => [i.id, i.tipo]));
   const mapa = new Map();
   for (const p of dados.planejamento) {
     const k = p.safra || "(sem safra)";
-    if (!mapa.has(k)) mapa.set(k, { safra: k, cultura_id: p.cultura_id, total: 0, porFase: {}, haPorFazenda: {}, itens: 0 });
+    if (!mapa.has(k)) mapa.set(k, { safra: k, cultura_id: p.cultura_id, total: 0, porFase: {}, porGrupo: {}, areas: new Map(), itens: 0 });
     const x = mapa.get(k);
-    x.total += n(p.total);
-    x.porFase[p.fase] = (x.porFase[p.fase] ?? 0) + n(p.total);
-    // Cada fazenda entra uma vez com a sua área (os itens repetem o hectare).
-    const f = p.fazenda_id ?? "-";
-    x.haPorFazenda[f] = Math.max(x.haPorFazenda[f] ?? 0, n(p.hectares));
+    const v = n(p.total);
+    x.total += v;
+    x.porFase[p.fase] = (x.porFase[p.fase] ?? 0) + v;
+    const g = grupoDoPlanejamento(p, tipoInsumo);
+    x.porGrupo[g] = (x.porGrupo[g] ?? 0) + v;
+    const ka = `${p.fazenda_id ?? "-"}|${p.talhao_id ?? "-"}`;
+    if (!x.areas.has(ka)) x.areas.set(ka, { id: ka, fazenda_id: p.fazenda_id ?? null, talhao_id: p.talhao_id ?? null, hectares: 0, total: 0, porGrupo: {} });
+    const a = x.areas.get(ka);
+    a.hectares = Math.max(a.hectares, n(p.hectares));
+    a.total += v;
+    a.porGrupo[g] = (a.porGrupo[g] ?? 0) + v;
     x.itens++;
   }
+  const custoMedio = new Map(estoqueInsumos(dados).map((e) => [e.insumo.id, e.custoMedio]));
+  const culturaDoTalhao = new Map(dados.talhoes.map((t) => [t.id, t.cultura_id]));
   return [...mapa.values()].map((x) => {
-    const hectares = soma(Object.values(x.haPorFazenda), (h) => h);
-    return { ...x, hectares, porHa: hectares ? x.total / hectares : null };
+    const areas = [...x.areas.values()].map((a) => ({ ...a, porHa: a.hectares ? a.total / a.hectares : null }));
+    const hectares = soma(areas, (a) => a.hectares);
+    const ano = x.safra.match(/\d{4}/)?.[0];
+    const realizado = {};
+    if (ano && x.cultura_id) {
+      for (const d of noPeriodo(dados.despesas, ano)) {
+        if (d.centro === "geral" || d.cultura_id !== x.cultura_id) continue;
+        const g = GRUPO_DA_CATEGORIA[d.categoria] ?? "Outros";
+        realizado[g] = (realizado[g] ?? 0) + n(d.valor);
+      }
+      for (const a of noPeriodo(dados.aplicacoes, ano)) {
+        if ((a.cultura_id ?? culturaDoTalhao.get(a.talhao_id)) !== x.cultura_id) continue;
+        const g = GRUPO_DO_TIPO[tipoInsumo.get(a.insumo_id)] ?? "Químicos";
+        realizado[g] = (realizado[g] ?? 0) + n(a.quantidade) * (custoMedio.get(a.insumo_id) ?? 0);
+      }
+    }
+    return {
+      ...x, areas, hectares, porHa: hectares ? x.total / hectares : null,
+      ano, realizado, totalRealizado: soma(Object.values(realizado), (v) => v),
+    };
   });
 }
 
