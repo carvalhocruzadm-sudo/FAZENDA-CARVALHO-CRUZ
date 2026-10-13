@@ -171,7 +171,7 @@ function TrocarSenha({ email, aoFechar }) {
 }
 
 function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
-  const { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
+  const { dados, pronto, erro, salvar, salvarVarios, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
 
   // Login marcado como Tratorista em Usuários: sai daqui e fica só no Modo Campo.
   const ehCampo = pronto && emailEhCampo(dados.usuarios, email);
@@ -243,7 +243,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
         <div className="conteudo">
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
           {!pronto ? <div className="vazio">Carregando…</div> : (
-            <Pagina key={tela} dados={dados} salvar={salvar} remover={remover} irPara={irPara} email={email}
+            <Pagina key={tela} dados={dados} salvar={salvar} salvarVarios={salvarVarios} remover={remover} irPara={irPara} email={email}
               sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} abrirCampo={abrirCampo} />
           )}
         </div>

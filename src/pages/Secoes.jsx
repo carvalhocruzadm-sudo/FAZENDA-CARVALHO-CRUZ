@@ -11,6 +11,7 @@ import {
 } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
 import { baixarCSV, brl, data, exibir, nomeRef, numero } from "../lib/formato";
+import { compradoresDoBling, textoDoArquivo } from "../lib/importarCompradores";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
 import TurmasSemana from "./TurmasSemana";
@@ -592,6 +593,45 @@ function VendasPorCultura({ dados }) {
 
 const TicketsPorDia = (props) => <PainelTickets periodoInicial="mes" {...props} />;
 
+/** Cadastro dos compradores, com a importação dos clientes da planilha do Bling. */
+function Compradores(props) {
+  const { dados, salvarVarios } = props;
+  const [aviso, setAviso] = useState(null);
+  const [importando, setImportando] = useState(false);
+
+  const importar = async (e) => {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!arquivo) return;
+    setImportando(true);
+    setAviso(null);
+    try {
+      const { registros, ignorados, fornecedores } = compradoresDoBling(await textoDoArquivo(arquivo), dados.compradores);
+      const atualizados = registros.filter((r) => r.id).length;
+      await salvarVarios("compradores", registros);
+      setAviso(["ok", `${registros.length - atualizados} clientes novos e ${atualizados} atualizados.`
+        + (fornecedores ? ` ${fornecedores} fornecedores e outros contatos ficaram de fora.` : "")
+        + (ignorados.length ? ` Sem CNPJ/CPF, não entraram: ${ignorados.join(", ")}.` : "")]);
+    } catch (erro) {
+      setAviso(["", `Não consegui importar: ${erro.message}`]);
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  return (
+    <>
+      {aviso && <div className={`aviso ${aviso[0]}`}>{aviso[1]}</div>}
+      <Crud colecao="compradores" {...props} acoes={
+        <label className="btn" title="Trazer os clientes da planilha de contatos exportada do Bling (CSV)">
+          <Icone nome="importar" /> {importando ? "Importando…" : "Importar do Bling"}
+          <input type="file" accept=".csv,text/csv" hidden onChange={importar} disabled={importando} />
+        </label>
+      } />
+    </>
+  );
+}
+
 export function Vendas(props) {
   return (
     <Secao props={props} abas={[
@@ -601,7 +641,7 @@ export function Vendas(props) {
       ["areceber", "A receber", AReceber],
       ["resumo", "Resumo por cultura", VendasPorCultura],
       ["notas", "Notas fiscais (Bling)", NotasFiscais],
-      ["compradores", "Compradores"],
+      ["compradores", "Compradores", Compradores],
     ]} />
   );
 }
