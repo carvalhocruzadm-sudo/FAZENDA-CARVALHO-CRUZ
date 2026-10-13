@@ -204,9 +204,8 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
     listarCaixa(dados.despesas)
       .then((caixa) => {
         if (!caixa.length) throw new Error("Nenhum comprovante novo chegou. Se você acabou de enviar, o envio falhou: veja a notificação do Atalho ou abra /api/comprovante no navegador para conferir a configuração.");
-        return daCaixa(caixa[0]);
+        setCompartilhado(daCaixa(caixa[0]));
       })
-      .then(setCompartilhado)
       .catch((err) => window.alert(err.message));
     // Uma vez só, quando o banco do aparelho termina de abrir.
     // eslint-disable-next-line react-hooks/exhaustive-deps

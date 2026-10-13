@@ -112,8 +112,7 @@ com o comprovante na tela; é só tocar na **categoria**, escrever a **descriç�
 No **iPhone** o sistema não deixa app de navegador aparecer no Compartilhar, então o caminho é um
 **Atalho** (app *Atalhos*), igual ao da Distribuidora: no app do banco, **Compartilhar → Comprovante
 Fazenda**. O Atalho manda o arquivo para `api/comprovante.js`, que o guarda na pasta `caixa/`, e abre
-o app, que já mostra a tela *Lançar comprovante* com PIX e — se for PDF — **valor, data e favorecido**
-lidos dele. O que não for lançado fica em **Comprovantes recebidos**, no alto de Financeiro → Despesas
+o app, que já mostra a tela *Lançar comprovante* com PIX e **valor, data e favorecido** lidos dele. O que não for lançado fica em **Comprovantes recebidos**, no alto de Financeiro → Despesas
 (*Ver*, *Lançar* ou jogar fora). Precisa de internet.
 
 Configuração (uma vez):
@@ -129,6 +128,14 @@ Configuração (uma vez):
    - **Abrir URLs**: `https://fazenda-carvalho-cruz.vercel.app/?comprovantes`.
 
 Limite de 4 MB por arquivo. Se o celular for perdido, troque o `COMPROVANTE_TOKEN` na Vercel.
+Abrir `https://fazenda-carvalho-cruz.vercel.app/api/comprovante` no navegador mostra se falta algo.
+
+**Leitura do valor e do favorecido.** O PDF com texto é lido no próprio aparelho; foto, print e PDF
+escaneado vão para a IA do Google (Gemini, a mesma chave da leitura do ticket). Só preenche o que está
+vazio — confira antes de salvar. Vale para o Atalho do iPhone e para o Compartilhar do Android.
+Uma vez só, com a `GEMINI_API_KEY` já cadastrada (ver *Leitura do ticket*): Supabase → **Edge Functions
+→ Deploy a new function → Via Editor**, nome `ler-comprovante`, cole
+[`supabase/functions/ler-comprovante/index.ts`](supabase/functions/ler-comprovante/index.ts) → **Deploy**.
 
 Os arquivos ficam no Storage do Supabase, numa pasta privada (`comprovantes`) criada pelo
 `supabase/schema.sql` — rode o SQL de novo depois de atualizar.

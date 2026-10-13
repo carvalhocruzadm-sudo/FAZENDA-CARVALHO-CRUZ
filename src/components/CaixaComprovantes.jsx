@@ -9,14 +9,13 @@ import { Icone } from "./ui";
 /**
  * Comprovantes que chegaram pelo Atalho do iPhone e ainda não viraram despesa.
  * "Lançar" abre a mesma tela do Compartilhar (categoria em botões), já com o
- * comprovante, PIX e — se for PDF — valor, data e favorecido lidos dele.
+ * comprovante, PIX e o valor, a data e o favorecido lidos dele.
  * Some sozinho quando não há nada esperando.
  */
 export default function CaixaComprovantes({ dados, salvar }) {
   const [caixa, setCaixa] = useState([]);
   const [erro, setErro] = useState(null);
   const [vendo, setVendo] = useState(null);
-  const [abrindo, setAbrindo] = useState(null);
   const [lancando, setLancando] = useState(null);
 
   const atualizar = useCallback(() => {
@@ -32,12 +31,6 @@ export default function CaixaComprovantes({ dados, salvar }) {
   const usados = new Set((dados.despesas ?? []).map((d) => d.comprovante));
   const pendentes = caixa.filter((c) => !usados.has(c.caminho));
   if (!pendentes.length && !erro && !lancando) return null;
-
-  const lancar = async (item) => {
-    setAbrindo(item.caminho);
-    setLancando(await daCaixa(item));
-    setAbrindo(null);
-  };
 
   const descartar = async (item) => {
     if (!window.confirm("Jogar fora este comprovante? Ele não vai virar despesa.")) return;
@@ -72,8 +65,8 @@ export default function CaixaComprovantes({ dados, salvar }) {
             <button className="btn perigo" onClick={() => descartar(item)} title="Não é despesa" aria-label="Descartar">
               <Icone nome="lixo" tamanho={14} />
             </button>
-            <button className="btn primario" onClick={() => lancar(item)} disabled={abrindo === item.caminho}>
-              <Icone nome="mais" /> {abrindo === item.caminho ? "Lendo…" : "Lançar"}
+            <button className="btn primario" onClick={() => setLancando(daCaixa(item))}>
+              <Icone nome="mais" /> Lançar
             </button>
           </div>
           {vendo === item.caminho && <PreviaComprovante caminho={item.caminho} />}

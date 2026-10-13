@@ -1,7 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import useEscolhaTalhoes from "../hooks/useEscolhaTalhoes";
-import { anexar, valorDoTexto } from "../lib/arquivos";
+import { anexar, lerComprovante, lerComprovanteDoArquivo, valorDoTexto } from "../lib/arquivos";
 import { CATEGORIAS_DESPESA, registroNovo } from "../lib/esquema";
 import { PreviaComprovante } from "./Comprovante";
 import Formulario from "./Formulario";
@@ -16,21 +16,43 @@ const ESSENCIAIS = ["descricao", "valor", "data", "favorecido", "forma_pagamento
  * despesa (no lugar de mandar no grupo do WhatsApp).
  *
  * Do Atalho do iPhone o arquivo já está na nuvem (caixa de entrada): chega
- * `caminho` no lugar de `arquivo`, e `lido` traz valor, data e favorecido
- * lidos do PDF. Cancelar deixa o comprovante na caixa para depois.
+ * `caminho` no lugar de `arquivo`. Cancelar deixa o comprovante na caixa.
+ *
+ * Ao abrir, lê valor, data e favorecido do comprovante (lib/arquivos.js →
+ * lerComprovanteDoArquivo) e preenche só o que ainda está vazio.
  */
 export default function LancarComprovante({ compartilhado, dados, salvar, aoFechar, aoSalvar }) {
   const [reg, setReg] = useState(() => {
     const novo = registroNovo("despesas");
     if (compartilhado.arquivo) novo.comprovante = anexar("despesas", compartilhado.arquivo);
     if (compartilhado.caminho) Object.assign(novo, { comprovante: compartilhado.caminho, forma_pagamento: "PIX" });
-    const valor = compartilhado.lido?.valor ?? valorDoTexto(compartilhado.texto);
+    if (compartilhado.dataChegada) novo.data = compartilhado.dataChegada;
+    const valor = valorDoTexto(compartilhado.texto);
     if (valor) novo.valor = valor;
-    const { data, favorecido } = compartilhado.lido ?? {};
-    if (data) novo.data = data;
-    if (favorecido) Object.assign(novo, { favorecido, descricao: `PIX ${favorecido}` });
     return novo;
   });
+  const [leitura, setLeitura] = useState(() => (compartilhado.caminho || compartilhado.arquivo ? "lendo" : null));
+
+  useEffect(() => {
+    const { caminho, arquivo } = compartilhado;
+    if (!caminho && !arquivo) return undefined;
+    let vivo = true;
+    (caminho ? lerComprovante(caminho) : lerComprovanteDoArquivo(arquivo, arquivo.name)).then((lido) => {
+      if (!vivo) return;
+      setReg((r) => {
+        const novo = { ...r };
+        if (lido.valor && !r.valor) novo.valor = lido.valor;
+        if (lido.data) novo.data = lido.data;
+        if (lido.favorecido && !r.favorecido) novo.favorecido = lido.favorecido;
+        if (lido.favorecido && !r.descricao) novo.descricao = `PIX ${lido.favorecido}`;
+        return novo;
+      });
+      setLeitura(lido.aviso ?? (lido.valor || lido.favorecido ? null : "Não achei valor nem favorecido no comprovante. Digite à mão."));
+    });
+    return () => { vivo = false; };
+    // Lê uma vez, ao abrir.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [tudo, setTudo] = useState(false);
@@ -71,6 +93,8 @@ export default function LancarComprovante({ compartilhado, dados, salvar, aoFech
       {compartilhado.arquivo || naCaixa
         ? <div className="aviso ok">Comprovante recebido. Escolha a categoria, escreva a descrição e confira o valor.</div>
         : <div className="aviso info">Nenhum arquivo chegou junto. Dá para lançar assim mesmo e anexar o comprovante abaixo.</div>}
+      {leitura === "lendo" && <div className="aviso info">Lendo o valor e o favorecido do comprovante…</div>}
+      {leitura && leitura !== "lendo" && <div className="aviso info">{leitura}</div>}
       {reg.comprovante && <div style={{ marginBottom: 14 }}><PreviaComprovante caminho={reg.comprovante} /></div>}
 
       <div className="campo" style={{ marginBottom: 14 }}>
