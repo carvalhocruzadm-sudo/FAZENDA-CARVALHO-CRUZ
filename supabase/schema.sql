@@ -83,6 +83,32 @@ drop policy if exists "equipe acessa funcionarios" on public.funcionarios;
 create policy "equipe acessa funcionarios" on public.funcionarios
   for all to authenticated using (true) with check (true);
 
+-- Clientes e fornecedores
+create table if not exists public.contatos (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.contatos add column if not exists nome text;
+alter table public.contatos add column if not exists fantasia text;
+alter table public.contatos add column if not exists tipo text;
+alter table public.contatos add column if not exists pessoa text;
+alter table public.contatos add column if not exists documento text;
+alter table public.contatos add column if not exists inscricao_estadual text;
+alter table public.contatos add column if not exists telefone text;
+alter table public.contatos add column if not exists email text;
+alter table public.contatos add column if not exists endereco text;
+alter table public.contatos add column if not exists cidade text;
+alter table public.contatos add column if not exists uf text;
+alter table public.contatos add column if not exists cep text;
+alter table public.contatos add column if not exists ativo boolean;
+alter table public.contatos add column if not exists observacao text;
+alter table public.contatos add column if not exists id_bling text;
+alter table public.contatos enable row level security;
+drop policy if exists "equipe acessa contatos" on public.contatos;
+create policy "equipe acessa contatos" on public.contatos
+  for all to authenticated using (true) with check (true);
+
 -- Máquinas e veículos
 create table if not exists public.maquinas (
   id uuid primary key default gen_random_uuid(),

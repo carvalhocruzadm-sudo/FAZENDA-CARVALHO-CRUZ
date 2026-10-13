@@ -8,6 +8,7 @@ import {
 } from "../lib/calculos";
 import { ESQUEMA, hoje } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
+import { contatosDoBling, textoDoArquivo } from "../lib/importarContatos";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 
 /**
@@ -269,6 +270,44 @@ function VendasPorCultura({ dados }) {
   );
 }
 
+/** Cadastro de clientes e fornecedores, com a importação da planilha do Bling. */
+function Contatos(props) {
+  const { dados, salvarVarios } = props;
+  const [aviso, setAviso] = useState(null);
+  const [importando, setImportando] = useState(false);
+
+  const importar = async (e) => {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!arquivo) return;
+    setImportando(true);
+    setAviso(null);
+    try {
+      const { registros, ignorados } = contatosDoBling(await textoDoArquivo(arquivo), dados.contatos);
+      const atualizados = registros.filter((r) => r.id).length;
+      await salvarVarios("contatos", registros);
+      setAviso(["ok", `${registros.length - atualizados} contatos novos e ${atualizados} atualizados`
+        + (ignorados.length ? ` (deixei de fora: ${ignorados.join(", ")})` : "") + "."]);
+    } catch (erro) {
+      setAviso(["", `Não consegui importar: ${erro.message}`]);
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  return (
+    <>
+      {aviso && <div className={`aviso ${aviso[0]}`}>{aviso[1]}</div>}
+      <Crud colecao="contatos" {...props} acoes={
+        <label className="btn" title="Trazer a planilha de contatos exportada do Bling (CSV)">
+          <Icone nome="importar" /> {importando ? "Importando…" : "Importar do Bling"}
+          <input type="file" accept=".csv,text/csv" hidden onChange={importar} disabled={importando} />
+        </label>
+      } />
+    </>
+  );
+}
+
 export function Vendas(props) {
   return (
     <>
@@ -278,6 +317,7 @@ export function Vendas(props) {
         ["recebimentos", "Recebimentos"],
         ["areceber", "A receber", AReceber],
         ["resumo", "Resumo por cultura", VendasPorCultura],
+        ["contatos", "Clientes e fornecedores", Contatos],
       ]} />
     </>
   );

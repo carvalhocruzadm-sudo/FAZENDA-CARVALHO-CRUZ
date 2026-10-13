@@ -86,6 +86,21 @@ export function useDados() {
     return item;
   }, [sincronizarAgora]);
 
+  /** Grava vários de uma vez (importação) e sincroniza uma vez só no fim. */
+  const salvarVarios = useCallback(async (colecao, registros) => {
+    const agora = new Date().toISOString();
+    const itens = registros.map((r) => ({ ...r, id: r.id || novoId(), atualizado_em: agora }));
+    const ids = new Set(itens.map((x) => x.id));
+    setDados((d) => ({ ...d, [colecao]: [...d[colecao].filter((x) => !ids.has(x.id)), ...itens] }));
+    for (const item of itens) {
+      await gravarItem(colecao, item);
+      await enfileirar({ tabela: colecao, acao: "upsert", payload: item });
+    }
+    await atualizarContadores();
+    sincronizarAgora();
+    return itens;
+  }, [sincronizarAgora]);
+
   const remover = useCallback(async (colecao, id) => {
     setDados((d) => ({ ...d, [colecao]: d[colecao].filter((x) => x.id !== id) }));
     await apagarItem(colecao, id);
@@ -102,5 +117,5 @@ export function useDados() {
     await sincronizarAgora();
   }, [sincronizarAgora]);
 
-  return { dados, pronto, erro, salvar, remover, sincronizarAgora, recarregarDaNuvem };
+  return { dados, pronto, erro, salvar, salvarVarios, remover, sincronizarAgora, recarregarDaNuvem };
 }

@@ -39,9 +39,9 @@ function exportarCSV(nome, colunas, def, linhas, dados) {
  * Tela padrão de uma coleção: busca, período (nos lançamentos), lista com
  * total no rodapé, formulário para incluir/editar, repetir e apagar.
  * `filtro` restringe a lista (ex.: só os abastecimentos de posto) e
- * `padrao` preenche o registro novo.
+ * `padrao` preenche o registro novo e `acoes` entra como botão extra na barra.
  */
-export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial }) {
+export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes }) {
   const def = ESQUEMA[colecao];
   const [busca, setBusca] = useState("");
   const [periodo, setPeriodo] = useState(periodoInicial ?? (def.lancamento ? "mes" : "tudo"));
@@ -109,6 +109,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
         <input className="entrada busca" placeholder="Buscar…" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar" />
         {def.lancamento && <SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} />}
         <span className="espaco" />
+        {acoes}
         <button className="btn" onClick={() => exportarCSV(colecao, colunas, def, linhas, dados)} disabled={!linhas.length} title="Baixar planilha (CSV)">
           <Icone nome="exportar" /> Planilha
         </button>

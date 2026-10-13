@@ -8,8 +8,10 @@ import { Icone } from "./ui";
 function sugestoesDoCampo(campo, dados) {
   const fixas = campo.sugestoes ?? [];
   if (!campo.sugestoesDe) return fixas;
-  const [colecao, chave] = campo.sugestoesDe;
-  const usadas = (dados[colecao] ?? []).map((x) => x[chave]).filter(Boolean);
+  // Uma fonte [coleção, coluna] ou várias, cada uma com filtro opcional.
+  const fontes = Array.isArray(campo.sugestoesDe[0]) ? campo.sugestoesDe : [campo.sugestoesDe];
+  const usadas = fontes.flatMap(([colecao, chave, filtro]) =>
+    (dados[colecao] ?? []).filter((x) => !filtro || filtro(x)).map((x) => x[chave]).filter(Boolean));
   return [...new Set([...fixas, ...usadas])].sort((a, b) => String(a).localeCompare(String(b)));
 }
 

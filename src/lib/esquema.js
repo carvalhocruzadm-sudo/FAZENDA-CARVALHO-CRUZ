@@ -10,7 +10,9 @@
  *   texto · textoLongo · numero · dinheiro · data · booleano
  *   fotos    → lista de fotos (comprimidas, guardadas no próprio registro)
  *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
- *   sugestao → texto livre com sugestões (dá para criar uma categoria nova)
+ *   sugestao → texto livre com sugestões (dá para criar uma categoria nova);
+ *              `sugestoesDe: [coleção, coluna]` puxa o que já foi digitado, ou
+ *              uma lista delas, cada uma com um filtro opcional na 3ª posição
  *   ref      → aponta para outra coleção (`colecao`, `filtro` opcional)
  *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
@@ -148,6 +150,31 @@ export const ESQUEMA = {
     resumo: (r) => r.nome,
   },
 
+  contatos: {
+    titulo: "Clientes e fornecedores", singular: "contato", icone: "pessoas",
+    descricao: "Quem compra da fazenda e de quem a fazenda compra. Dá para trazer o cadastro do Bling pelo botão Importar (Bling → Contatos → Exportar). Os nomes aparecem como sugestão em Vendas, Recebimentos, Despesas e compras.",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome / razão social", obrigatorio: true },
+      fantasia: { tipo: "texto", rotulo: "Nome fantasia / apelido" },
+      tipo: { tipo: "opcoes", rotulo: "Tipo", padrao: "cliente", opcoes: [["cliente", "Cliente"], ["fornecedor", "Fornecedor"], ["outro", "Outro (contador, prestador…)"]] },
+      pessoa: { tipo: "opcoes", rotulo: "Pessoa", padrao: "juridica", opcoes: [["juridica", "Jurídica (CNPJ)"], ["fisica", "Física (CPF)"]] },
+      documento: { tipo: "texto", rotulo: "CNPJ / CPF" },
+      inscricao_estadual: { tipo: "texto", rotulo: "Inscrição estadual" },
+      telefone: { tipo: "texto", rotulo: "Telefone / celular" },
+      email: { tipo: "texto", rotulo: "E-mail" },
+      endereco: { tipo: "texto", rotulo: "Endereço", dica: "Rua, número, complemento e bairro" },
+      cidade: { tipo: "texto", rotulo: "Cidade" },
+      uf: { tipo: "texto", rotulo: "UF" },
+      cep: { tipo: "texto", rotulo: "CEP" },
+      ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      id_bling: { tipo: "texto", rotulo: "Código no Bling", somenteLeitura: true, dica: "Preenchido pela importação; evita duplicar ao importar de novo" },
+    },
+    colunas: ["nome", "fantasia", "tipo", "documento", "cidade", "uf", "telefone"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.fantasia || r.nome,
+  },
+
   maquinas: {
     titulo: "Máquinas e veículos", singular: "máquina", icone: "trator",
     descricao: "Inventário de tratores, implementos, caminhões e veículos. Tratores e colheitadeiras marcam horímetro; caminhões marcam km.",
@@ -249,7 +276,7 @@ export const ESQUEMA = {
       litros: { tipo: "numero", rotulo: "Litros", casas: 1, obrigatorio: true },
       preco_litro: { tipo: "dinheiro", rotulo: "Preço por litro", casas: 3 },
       valor: { tipo: "dinheiro", rotulo: "Valor total", somenteLeitura: true },
-      fornecedor: { tipo: "texto", rotulo: "Fornecedor" },
+      fornecedor: { tipo: "sugestao", rotulo: "Fornecedor", sugestoesDe: [["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
       nota: { tipo: "texto", rotulo: "Nota fiscal" },
     },
     calcular: (r) => ({ valor: +(num(r.litros) * num(r.preco_litro)).toFixed(2) }),
@@ -287,7 +314,7 @@ export const ESQUEMA = {
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2, obrigatorio: true },
       valor: { tipo: "dinheiro", rotulo: "Valor total", obrigatorio: true },
       cultura_id: { ...refCultura, rotulo: "Comprado para a cultura" },
-      fornecedor: { tipo: "texto", rotulo: "Fornecedor" },
+      fornecedor: { tipo: "sugestao", rotulo: "Fornecedor", sugestoesDe: [["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
       nota: { tipo: "texto", rotulo: "Nota fiscal" },
       lote: { tipo: "texto", rotulo: "Lote / validade" },
     },
@@ -323,7 +350,7 @@ export const ESQUEMA = {
       descricao: { tipo: "texto", rotulo: "Descrição", obrigatorio: true },
       valor: { tipo: "dinheiro", rotulo: "Valor", obrigatorio: true },
       forma_pagamento: { tipo: "sugestao", rotulo: "Forma de pagamento", sugestoes: FORMAS_PAGAMENTO, padrao: "PIX" },
-      favorecido: { tipo: "sugestao", rotulo: "Favorecido", sugestoesDe: ["despesas", "favorecido"] },
+      favorecido: { tipo: "sugestao", rotulo: "Favorecido", sugestoesDe: [["despesas", "favorecido"], ["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
       centro: { tipo: "opcoes", rotulo: "Centro de custo", padrao: "geral", opcoes: [["geral", "Geral da fazenda"], ["cultura", "Cultura"], ["talhao", "Talhão"]] },
       cultura_id: { ...refCultura, mostrarSe: (r) => r.centro !== "geral", obrigatorio: (r) => r.centro === "cultura" },
@@ -382,7 +409,7 @@ export const ESQUEMA = {
     descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
-      comprador: { tipo: "sugestao", rotulo: "Comprador", obrigatorio: true, sugestoesDe: ["vendas", "comprador"] },
+      comprador: { tipo: "sugestao", rotulo: "Comprador", obrigatorio: true, sugestoesDe: [["vendas", "comprador"], ["contatos", "fantasia", (c) => c.tipo === "cliente"], ["contatos", "nome", (c) => c.tipo === "cliente"]] },
       cultura_id: { ...refCultura, obrigatorio: true },
       safra: { tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"] },
       talhao_id: { ...refTalhao, rotulo: "Talhão / sítio" },
@@ -446,7 +473,7 @@ export const ESQUEMA = {
     descricao: "O que cada comprador já pagou (a coluna PAGANTES das planilhas). O saldo a receber é vendas − recebimentos.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
-      comprador: { tipo: "sugestao", rotulo: "Comprador (pagante)", obrigatorio: true, sugestoesDe: ["vendas", "comprador"] },
+      comprador: { tipo: "sugestao", rotulo: "Comprador (pagante)", obrigatorio: true, sugestoesDe: [["vendas", "comprador"], ["contatos", "fantasia", (c) => c.tipo === "cliente"], ["contatos", "nome", (c) => c.tipo === "cliente"]] },
       cultura_id: refCultura,
       valor: { tipo: "dinheiro", rotulo: "Valor", obrigatorio: true },
       forma_pagamento: { tipo: "sugestao", rotulo: "Forma", sugestoes: FORMAS_PAGAMENTO, padrao: "PIX" },
