@@ -17,6 +17,7 @@ export const CULTURAS = [
   ["Silagem", "forragem", "saco", null, "t_ha", false],
   ["Milho verde", "hortalicas", "unidade", null, "nenhuma", false],
   ["Confinamento", "pecuaria", "arroba", null, "nenhuma", false],
+  ["Laranja de terceiros", "citros", "t", null, "nenhuma", false],
 ].map(([nome, grupo, unidade, peso_saca, produtividade, turma_colheita], i) => ({
   id: id("8000", i + 1), nome, grupo, tipo: grupo === "pecuaria" ? "pecuaria" : "agricola", unidade, peso_saca,
   produtividade, turma_colheita, custo_turma_ton: null, ativo: true, observacao: null,
