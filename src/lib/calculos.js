@@ -23,7 +23,14 @@ export function intervalo(periodo, base = new Date()) {
     case "mes_passado": return [iso(new Date(Date.UTC(a, m - 1, 1))), iso(new Date(Date.UTC(a, m, 0)))];
     case "ano": return [`${a}-01-01`, `${a}-12-31`];
     case "safra": return [iso(new Date(Date.UTC(a - 1, m, base.getDate() + 1))), iso(new Date(Date.UTC(a, m, base.getDate())))];
-    default: return [null, null];
+    default:
+      // "2025" = o ano inteiro; "2025-03" = só aquele mês.
+      if (/^\d{4}$/.test(periodo)) return [`${periodo}-01-01`, `${periodo}-12-31`];
+      if (/^\d{4}-\d{2}$/.test(periodo)) {
+        const [pa, pm] = periodo.split("-").map(Number);
+        return [`${periodo}-01`, iso(new Date(Date.UTC(pa, pm, 0)))];
+      }
+      return [null, null];
   }
 }
 
@@ -164,24 +171,31 @@ export function estoqueInsumos(dados) {
  * O que não tem cultura (despesa geral, revisões, diesel sem talhão) fica em
  * "Geral da fazenda".
  */
-export function custos(dados, periodo) {
+export function linhasDeCusto(dados, periodo) {
   const custoMedio = new Map(estoqueInsumos(dados).map((x) => [x.insumo.id, x.custoMedio]));
   const { precoMedio } = diesel(dados);
   const talhaoPorId = new Map(dados.talhoes.map((t) => [t.id, t]));
+  const fazendaDo = (talhaoId, fazendaId) => fazendaId ?? talhaoPorId.get(talhaoId)?.fazenda_id ?? null;
 
-  const linhas = []; // { cultura_id, talhao_id, origem, valor }
+  const linhas = []; // { data, cultura_id, talhao_id, fazenda_id, origem, valor }
   for (const d of noPeriodo(dados.despesas, periodo)) {
-    linhas.push({ cultura_id: d.centro === "geral" ? null : d.cultura_id, talhao_id: d.centro === "talhao" ? d.talhao_id : null, origem: d.categoria || "Despesa", valor: n(d.valor) });
+    const talhao_id = d.centro === "talhao" ? d.talhao_id : null;
+    linhas.push({ data: d.data, cultura_id: d.centro === "geral" ? null : d.cultura_id, talhao_id, fazenda_id: fazendaDo(talhao_id, d.fazenda_id), origem: d.categoria || "Despesa", valor: n(d.valor) });
   }
   for (const a of noPeriodo(dados.aplicacoes, periodo)) {
-    linhas.push({ cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id, origem: "Químicos/insumos aplicados", valor: n(a.quantidade) * (custoMedio.get(a.insumo_id) ?? 0) });
+    linhas.push({ data: a.data, cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id, fazenda_id: fazendaDo(a.talhao_id), origem: "Químicos/insumos aplicados", valor: n(a.quantidade) * (custoMedio.get(a.insumo_id) ?? 0) });
   }
   for (const a of noPeriodo(dados.abastecimentos, periodo)) {
-    linhas.push({ cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id ?? null, origem: "Diesel", valor: custoAbastecimento(a, precoMedio) });
+    linhas.push({ data: a.data, cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id ?? null, fazenda_id: fazendaDo(a.talhao_id), origem: "Diesel", valor: custoAbastecimento(a, precoMedio) });
   }
   for (const r of noPeriodo(dados.revisoes, periodo)) {
-    linhas.push({ cultura_id: null, talhao_id: null, origem: "Manutenção de máquinas", valor: n(r.valor) });
+    linhas.push({ data: r.data, cultura_id: null, talhao_id: null, fazenda_id: null, origem: "Manutenção de máquinas", valor: n(r.valor) });
   }
+  return linhas;
+}
+
+export function custos(dados, periodo) {
+  const linhas = linhasDeCusto(dados, periodo);
 
   const vendas = noPeriodo(dados.vendas, periodo);
   const colheitas = noPeriodo(dados.colheitas, periodo);
@@ -284,23 +298,79 @@ export function resumoFretes(dados, periodo) {
   });
 }
 
-/** Planejado × realizado por safra: o planejamento soma dose × ha × preço. */
+// ─── Planejamento da safra ──────────────────────────────────────────────────
+
+/** Os grupos do resumo da aba PLANEJAMENTO, na ordem da planilha. */
+export const GRUPOS_PLANEJAMENTO = ["Adubação", "Sementes", "Químicos", "Operacional", "Colheita", "Arrendamento", "Juros"];
+
+const GRUPO_DO_TIPO = { adubo: "Adubação", corretivo: "Adubação", semente: "Sementes" };
+const GRUPO_DO_ITEM = { operacional: "Operacional", colheita: "Colheita", arrendamento: "Arrendamento", juros: "Juros" };
+
+/**
+ * Grupo de um item planejado, como na planilha: adubo sólido em Adubação,
+ * semente em Sementes, o resto dos produtos (inclusive foliar) em Químicos.
+ */
+export function grupoDoPlanejamento(p, tipoInsumo) {
+  if (!p.insumo_id && p.descricao) return GRUPO_DO_ITEM[String(p.descricao).trim().toLowerCase()] ?? "Operacional";
+  return GRUPO_DO_TIPO[tipoInsumo.get(p.insumo_id)] ?? "Químicos";
+}
+
+/** Grupo de uma despesa lançada, para o planejado × realizado. */
+const GRUPO_DA_CATEGORIA = {
+  Adubos: "Adubação", Sementes: "Sementes", "Produtos químicos": "Químicos", Arrendamentos: "Arrendamento",
+  Combustíveis: "Operacional", Salários: "Operacional", Peças: "Operacional", Serviços: "Operacional",
+  Alimentação: "Operacional", Fretes: "Operacional",
+};
+
+/**
+ * Planejado × realizado por safra. Planejado: soma dos itens (dose × ha ×
+ * preço). A área conta cada fazenda/talhão uma vez (os itens repetem o
+ * hectare). Realizado: o que foi lançado com a cultura da safra no ano dela
+ * (despesas com centro de custo na cultura/talhão + químicos aplicados).
+ */
 export function resumoPlanejamento(dados) {
+  const tipoInsumo = new Map(dados.insumos.map((i) => [i.id, i.tipo]));
   const mapa = new Map();
   for (const p of dados.planejamento) {
     const k = p.safra || "(sem safra)";
-    if (!mapa.has(k)) mapa.set(k, { safra: k, cultura_id: p.cultura_id, total: 0, porFase: {}, haPorFazenda: {}, itens: 0 });
+    if (!mapa.has(k)) mapa.set(k, { safra: k, cultura_id: p.cultura_id, total: 0, porFase: {}, porGrupo: {}, areas: new Map(), itens: 0 });
     const x = mapa.get(k);
-    x.total += n(p.total);
-    x.porFase[p.fase] = (x.porFase[p.fase] ?? 0) + n(p.total);
-    // Cada fazenda entra uma vez com a sua área (os itens repetem o hectare).
-    const f = p.fazenda_id ?? "-";
-    x.haPorFazenda[f] = Math.max(x.haPorFazenda[f] ?? 0, n(p.hectares));
+    const v = n(p.total);
+    x.total += v;
+    x.porFase[p.fase] = (x.porFase[p.fase] ?? 0) + v;
+    const g = grupoDoPlanejamento(p, tipoInsumo);
+    x.porGrupo[g] = (x.porGrupo[g] ?? 0) + v;
+    const ka = `${p.fazenda_id ?? "-"}|${p.talhao_id ?? "-"}`;
+    if (!x.areas.has(ka)) x.areas.set(ka, { id: ka, fazenda_id: p.fazenda_id ?? null, talhao_id: p.talhao_id ?? null, hectares: 0, total: 0, porGrupo: {} });
+    const a = x.areas.get(ka);
+    a.hectares = Math.max(a.hectares, n(p.hectares));
+    a.total += v;
+    a.porGrupo[g] = (a.porGrupo[g] ?? 0) + v;
     x.itens++;
   }
+  const custoMedio = new Map(estoqueInsumos(dados).map((e) => [e.insumo.id, e.custoMedio]));
+  const culturaDoTalhao = new Map(dados.talhoes.map((t) => [t.id, t.cultura_id]));
   return [...mapa.values()].map((x) => {
-    const hectares = soma(Object.values(x.haPorFazenda), (h) => h);
-    return { ...x, hectares, porHa: hectares ? x.total / hectares : null };
+    const areas = [...x.areas.values()].map((a) => ({ ...a, porHa: a.hectares ? a.total / a.hectares : null }));
+    const hectares = soma(areas, (a) => a.hectares);
+    const ano = x.safra.match(/\d{4}/)?.[0];
+    const realizado = {};
+    if (ano && x.cultura_id) {
+      for (const d of noPeriodo(dados.despesas, ano)) {
+        if (d.centro === "geral" || d.cultura_id !== x.cultura_id) continue;
+        const g = GRUPO_DA_CATEGORIA[d.categoria] ?? "Outros";
+        realizado[g] = (realizado[g] ?? 0) + n(d.valor);
+      }
+      for (const a of noPeriodo(dados.aplicacoes, ano)) {
+        if ((a.cultura_id ?? culturaDoTalhao.get(a.talhao_id)) !== x.cultura_id) continue;
+        const g = GRUPO_DO_TIPO[tipoInsumo.get(a.insumo_id)] ?? "Químicos";
+        realizado[g] = (realizado[g] ?? 0) + n(a.quantidade) * (custoMedio.get(a.insumo_id) ?? 0);
+      }
+    }
+    return {
+      ...x, areas, hectares, porHa: hectares ? x.total / hectares : null,
+      ano, realizado, totalRealizado: soma(Object.values(realizado), (v) => v),
+    };
   });
 }
 

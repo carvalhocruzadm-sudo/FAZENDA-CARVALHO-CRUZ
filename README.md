@@ -267,6 +267,20 @@ de WhatsApp *COMPROVANTES - CARVALHO CRUZ* (dez/2025 a set/2026), lidas dos comp
 planilhas FINANCEIRO — o que já estava nelas não entra de novo. Para desfazer:
 `delete from public.despesas where importado = 'WHATSAPP';`.
 
+[`supabase/importacao-atualizacao-out2026.sql`](supabase/importacao-atualizacao-out2026.sql) traz só o que
+era novo nas planilhas de 13/10/2026 (4 cargas de milho do NEWTON e 4 de silagem). O resto já batia linha a
+linha com o sistema. O script de importação aceita a pasta com só algumas planilhas: as que faltarem ficam de fora.
+
+[`supabase/importacao-planejamento.sql`](supabase/importacao-planejamento.sql) traz o planejamento do milho
+(abas PLANEJAMENTO de MILHO_2025 e MILHO_2026 e SOCIEDADE GILBERTO): um item por produto de cada fase e um
+item para operacional, colheita, arrendamento e juros de cada fazenda. Cria só os produtos e fazendas que
+faltam no cadastro (compara o nome sem acento). Para desfazer:
+`delete from public.planejamento where importado is not null;`. Para gerar de novo:
+
+```bash
+python3 scripts/importar-planejamento.py <pasta com os .xlsx>
+```
+
 ## ☁️ Publicar no Vercel
 
 1. Em [vercel.com](https://vercel.com), **Add New → Project** e escolha este repositório.

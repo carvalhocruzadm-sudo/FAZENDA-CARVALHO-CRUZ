@@ -870,7 +870,9 @@ create table if not exists public.planejamento (
 alter table public.planejamento add column if not exists safra text;
 alter table public.planejamento add column if not exists cultura_id uuid;
 alter table public.planejamento add column if not exists fazenda_id uuid;
+alter table public.planejamento add column if not exists talhao_id uuid;
 alter table public.planejamento add column if not exists fase text;
+alter table public.planejamento add column if not exists descricao text;
 alter table public.planejamento add column if not exists insumo_id uuid;
 alter table public.planejamento add column if not exists dose_ha numeric;
 alter table public.planejamento add column if not exists hectares numeric;
