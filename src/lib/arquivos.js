@@ -122,39 +122,87 @@ export async function descartarDaCaixa(caminho) {
   if (error) throw new Error(`Não deu para descartar: ${error.message}`);
 }
 
-/**
- * Lê valor, data e favorecido do PDF do banco (foto não é lida: aí é digitar).
- * Nunca dá erro: se não leu, volta tudo `null`.
- */
-export async function lerComprovante(caminho) {
-  const vazio = { valor: null, data: null, favorecido: null };
-  if (!ehPdf(caminho)) return vazio;
+/** Texto do PDF (camada de texto); vazio se for escaneado ou der erro. */
+async function textoDoPdf(blob) {
   try {
-    const resposta = await fetch(await enderecoDoArquivo(caminho));
-    if (!resposta.ok) return vazio;
-    const [pdfjs, { default: workerUrl }, { interpretarComprovante }] = await Promise.all([
+    const [pdfjs, { default: workerUrl }] = await Promise.all([
       import("pdfjs-dist/legacy/build/pdf.mjs"),
       import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url"),
-      import("./comprovanteTexto"),
     ]);
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-    const doc = await pdfjs.getDocument({ data: new Uint8Array(await resposta.arrayBuffer()) }).promise;
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
     const partes = [];
     for (let n = 1; n <= Math.min(doc.numPages, 3); n++) {
       const { items } = await (await doc.getPage(n)).getTextContent();
       partes.push(items.map((i) => i.str).join(" "));
     }
-    return interpretarComprovante(partes.join(" "));
+    return partes.join(" ");
   } catch {
-    return vazio;
+    return "";
+  }
+}
+
+const paraBase64 = (blob) => new Promise((resolve, reject) => {
+  const leitor = new FileReader();
+  leitor.onload = () => resolve(String(leitor.result).split(",")[1]);
+  leitor.onerror = () => reject(new Error("Não foi possível abrir o comprovante."));
+  leitor.readAsDataURL(blob);
+});
+
+/** Manda o comprovante para a IA do Google (função ler-comprovante no Supabase). */
+async function lerComIA(blob, tipo) {
+  const { data, error } = await supabase.functions.invoke("ler-comprovante", { body: { arquivo: await paraBase64(blob), tipo } });
+  if (error) {
+    // A função devolve { erro } mesmo quando falha: mostra essa mensagem, que é a que explica.
+    const corpo = await error.context?.json?.().catch(() => null);
+    throw new Error(corpo?.erro ?? error.message);
+  }
+  if (data?.erro) throw new Error(data.erro);
+  const c = data?.comprovante ?? {};
+  const valor = typeof c.valor === "number" ? c.valor : Number(String(c.valor ?? "").replace(/\./g, "").replace(",", "."));
+  return {
+    valor: Number.isFinite(valor) && valor > 0 ? valor : null,
+    data: /^\d{4}-\d{2}-\d{2}$/.test(String(c.data ?? "")) ? c.data : null,
+    favorecido: String(c.favorecido ?? "").trim() || null,
+  };
+}
+
+/**
+ * Lê valor, data e favorecido do comprovante (Blob/File). O PDF com texto é
+ * lido no próprio aparelho; foto, print, PDF escaneado — ou o que faltou —
+ * vão para a IA do Google. Nunca dá erro: o que não leu volta `null`, e
+ * `aviso` explica quando a IA não respondeu.
+ */
+export async function lerComprovanteDoArquivo(blob, nome = "") {
+  const pdf = blob.type === "application/pdf" || /\.pdf$/i.test(nome);
+  let lido = { valor: null, data: null, favorecido: null };
+  if (pdf) {
+    const { interpretarComprovante } = await import("./comprovanteTexto");
+    lido = interpretarComprovante(await textoDoPdf(blob));
+    if (lido.valor && lido.favorecido) return lido;
+  }
+  if (!supabaseConfigurado) return lido;
+  try {
+    const ia = await lerComIA(blob, pdf ? "application/pdf" : blob.type || "image/jpeg");
+    return { valor: lido.valor ?? ia.valor, data: lido.data ?? ia.data, favorecido: lido.favorecido ?? ia.favorecido };
+  } catch (e) {
+    return { ...lido, aviso: `Não consegui ler o comprovante sozinho (${e.message}). Digite o valor e o favorecido.` };
+  }
+}
+
+/** O mesmo, para um comprovante que já está na nuvem (caixa de entrada). */
+export async function lerComprovante(caminho) {
+  try {
+    const resposta = await fetch(await enderecoDoArquivo(caminho));
+    if (!resposta.ok) throw new Error(`erro ${resposta.status} ao baixar`);
+    return await lerComprovanteDoArquivo(await resposta.blob(), caminho);
+  } catch (e) {
+    return { valor: null, data: null, favorecido: null, aviso: `Não consegui abrir o comprovante para ler (${e.message}).` };
   }
 }
 
 /** Data (AAAA-MM-DD, no fuso do aparelho) em que o comprovante chegou. */
 export const diaQueChegou = (criadoEm) => (criadoEm ? new Date(criadoEm).toLocaleDateString("sv-SE") : null);
 
-/** Prepara o que a tela "Lançar comprovante" recebe a partir de um item da caixa. */
-export async function daCaixa(item) {
-  const lido = await lerComprovante(item.caminho);
-  return { arquivo: null, texto: "", caminho: item.caminho, lido: { ...lido, data: lido.data ?? diaQueChegou(item.criadoEm) } };
-}
+/** O que a tela "Lançar comprovante" recebe a partir de um item da caixa (ela mesma lê o arquivo). */
+export const daCaixa = (item) => ({ arquivo: null, texto: "", caminho: item.caminho, dataChegada: diaQueChegou(item.criadoEm) });
