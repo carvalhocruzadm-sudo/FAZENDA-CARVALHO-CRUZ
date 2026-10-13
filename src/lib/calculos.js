@@ -21,7 +21,14 @@ export function intervalo(periodo, base = new Date()) {
     case "mes_passado": return [iso(new Date(Date.UTC(a, m - 1, 1))), iso(new Date(Date.UTC(a, m, 0)))];
     case "ano": return [`${a}-01-01`, `${a}-12-31`];
     case "safra": return [iso(new Date(Date.UTC(a - 1, m, base.getDate() + 1))), iso(new Date(Date.UTC(a, m, base.getDate())))];
-    default: return [null, null];
+    default:
+      // "2025" = o ano inteiro; "2025-03" = só aquele mês.
+      if (/^\d{4}$/.test(periodo)) return [`${periodo}-01-01`, `${periodo}-12-31`];
+      if (/^\d{4}-\d{2}$/.test(periodo)) {
+        const [pa, pm] = periodo.split("-").map(Number);
+        return [`${periodo}-01`, iso(new Date(Date.UTC(pa, pm, 0)))];
+      }
+      return [null, null];
   }
 }
 
@@ -134,24 +141,31 @@ export function estoqueInsumos(dados) {
  * O que não tem cultura (despesa geral, revisões, diesel sem talhão) fica em
  * "Geral da fazenda".
  */
-export function custos(dados, periodo) {
+export function linhasDeCusto(dados, periodo) {
   const custoMedio = new Map(estoqueInsumos(dados).map((x) => [x.insumo.id, x.custoMedio]));
   const { precoMedio } = diesel(dados);
   const talhaoPorId = new Map(dados.talhoes.map((t) => [t.id, t]));
+  const fazendaDo = (talhaoId, fazendaId) => fazendaId ?? talhaoPorId.get(talhaoId)?.fazenda_id ?? null;
 
-  const linhas = []; // { cultura_id, talhao_id, origem, valor }
+  const linhas = []; // { data, cultura_id, talhao_id, fazenda_id, origem, valor }
   for (const d of noPeriodo(dados.despesas, periodo)) {
-    linhas.push({ cultura_id: d.centro === "geral" ? null : d.cultura_id, talhao_id: d.centro === "talhao" ? d.talhao_id : null, origem: d.categoria || "Despesa", valor: n(d.valor) });
+    const talhao_id = d.centro === "talhao" ? d.talhao_id : null;
+    linhas.push({ data: d.data, cultura_id: d.centro === "geral" ? null : d.cultura_id, talhao_id, fazenda_id: fazendaDo(talhao_id, d.fazenda_id), origem: d.categoria || "Despesa", valor: n(d.valor) });
   }
   for (const a of noPeriodo(dados.aplicacoes, periodo)) {
-    linhas.push({ cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id, origem: "Químicos/insumos aplicados", valor: n(a.quantidade) * (custoMedio.get(a.insumo_id) ?? 0) });
+    linhas.push({ data: a.data, cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id, fazenda_id: fazendaDo(a.talhao_id), origem: "Químicos/insumos aplicados", valor: n(a.quantidade) * (custoMedio.get(a.insumo_id) ?? 0) });
   }
   for (const a of noPeriodo(dados.abastecimentos, periodo)) {
-    linhas.push({ cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id ?? null, origem: "Diesel", valor: custoAbastecimento(a, precoMedio) });
+    linhas.push({ data: a.data, cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id ?? null, fazenda_id: fazendaDo(a.talhao_id), origem: "Diesel", valor: custoAbastecimento(a, precoMedio) });
   }
   for (const r of noPeriodo(dados.revisoes, periodo)) {
-    linhas.push({ cultura_id: null, talhao_id: null, origem: "Manutenção de máquinas", valor: n(r.valor) });
+    linhas.push({ data: r.data, cultura_id: null, talhao_id: null, fazenda_id: null, origem: "Manutenção de máquinas", valor: n(r.valor) });
   }
+  return linhas;
+}
+
+export function custos(dados, periodo) {
+  const linhas = linhasDeCusto(dados, periodo);
 
   const vendas = noPeriodo(dados.vendas, periodo);
   const colheitas = noPeriodo(dados.colheitas, periodo);
