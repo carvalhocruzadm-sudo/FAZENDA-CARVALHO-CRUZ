@@ -18,6 +18,9 @@
 //   configurar          → guarda a natureza de operação padrão
 //   emitir { venda_id } → cria a NF-e no Bling, envia para a SEFAZ e guarda o resultado
 //   consultar { venda_id } → pergunta de novo a situação (quando a SEFAZ demora)
+//   emitir_avulsa { nota }  → NF-e sem venda lançada (o app manda comprador, produto,
+//                             quantidade e preço); { nota_id } corrige uma avulsa rejeitada
+//   consultar { nota_id }   → o mesmo que acima, para a nota avulsa
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -139,17 +142,16 @@ const dataBR = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 const igual = (a: unknown, b: unknown) =>
   String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
 
-async function montarNota(venda: Qualquer, naturezaId: number, observacoes: string) {
-  const [{ data: cultura }, { data: compradores }] = await Promise.all([
-    admin.from("culturas").select("*").eq("id", venda.cultura_id).maybeSingle(),
-    admin.from("compradores").select("*"),
-  ]);
-  const comp = (compradores ?? []).find((c: Qualquer) => c.ativo !== false && igual(c.nome, venda.comprador));
+async function lerComprador(nome: string) {
+  const { data: compradores } = await admin.from("compradores").select("*");
+  return (compradores ?? []).find((c: Qualquer) => c.ativo !== false && igual(c.nome, nome));
+}
 
+/** O que falta no cadastro do comprador para a nota. */
+function faltaNoComprador(nome: string, comp: Qualquer) {
   const faltam: string[] = [];
-  // Carga lançada pelo ticket da balança chega sem comprador e sem preço.
-  if (!venda.comprador) faltam.push("comprador da venda");
-  else if (!comp) faltam.push(`cadastro do comprador “${venda.comprador}” (aba Compradores)`);
+  if (!nome) faltam.push("comprador");
+  else if (!comp) faltam.push(`cadastro do comprador “${nome}” (aba Compradores)`);
   else {
     if (![11, 14].includes(so(comp.documento).length)) faltam.push("CNPJ/CPF do comprador");
     if (comp.contribuinte === "1" && !comp.ie) faltam.push("inscrição estadual do comprador");
@@ -157,6 +159,34 @@ async function montarNota(venda: Qualquer, naturezaId: number, observacoes: stri
       if (!comp[c]) faltam.push(`${r} do comprador`);
     }
   }
+  return faltam;
+}
+
+/** Os dados de uma nota, venham da venda ou da nota avulsa. */
+type Pedido = {
+  comp: Qualquer;
+  codigo: string;
+  descricao: string;
+  ncm: string;
+  unidade: string;
+  quantidade: number;
+  valor: number;
+  pesoKg: number | null;
+  volumes: number;
+  placa: string;
+  frete: number;
+  fretePorConta: number;
+  observacoes: string;
+};
+
+async function montarNota(venda: Qualquer, naturezaId: number, observacoes: string) {
+  const [{ data: cultura }, comp] = await Promise.all([
+    admin.from("culturas").select("*").eq("id", venda.cultura_id).maybeSingle(),
+    lerComprador(venda.comprador),
+  ]);
+
+  // Carga lançada pelo ticket da balança chega sem comprador e sem preço.
+  const faltam = faltaNoComprador(venda.comprador, comp);
   if (!(n(venda.preco_unitario) > 0)) faltam.push("preço da venda");
   if (!cultura) faltam.push("cultura da venda");
   else if (so(cultura.ncm).length !== 8) faltam.push(`NCM da cultura ${cultura.nome} (8 números, no cadastro de Culturas)`);
@@ -165,22 +195,78 @@ async function montarNota(venda: Qualquer, naturezaId: number, observacoes: stri
   // Quantidade da nota = a da venda menos o desconto em kg (umidade, impureza).
   const kgUn = kgPorUnidade(venda.unidade, cultura);
   const quantidade = kgUn ? n(venda.quantidade) - n(venda.desconto_kg) / kgUn : n(venda.quantidade);
-  const pesoKg = venda.peso_liquido ? n(venda.peso_liquido) - n(venda.desconto_kg) : null;
   if (quantidade <= 0) throw new ErroBling("A quantidade da venda está zerada.");
-
-  const documento = so(comp.documento);
-  const placa = String(venda.placa ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const descricao = [cultura.nome, venda.classificacao].filter(Boolean).join(" - ").toUpperCase();
 
   // Quem paga o frete: caminhão da fazenda = próprio do remetente (3);
   // frete cobrado do comprador = por conta do remetente (0); senão o
   // comprador busca (1, FOB).
   const fretePorConta = venda.caminhao_id ? 3 : n(venda.frete_cobrado) ? 0 : 1;
 
-  const obs = [
-    observacoes,
-    venda.vencimento && `Vencimento: ${dataBR(venda.vencimento)}`,
-  ].filter(Boolean).join("\n");
+  return corpoDaNota({
+    comp,
+    codigo: cultura.codigo_nf || cultura.nome.toUpperCase(),
+    descricao: [cultura.nome, venda.classificacao].filter(Boolean).join(" - "),
+    ncm: cultura.ncm,
+    unidade: venda.unidade,
+    quantidade,
+    valor: n(venda.preco_unitario),
+    pesoKg: venda.peso_liquido ? n(venda.peso_liquido) - n(venda.desconto_kg) : null,
+    volumes: n(venda.volumes),
+    placa: venda.placa,
+    frete: n(venda.frete_cobrado),
+    fretePorConta,
+    observacoes: [observacoes, venda.vencimento && `Vencimento: ${dataBR(venda.vencimento)}`].filter(Boolean).join("\n"),
+  }, naturezaId);
+}
+
+/** Nota avulsa: os dados vêm digitados no app, sem venda lançada. */
+async function montarAvulsa(d: Qualquer, naturezaId: number) {
+  const nome = String(d?.comprador ?? "").trim();
+  const [comp, { data: cultura }] = await Promise.all([
+    lerComprador(nome),
+    d?.cultura_id
+      ? admin.from("culturas").select("*").eq("id", d.cultura_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const descricao = String(d?.descricao ?? "").trim() || cultura?.nome || "";
+  const ncm = so(d?.ncm) || so(cultura?.ncm);
+  const quantidade = n(d?.quantidade);
+
+  const faltam = faltaNoComprador(nome, comp);
+  if (!descricao) faltam.push("produto");
+  if (ncm.length !== 8) faltam.push("NCM do produto (8 números)");
+  if (!(quantidade > 0)) faltam.push("quantidade");
+  if (!(n(d?.preco_unitario) > 0)) faltam.push("preço");
+  if (faltam.length) throw new ErroBling(`Falta preencher: ${faltam.join("; ")}.`);
+
+  const frete = n(d?.frete);
+  // Quem paga o frete, como escolhido no app (vazio: igual à nota da venda).
+  const porConta = [0, 1, 2, 3, 4, 9].includes(Number(d?.frete_por_conta)) && String(d?.frete_por_conta ?? "") !== ""
+    ? Number(d.frete_por_conta)
+    : frete ? 0 : 1;
+
+  return corpoDaNota({
+    comp,
+    codigo: String(d?.codigo ?? "").trim() || cultura?.codigo_nf || descricao.toUpperCase(),
+    descricao,
+    ncm,
+    unidade: d?.unidade || "kg",
+    quantidade,
+    valor: n(d?.preco_unitario),
+    pesoKg: n(d?.peso_kg) || null,
+    volumes: n(d?.volumes),
+    placa: d?.placa,
+    frete,
+    fretePorConta: porConta,
+    observacoes: String(d?.observacoes ?? "").trim(),
+  }, naturezaId);
+}
+
+/** O corpo que o Bling pede para criar a NF-e. */
+function corpoDaNota(p: Pedido, naturezaId: number) {
+  const comp = p.comp;
+  const documento = so(comp.documento);
+  const placa = String(p.placa ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
   return {
     tipo: 1,
@@ -201,31 +287,39 @@ async function montarNota(venda: Qualquer, naturezaId: number, observacoes: stri
       },
     },
     itens: [{
-      codigo: cultura.codigo_nf || cultura.nome.toUpperCase(),
-      descricao,
-      unidade: UNIDADE_NF[venda.unidade] ?? "UN",
-      quantidade: +quantidade.toFixed(4),
-      valor: n(venda.preco_unitario),
+      codigo: p.codigo,
+      descricao: p.descricao.toUpperCase(),
+      unidade: UNIDADE_NF[p.unidade] ?? "UN",
+      quantidade: +p.quantidade.toFixed(4),
+      valor: p.valor,
       tipo: "P",
       origem: 0,
-      classificacaoFiscal: so(cultura.ncm),
-      ...(pesoKg ? { pesoBruto: pesoKg, pesoLiquido: pesoKg } : {}),
+      classificacaoFiscal: so(p.ncm),
+      ...(p.pesoKg ? { pesoBruto: p.pesoKg, pesoLiquido: p.pesoKg } : {}),
     }],
     transporte: {
-      fretePorConta,
-      ...(n(venda.frete_cobrado) ? { frete: n(venda.frete_cobrado) } : {}),
+      fretePorConta: p.fretePorConta,
+      ...(p.frete ? { frete: p.frete } : {}),
       ...(placa.length === 7 ? { veiculo: { placa } } : {}),
-      ...(pesoKg ? { volume: { quantidade: n(venda.volumes) || 1, pesoBruto: pesoKg, pesoLiquido: pesoKg } } : {}),
+      ...(p.pesoKg ? { volume: { quantidade: p.volumes || 1, pesoBruto: p.pesoKg, pesoLiquido: p.pesoKg } } : {}),
     },
-    ...(obs ? { observacoes: obs } : {}),
+    ...(p.observacoes ? { observacoes: p.observacoes } : {}),
   };
 }
 
-/** Lê a nota no Bling e guarda o que interessa em notas_fiscais. */
-async function atualizarRegistro(venda: Qualquer, blingId: number, mensagem: string | null) {
+/**
+ * Lê a nota no Bling e guarda o que interessa em notas_fiscais. A nota da
+ * venda é achada pela venda; a avulsa (sem venda), pelo id do registro.
+ */
+async function atualizarRegistro(
+  venda: Qualquer, blingId: number, mensagem: string | null, notaId?: string, pedido?: unknown,
+) {
   const { data: nf } = await bling("GET", `/nfe/${blingId}`);
   const registro = {
-    venda_id: venda.id,
+    ...(notaId ? { id: notaId } : {}),
+    // Avulsa: o que foi digitado, para corrigir sem digitar tudo de novo.
+    ...(pedido ? { pedido } : {}),
+    venda_id: venda.id ?? null,
     // Nota ainda não emitida vem com a data zerada.
     data: (/^[1-9]/.test(String(nf.dataEmissao ?? "")) ? String(nf.dataEmissao) : agoraBrasilia()).slice(0, 10),
     comprador: nf.contato?.nome ?? venda.comprador,
@@ -240,7 +334,7 @@ async function atualizarRegistro(venda: Qualquer, blingId: number, mensagem: str
     atualizado_em: new Date().toISOString(),
   };
   const { data, error } = await admin.from("notas_fiscais")
-    .upsert(registro, { onConflict: "venda_id" }).select().single();
+    .upsert(registro, { onConflict: venda.id ? "venda_id" : "id" }).select().single();
   if (error) throw new ErroBling(`A nota foi para o Bling, mas não consegui guardar no sistema: ${error.message}`);
   return data;
 }
@@ -265,9 +359,16 @@ async function emitir(vendaId: string, naturezaPedida: number | null, observacoe
   if (!naturezaId) throw new ErroBling("Escolha a natureza de operação (na aba Notas fiscais).");
 
   const corpo = await montarNota(venda, Number(naturezaId), observacoes);
+  const { blingId, mensagem } = await criarEEnviar(corpo, anterior);
+  return atualizarRegistro(venda, blingId, mensagem);
+}
 
-  // Nota que ficou pendente ou foi rejeitada: corrige a mesma no Bling em vez
-  // de criar outra (cancelada ou denegada não volta: cria uma nova).
+/**
+ * Cria a nota no Bling e manda para a SEFAZ. Nota que ficou pendente ou foi
+ * rejeitada: corrige a mesma no Bling em vez de criar outra (cancelada ou
+ * denegada não volta: cria uma nova).
+ */
+async function criarEEnviar(corpo: unknown, anterior: Qualquer) {
   let blingId: number;
   if (anterior?.bling_id && [1, 4].includes(Number(anterior.situacao))) {
     blingId = Number(anterior.bling_id);
@@ -284,13 +385,39 @@ async function emitir(vendaId: string, naturezaPedida: number | null, observacoe
     // Rejeição da SEFAZ: a nota fica no Bling para corrigir e enviar de novo.
     mensagem = String((e as Error).message);
   }
-  return atualizarRegistro(venda, blingId, mensagem);
+  return { blingId, mensagem };
 }
 
-async function consultar(vendaId: string) {
-  const { data: anterior } = await admin.from("notas_fiscais").select("*").eq("venda_id", vendaId).maybeSingle();
-  if (!anterior?.bling_id) throw new ErroBling("Esta venda ainda não tem nota no Bling.");
-  return atualizarRegistro({ id: vendaId, comprador: anterior.comprador }, anterior.bling_id, anterior.mensagem);
+async function emitirAvulsa(dados: Qualquer, notaId: string | null, naturezaPedida: number | null) {
+  let anterior: Qualquer = null;
+  if (notaId) {
+    const { data } = await admin.from("notas_fiscais").select("*").eq("id", notaId).maybeSingle();
+    if (!data || data.venda_id) throw new ErroBling("Não achei esta nota avulsa.");
+    if (AUTORIZADA.includes(Number(data.situacao))) throw new ErroBling(`A NF-e nº ${data.numero} já está autorizada.`);
+    if (ESPERANDO_SEFAZ.includes(Number(data.situacao))) {
+      return atualizarRegistro({ comprador: data.comprador }, data.bling_id, "Ainda aguardando a SEFAZ.", data.id);
+    }
+    anterior = data;
+  }
+
+  const conexao = await lerConexao();
+  const naturezaId = naturezaPedida || conexao?.natureza_id;
+  if (!naturezaId) throw new ErroBling("Escolha a natureza de operação (na aba Notas fiscais).");
+
+  const corpo = await montarAvulsa(dados, Number(naturezaId));
+  const { blingId, mensagem } = await criarEEnviar(corpo, anterior);
+  return atualizarRegistro({ comprador: dados?.comprador }, blingId, mensagem, anterior?.id ?? crypto.randomUUID(), dados);
+}
+
+async function consultar(vendaId: string | null, notaId: string | null) {
+  const { data: anterior } = notaId
+    ? await admin.from("notas_fiscais").select("*").eq("id", notaId).maybeSingle()
+    : await admin.from("notas_fiscais").select("*").eq("venda_id", vendaId).maybeSingle();
+  if (!anterior?.bling_id) throw new ErroBling("Esta nota ainda não está no Bling.");
+  return atualizarRegistro(
+    { id: anterior.venda_id, comprador: anterior.comprador }, anterior.bling_id, anterior.mensagem,
+    anterior.venda_id ? undefined : anterior.id,
+  );
 }
 
 // ─── Entrada ────────────────────────────────────────────────────────────────
@@ -358,9 +485,11 @@ Deno.serve(async (req) => {
       case "emitir":
         if (!corpo.venda_id) return json({ erro: "Informe a venda." }, 400);
         return json({ nota: await emitir(corpo.venda_id, corpo.natureza_id ?? null, String(corpo.observacoes ?? "").trim()) });
+      case "emitir_avulsa":
+        return json({ nota: await emitirAvulsa(corpo.nota, corpo.nota_id ?? null, corpo.natureza_id ?? null) });
       case "consultar":
-        if (!corpo.venda_id) return json({ erro: "Informe a venda." }, 400);
-        return json({ nota: await consultar(corpo.venda_id) });
+        if (!corpo.venda_id && !corpo.nota_id) return json({ erro: "Informe a venda." }, 400);
+        return json({ nota: await consultar(corpo.venda_id ?? null, corpo.nota_id ?? null) });
       default:
         return json({ erro: "Ação desconhecida." }, 400);
     }

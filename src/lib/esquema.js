@@ -900,6 +900,8 @@ export const ESQUEMA = {
       link_danfe: { tipo: "texto", rotulo: "DANFE" },
       valor: { tipo: "dinheiro", rotulo: "Valor da nota" },
       mensagem: { tipo: "textoLongo", rotulo: "Mensagem do Bling / SEFAZ" },
+      // Nota avulsa (sem venda): o que foi digitado na tela, para corrigir.
+      pedido: { tipo: "itens", rotulo: "Dados da nota avulsa" },
     },
     colunas: ["data", "numero", "comprador", "valor", "situacao"],
   },
