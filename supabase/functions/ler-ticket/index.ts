@@ -1,10 +1,12 @@
 // Lê a foto do ticket da balança e devolve os dados da pesagem (placa, pesos…).
-// Roda no Supabase (Edge Functions), com a mesma chave da Anthropic da
-// consulta de produto. Só quem está logado no app consegue chamar.
+// Roda no Supabase (Edge Functions) e usa a IA do Google (Gemini), que tem
+// plano gratuito. Só quem está logado no app consegue chamar.
 //
-// Deploy:  supabase functions deploy ler-ticket
-// Chave:   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   (a mesma da consulta de produto)
-// (opcional) supabase secrets set MODELO_TICKET=claude-sonnet-5-5
+// Chave grátis: aistudio.google.com → Get API key → Create API key
+// No Supabase:  Edge Functions → Secrets → GEMINI_API_KEY = a chave
+// Deploy:       Edge Functions → ler-ticket → Code (colar este arquivo) → Deploy
+//               ou: supabase functions deploy ler-ticket
+// (opcional)    MODELO_TICKET = outro modelo do Gemini (padrão: gemini-flash-latest)
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -43,32 +45,32 @@ function lerJson(texto: string) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
-  const chave = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!chave) return json({ erro: "A chave da IA ainda não foi configurada no Supabase (ANTHROPIC_API_KEY)." }, 500);
+  const chave = Deno.env.get("GEMINI_API_KEY");
+  if (!chave) return json({ erro: "A chave da IA do Google ainda não foi configurada no Supabase (GEMINI_API_KEY)." }, 500);
 
   const { imagem } = await req.json().catch(() => ({}));
   if (!imagem) return json({ erro: "Mande a foto do ticket." }, 400);
 
-  const resposta = await fetch("https://api.anthropic.com/v1/messages", {
+  const modelo = Deno.env.get("MODELO_TICKET") ?? "gemini-flash-latest";
+  const resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
     method: "POST",
-    headers: { "x-api-key": chave, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    headers: { "x-goog-api-key": chave, "content-type": "application/json" },
     body: JSON.stringify({
-      model: Deno.env.get("MODELO_TICKET") ?? "claude-sonnet-5-5",
-      max_tokens: 800,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imagem } },
-          { type: "text", text: PEDIDO },
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: "image/jpeg", data: imagem } },
+          { text: PEDIDO },
         ],
       }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0 },
     }),
   });
 
   const dados = await resposta.json().catch(() => ({}));
+  if (resposta.status === 429) return json({ erro: "O limite gratuito da IA do Google acabou por hoje. Tente de novo mais tarde." }, 429);
   if (!resposta.ok) return json({ erro: dados?.error?.message ?? "A leitura do ticket falhou." }, 502);
 
-  const texto = (dados.content ?? []).filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("");
+  const texto = (dados.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("");
   const ticket = lerJson(texto);
   if (!ticket) return json({ erro: "Não consegui ler o ticket nesta foto." }, 422);
   return json({ ticket });

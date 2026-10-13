@@ -1,5 +1,5 @@
 /**
- * Leitura da foto do ticket da balança pela IA (função ler-ticket no Supabase).
+ * Leitura da foto do ticket da balança pela IA do Google (função ler-ticket no Supabase).
  *
  * A foto vira os dados da pesagem: placa, tipo de carro, tara (entrada),
  * bruto (saída), peso líquido, desconto, comprador, motorista e nota fiscal.
@@ -53,7 +53,11 @@ export async function lerTicketDaFoto(caminho) {
   if (!navigator.onLine) throw new Error("Sem internet agora: a foto é lida quando a conexão voltar.");
   const imagem = await base64DaFoto(caminho);
   const { data, error } = await supabase.functions.invoke("ler-ticket", { body: { imagem } });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // A função devolve { erro } mesmo quando falha: mostra essa mensagem, que é a que explica.
+    const corpo = await error.context?.json?.().catch(() => null);
+    throw new Error(corpo?.erro ?? error.message);
+  }
   if (data?.erro) throw new Error(data.erro);
   const t = data?.ticket ?? {};
   return {

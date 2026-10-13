@@ -180,11 +180,15 @@ desconto, comprador, motorista e nota fiscal** vêm preenchidos sozinhos.
   (e o botão **Puxar os dados da foto do ticket** lê de novo). Só preenche o que está vazio.
 - Ticket repartido em vários talhões/turmas: tara e bruto são do caminhão inteiro, então vão para a observação.
 
-Usa a mesma chave da consulta de produto. Uma vez só:
+Usa a IA do Google (Gemini), no **plano gratuito**. Uma vez só:
 
-```bash
-supabase functions deploy ler-ticket
-```
+1. Em **aistudio.google.com**, entre com a conta Google → **Get API key** → **Create API key** e copie a chave.
+2. No Supabase → **Edge Functions → Secrets**: Name `GEMINI_API_KEY`, Value a chave → **Save**.
+3. Publique a função `ler-ticket` (Edge Functions → Deploy a new function → Via Editor, colando
+   `supabase/functions/ler-ticket/index.ts`; ou `supabase functions deploy ler-ticket`).
+
+O plano gratuito tem um limite por dia (bem acima do número de tickets da fazenda) e o Google pode usar
+as fotos para melhorar a IA dele.
 
 ## 🧾 Emissão de NF-e pelo Bling
 
