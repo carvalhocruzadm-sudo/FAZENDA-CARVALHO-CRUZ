@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from "react";
 
-import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
+import { ESQUEMA, campoObrigatorio, campoVisivel, culturaDoRegistro } from "../lib/esquema";
 import { SEM_CULTURA, fazendaDoTalhao } from "../lib/talhoes";
 import EscolhaTalhoes from "./EscolhaTalhoes";
 import { CampoFoto } from "./Foto";
@@ -8,12 +8,17 @@ import { CampoArquivo } from "./Comprovante";
 import ConsultaProduto from "./ConsultaProduto";
 import { Icone } from "./ui";
 
-/** Sugestões de um campo: a lista fixa + o que já foi digitado antes. */
-function sugestoesDoCampo(campo, dados) {
-  const fixas = campo.sugestoes ?? [];
+/**
+ * Sugestões de um campo: a lista fixa (a da cultura escolhida, se o campo
+ * tiver) + o que já foi digitado antes (só nessa cultura, se o campo pedir).
+ */
+function sugestoesDoCampo(campo, dados, cultura) {
+  const fixas = (cultura && campo.sugestoesDaCultura?.(cultura)) ?? campo.sugestoes ?? [];
   if (!campo.sugestoesDe) return fixas;
   const [colecao, chave] = campo.sugestoesDe;
-  const usadas = (dados[colecao] ?? []).map((x) => x[chave]).filter(Boolean);
+  const usadas = (dados[colecao] ?? [])
+    .filter((x) => !cultura || !campo.historicoDaCultura || x.cultura_id === cultura.id)
+    .map((x) => x[chave]).filter(Boolean);
   return [...new Set([...fixas, ...usadas])].sort((a, b) => String(a).localeCompare(String(b)));
 }
 
@@ -113,14 +118,21 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
     case "data":
       controle = <input id={id} type="date" value={valor ?? ""} onChange={(e) => set(e.target.value)} />;
       break;
-    case "opcoes":
+    case "opcoes": {
+      // Só as opções que servem para a cultura escolhida (ex.: laranja não é vendida em saca).
+      const cultura = campo.opcoesDaCultura && culturaDoRegistro(reg, dados);
+      const permitidas = cultura && campo.opcoesDaCultura(cultura);
+      const opcoes = permitidas
+        ? campo.opcoes.filter(([v]) => v === valor || v === cultura.unidade || permitidas.includes(v))
+        : campo.opcoes;
       controle = (
         <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
           {!obrig && <option value="">—</option>}
-          {campo.opcoes.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
+          {opcoes.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
         </select>
       );
       break;
+    }
     case "ref": {
       const def = ESQUEMA[campo.colecao];
       const deProduto = campo.colecao === "insumos";
@@ -181,7 +193,7 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
       controle = <CampoArquivo id={id} colecao={colecao} valor={valor} set={set} />;
       break;
     case "sugestao": {
-      const lista = sugestoesDoCampo(campo, dados);
+      const lista = sugestoesDoCampo(campo, dados, culturaDoRegistro(reg, dados));
       controle = (
         <>
           <input id={id} list={`${id}-l`} value={valor ?? ""} onChange={(e) => set(e.target.value)} autoComplete="off" />
@@ -222,13 +234,22 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
     });
   };
 
-  const campos = useMemo(
-    () => (somente ? somente.map((c) => [c, def.campos[c]]) : Object.entries(def.campos)),
-    [def, somente]
-  );
+  // A cultura vem logo depois da data: é ela que decide o que mais se pergunta.
+  const campos = useMemo(() => {
+    if (somente) return somente.map((c) => [c, def.campos[c]]);
+    const todos = Object.entries(def.campos);
+    const cultura = todos.find(([c]) => c === "cultura_id");
+    if (!cultura) return todos;
+    const resto = todos.filter(([c]) => c !== "cultura_id");
+    const depois = resto[0]?.[0] === "data" ? 1 : 0;
+    return [...resto.slice(0, depois), cultura, ...resto.slice(depois)];
+  }, [def, somente]);
 
   const comEscolha = escolha?.ativo(reg);
-  const visiveis = campos.filter(([, c]) => campoVisivel(c, reg));
+  // Campos que dependem da cultura só aparecem depois de escolhê-la.
+  const temCultura = Boolean(def.campos.cultura_id && campoVisivel(def.campos.cultura_id, reg, dados));
+  const faltaCultura = temCultura && !reg.cultura_id && campos.some(([, c]) => c.paraCultura);
+  const visiveis = campos.filter(([, c]) => campoVisivel(c, reg, dados) && !(faltaCultura && c.paraCultura));
   // A escolha entra no lugar do primeiro dos dois (cultura ou talhão); o outro some.
   const lugar = comEscolha && visiveis.find(([c]) => c === "cultura_id" || c === "talhao_id")?.[0];
 
@@ -248,6 +269,7 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
         }
         return <Campo key={chave} colecao={colecao} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />;
       })}
+      {faltaCultura && <small className="largo dica-cultura">Escolha a cultura para ver os campos dela.</small>}
       {colecao === "insumos" && <div className="largo"><ConsultaProduto reg={reg} setReg={setReg} /></div>}
     </div>
   );

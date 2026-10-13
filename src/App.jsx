@@ -1,8 +1,9 @@
-import { Component, useCallback, useEffect, useState } from "react";
+import { Component, useCallback, useEffect, useMemo, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 import LancarComprovante from "./components/LancarComprovante";
 import { Icone, Modal } from "./components/ui";
+import { CulturaAtiva } from "./hooks/useCulturaAtiva";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { lerCompartilhado } from "./lib/arquivos";
@@ -41,6 +42,32 @@ function IndicadorSync({ aoClicar }) {
         : s.pendentes ? ["pendente", `${s.pendentes} para enviar`]
           : ["", "Sincronizado"];
   return <button className="sync" onClick={aoClicar}><i className={cls} /> {texto}</button>;
+}
+
+/** Escolher a cultura aqui vale para o sistema todo (fica guardado no aparelho). */
+function useCulturaGuardada(culturas, pronto) {
+  const [cultura, setCulturaEstado] = useState(() => {
+    try { return localStorage.getItem("fcc-cultura") || ""; } catch { return ""; }
+  });
+  const setCultura = useCallback((c) => {
+    setCulturaEstado(c);
+    try { localStorage.setItem("fcc-cultura", c); } catch { /* sem armazenamento: só não lembra */ }
+  }, []);
+  // Cultura apagada ou desativada: volta para todas.
+  const existe = !cultura || !pronto || (culturas ?? []).some((c) => c.id === cultura && c.ativo !== false);
+  return [existe ? cultura : "", setCultura];
+}
+
+function SeletorCultura({ culturas, cultura, setCultura }) {
+  const ativas = (culturas ?? []).filter((c) => c.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  if (!ativas.length) return null;
+  return (
+    <select className={`entrada cultura-ativa${cultura ? " ativo" : ""}`} value={cultura} onChange={(e) => setCultura(e.target.value)}
+      aria-label="Cultura" title="Mostra só os lançamentos desta cultura e já lança nela">
+      <option value="">Todas as culturas</option>
+      {ativas.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+    </select>
+  );
 }
 
 function AvisoAtualizacao() {
@@ -155,6 +182,8 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
   });
   const [menuAberto, setMenuAberto] = useState(false);
+  const [cultura, setCultura] = useCulturaGuardada(dados.culturas, pronto);
+  const culturaAtiva = useMemo(() => ({ cultura, setCultura }), [cultura, setCultura]);
   const [compartilhado, setCompartilhado] = useState(null);
 
   // Veio do "Compartilhar" do celular (comprovante do banco): abre o lançamento.
@@ -179,6 +208,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
   const [, rotulo, , Pagina] = MENU.find(([id]) => id === tela) ?? MENU[0];
 
   return (
+    <CulturaAtiva.Provider value={culturaAtiva}>
     <div className="app">
       {menuAberto && <div className="veu" onClick={() => setMenuAberto(false)} />}
       <aside className={`lateral ${menuAberto ? "aberta" : ""}`}>
@@ -207,6 +237,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
         <header className="topo">
           <button className="btn icone menu" onClick={() => setMenuAberto(true)} aria-label="Abrir menu"><Icone nome="menu" /></button>
           <h1>{rotulo}</h1>
+          {pronto && <SeletorCultura culturas={dados.culturas} cultura={cultura} setCultura={setCultura} />}
           <IndicadorSync aoClicar={() => irPara("sync")} />
         </header>
         <div className="conteudo">
@@ -224,6 +255,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
       )}
       {trocandoSenha && <TrocarSenha email={email} aoFechar={fecharTrocaSenha} />}
     </div>
+    </CulturaAtiva.Provider>
   );
 }
 

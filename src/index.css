@@ -464,3 +464,9 @@ td.acoes .btn + .btn { margin-left: 4px; }
 .acoes-ticket .btn { padding: 6px 10px; }
 .miniatura-ticket { height: 56px; border-radius: 6px; border: 1px solid var(--linha); }
 .foto-ticket-edicao { display: block; max-width: 100%; max-height: 45vh; margin: 0 auto 12px; border-radius: 8px; }
+
+/* Seletor de cultura do topo: vale para todas as telas. */
+.cultura-ativa { width: auto; max-width: 200px; }
+.cultura-ativa.ativo { border-color: var(--laranja); background: var(--laranja-pale); font-weight: 600; }
+.dica-cultura { color: var(--texto-2); font-style: italic; }
+@media (max-width: 720px) { .topo .cultura-ativa { max-width: 130px; padding: 6px 8px; } }
