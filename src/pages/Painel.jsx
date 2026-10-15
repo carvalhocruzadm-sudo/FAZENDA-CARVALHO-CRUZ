@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { Abas, Icone, Stat } from "../components/ui";
 import { PERIODOS, aReceber, diesel, estoqueInsumos, intervalo, situacaoRevisao, soma } from "../lib/calculos";
-import { brl, baixarCSV, data, numero } from "../lib/formato";
+import { brl, baixarCSV, data, leitura, numero } from "../lib/formato";
 import { KG_CAIXA, NOMES_MESES, anosComDados, indicadores, mesLegivel } from "../lib/indicadores";
 import { nomesTalhoesDaOrdem } from "../lib/talhoes";
 import useCulturaAtiva from "../hooks/useCulturaAtiva";
@@ -251,8 +251,8 @@ function Resumo({ dados, r, irPara }) {
     for (const m of dados.maquinas.filter((x) => x.ativo !== false)) {
       const s = situacaoRevisao(dados, m);
       const un = m.medidor === "km" ? "km" : "h";
-      if (s.estado === "vencida") lista.push({ tipo: "ruim", texto: `${m.nome}: revisão vencida há ${numero(-s.faltam, 0)} ${un}`, ir: "maquinas" });
-      if (s.estado === "proxima") lista.push({ tipo: "atencao", texto: `${m.nome}: revisão em ${numero(s.faltam, 0)} ${un}`, ir: "maquinas" });
+      if (s.estado === "vencida") lista.push({ tipo: "ruim", texto: `${m.nome}: revisão vencida há ${leitura(-s.faltam)} ${un}`, ir: "maquinas" });
+      if (s.estado === "proxima") lista.push({ tipo: "atencao", texto: `${m.nome}: revisão em ${leitura(s.faltam)} ${un}`, ir: "maquinas" });
     }
     for (const x of estoqueInsumos(dados)) {
       if (x.negativo) lista.push({ tipo: "ruim", texto: `${x.insumo.nome}: estoque negativo (${numero(x.saldo)} ${x.insumo.unidade}) — falta lançar entrada`, ir: "quimicos" });

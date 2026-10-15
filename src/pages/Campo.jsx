@@ -13,7 +13,7 @@ import {
 import { hoje, prepararRegistro } from "../lib/esquema";
 import { guardarFotosDosCadastros } from "../lib/fotos";
 import { supabase, supabaseConfigurado } from "../lib/supabase";
-import { numero } from "../lib/formato";
+import { leitura, numero } from "../lib/formato";
 
 /**
  * Modo Campo: as telas dos tratoristas, no celular.
@@ -228,8 +228,8 @@ function Abastecer({ dados, salvar, maquinaId, irPara, editarServicos }) {
         <>
           <Pergunta figura="⏱️">Horímetro agora</Pergunta>
           <FotoComprovante caminho={r.foto_leitura} aoTirar={(c) => mudar({ foto_leitura: c })} texto="Tirar foto do horímetro" />
-          <div className="visor">{r.leitura || <span className="apagado">0</span>} <small>h</small></div>
-          {ultima != null && <p className="dica-anterior">Última vez: {numero(ultima, 1)} h</p>}
+          <div className="visor">{r.leitura ? leitura(paraNumero(r.leitura)) : <span className="apagado">0,0</span>} <small>h</small></div>
+          {ultima != null && <p className="dica-anterior">Última vez: {leitura(ultima)} h</p>}
           <Teclado valor={r.leitura} aoMudar={(v) => mudar({ leitura: v })} ultimoDecimal />
         </>
       );
@@ -267,7 +267,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara, editarServicos }) {
           </div>
           <div className="resumo-linha" onClick={() => ir("horimetro")}>
             <span className="figura">⏱️</span>
-            <span>{r.leitura} h{resumo.horas != null && resumo.horas >= 0 && <small> · trabalhou {numero(resumo.horas, 1)} h</small>}</span>
+            <span>{leitura(paraNumero(r.leitura))} h{resumo.horas != null && resumo.horas >= 0 && <small> · trabalhou {leitura(resumo.horas)} h</small>}</span>
           </div>
           <div className="resumo-linha" onClick={() => ir("litros")}>
             <span className="figura">⛽</span>

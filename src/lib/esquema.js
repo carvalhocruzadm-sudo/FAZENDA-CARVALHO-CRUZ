@@ -534,7 +534,7 @@ export const ESQUEMA = {
       talhao_id: refTalhao,
       leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, leituraMedidor: true, obrigatorio: true },
       leitura_final: { tipo: "numero", rotulo: "Leitura final", casas: 1, leituraMedidor: true, obrigatorio: true },
-      trabalhado: { tipo: "numero", rotulo: "Horas / km", casas: 1, somenteLeitura: true },
+      trabalhado: { tipo: "numero", rotulo: "Horas / km", casas: 1, leituraMedidor: true, somenteLeitura: true },
       destino: { tipo: "texto", rotulo: "Destino / carga", dica: "Para viagens de caminhão" },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
