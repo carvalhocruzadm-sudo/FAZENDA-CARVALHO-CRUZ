@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 
 import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
+import { leitura } from "../lib/formato";
 import ConsultaProduto from "./ConsultaProduto";
 import { Icone } from "./ui";
 
@@ -99,6 +100,18 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
       break;
     case "numero":
     case "dinheiro":
+      // Horímetro/km: só se digitam números e o último vai depois da vírgula
+      // (digitar 58946 vira 5.894,6), como no visor do trator.
+      if (campo.leituraMedidor) {
+        controle = (
+          <input id={id} type="text" inputMode="numeric" value={leitura(valor)} readOnly={campo.somenteLeitura}
+            onChange={(e) => {
+              const digitos = e.target.value.replace(/\D/g, "");
+              set(digitos ? (Number(digitos) / 10).toFixed(1) : "");
+            }} placeholder="0,0" />
+        );
+        break;
+      }
       controle = (
         <input id={id} type="number" inputMode="decimal" step="any" value={valor ?? ""} readOnly={campo.somenteLeitura}
           onChange={(e) => set(e.target.value)} placeholder={campo.tipo === "dinheiro" ? "R$" : ""} />
