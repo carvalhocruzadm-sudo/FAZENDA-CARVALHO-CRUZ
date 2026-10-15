@@ -4,7 +4,7 @@ import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
 import useCulturaAtiva, { daCultura } from "../hooks/useCulturaAtiva";
 import useEscolhaTalhoes from "../hooks/useEscolhaTalhoes";
 import { ESQUEMA, campoVisivel, hoje, registroNovo } from "../lib/esquema";
-import { baixarCSV, exibir, numero } from "../lib/formato";
+import { baixarCSV, exibir, leitura, numero } from "../lib/formato";
 import Formulario from "./Formulario";
 import { Icone, Modal, SeletorPeriodo } from "./ui";
 
@@ -147,6 +147,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
     if (!SOMAVEIS.has(c)) return "";
     const campo = def.campos[c];
     const t = linhas.reduce((s, l) => s + (Number(l[c]) || 0), 0);
+    if (campo.leituraMedidor) return leitura(t);
     return campo.tipo === "dinheiro" ? exibir({ tipo: "dinheiro" }, t) : numero(t, campo.casas ?? 2);
   });
 
