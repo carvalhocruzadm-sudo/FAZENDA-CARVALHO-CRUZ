@@ -325,7 +325,7 @@ export function Maquinas(props) {
  * foto de cada operador, de cada trator, de cada talhão e dos produtos.
  */
 export function CadastrosCampo(props) {
-  const { dados, abrirCampo } = props;
+  const { dados, abrirCampo, abrirTicketCampo } = props;
   const semFoto = (lista) => lista.filter((x) => x.ativo !== false && !x.foto && !x.fotos_rotulo?.length).length;
   const tratoristas = dados.funcionarios.filter((f) => /tratorista|operador|motorista/i.test(f.funcao ?? ""));
   const tratores = dados.maquinas.filter((m) => m.medidor === "horas");
@@ -339,6 +339,7 @@ export function CadastrosCampo(props) {
             nome num quadrado colorido. Cadastrou ou mudou algo? Aparece no celular deles na próxima sincronização.
           </p>
           <button className="btn primario" onClick={abrirCampo}>🚜 Abrir o Modo Campo</button>
+          {abrirTicketCampo && <button className="btn" onClick={abrirTicketCampo}>🧾 Modo lançador de ticket</button>}
         </div>
       </div>
       <div className="grade">

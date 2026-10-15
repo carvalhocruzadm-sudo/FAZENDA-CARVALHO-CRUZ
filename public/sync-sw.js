@@ -6,6 +6,9 @@
  * O lançamento já está guardado no IndexedDB; aqui o Android manda a fila
  * para o Supabase sozinho — com o app fechado — assim que tiver sinal.
  *
+ * Manda tudo o que está na fila: lançamentos, fotos (ticket da balança,
+ * horímetro, bomba) e comprovantes.
+ *
  * Não usa o cliente do Supabase (não roda aqui): fala direto com a API REST,
  * com a URL, a chave e o token que o app deixou em meta → "credenciaisSync".
  * Sem token válido não faz nada: a fila continua guardada e sai na próxima
@@ -35,6 +38,30 @@ function fccAbrirDB() {
   });
 }
 
+/** Lê uma chave de uma store (fotos, arquivos). */
+function fccLer(db, store, chave) {
+  if (!db.objectStoreNames.contains(store)) return Promise.resolve(undefined);
+  return fccPedido(db.transaction(store).objectStore(store).get(chave));
+}
+
+/** Grava (ou apaga, com `valor` undefined) uma chave de uma store. */
+function fccGravar(db, store, chave, valor) {
+  const tx = db.transaction(store, "readwrite");
+  if (valor === undefined) tx.objectStore(store).delete(chave);
+  else tx.objectStore(store).put(valor, chave);
+  return new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+}
+
+/** Sobe um arquivo para o Storage do Supabase (substitui se já existir). */
+function fccSubir(cred, bucket, caminho, blob, tipo) {
+  const destino = caminho.split("/").map(encodeURIComponent).join("/");
+  return fetch(`${cred.url}/storage/v1/object/${bucket}/${destino}`, {
+    method: "POST",
+    headers: { apikey: cred.chave, Authorization: `Bearer ${cred.token}`, "x-upsert": "true", "Content-Type": tipo || "application/octet-stream" },
+    body: blob,
+  });
+}
+
 function fccComTrava(fn) {
   if (self.navigator && self.navigator.locks) return self.navigator.locks.request(FCC_TAG, fn);
   return fn();
@@ -55,28 +82,40 @@ async function fccEnviarFila() {
 
     for (const op of fila) {
       if (op.tentativas >= FCC_MAX_TENTATIVAS) continue; // falha permanente: fica para a tela de Sincronização
-      // Foto e comprovante precisam do app (arquivo guardado, compressão):
-      // para aqui, sem furar a ordem, e o resto sai quando o app abrir.
-      if (op.acao !== "upsert" && op.acao !== "delete") break;
-
-      const base = `${cred.url}/rest/v1/${encodeURIComponent(op.tabela)}`;
-      const resp = op.acao === "delete"
-        ? await fetch(`${base}?id=eq.${encodeURIComponent(op.payload.id)}`, { method: "DELETE", headers: cabecalho })
-        : await fetch(`${base}?on_conflict=id`, {
+      let resp;
+      if (op.acao === "foto") {
+        // Foto (ticket, horímetro, bomba): já está comprimida no aparelho.
+        const foto = await fccLer(db, "fotos", op.payload.id);
+        resp = foto?.pendente ? await fccSubir(cred, "fotos", op.payload.id, foto.blob, "image/jpeg") : null;
+        if (resp?.ok) await fccGravar(db, "fotos", op.payload.id, { ...foto, pendente: false });
+      } else if (op.acao === "upload") {
+        // Comprovante: sobe e sai do aparelho.
+        const local = await fccLer(db, "arquivos", op.payload.id);
+        resp = local ? await fccSubir(cred, "comprovantes", op.payload.id, local.arquivo, local.tipo) : null;
+        if (resp?.ok) await fccGravar(db, "arquivos", op.payload.id, undefined);
+      } else if (op.acao === "delete") {
+        resp = await fetch(`${cred.url}/rest/v1/${encodeURIComponent(op.tabela)}?id=eq.${encodeURIComponent(op.payload.id)}`,
+          { method: "DELETE", headers: cabecalho });
+      } else if (op.acao === "upsert") {
+        resp = await fetch(`${cred.url}/rest/v1/${encodeURIComponent(op.tabela)}?on_conflict=id`, {
           method: "POST",
           headers: { ...cabecalho, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
           body: JSON.stringify(op.payload),
         });
+      } else {
+        break; // tipo que só o app conhece: para aqui, sem furar a ordem
+      }
 
-      // Login recusado: não adianta insistir agora, o app resolve quando abrir.
-      if (resp.status === 401 || resp.status === 403) break;
-      // Outro erro: interrompe (a próxima pode depender desta) e pede ao
-      // navegador para tentar de novo mais tarde.
-      if (!resp.ok) throw new Error(`Supabase respondeu ${resp.status} em ${op.tabela}`);
+      // resp nulo: a foto ou o comprovante já tinha subido antes; só tira da fila.
+      if (resp) {
+        // Login recusado: não adianta insistir agora, o app resolve quando abrir.
+        if (resp.status === 401 || resp.status === 403) break;
+        // Outro erro: interrompe (a próxima pode depender desta) e pede ao
+        // navegador para tentar de novo mais tarde.
+        if (!resp.ok) throw new Error(`Supabase respondeu ${resp.status} em ${op.tabela}`);
+      }
 
-      const tx = db.transaction("fila", "readwrite");
-      tx.objectStore("fila").delete(op.id);
-      await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+      await fccGravar(db, "fila", op.id, undefined);
       enviadas++;
     }
 

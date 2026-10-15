@@ -112,7 +112,10 @@ function Rotas({ sair, email, perfilCampo, aoDescobrirCampo }) {
         voltarAoSistema={perfilCampo ? null : () => irPara("/")} />
     );
   }
-  return <Sistema sair={sair} email={email} abrirCampo={() => irPara("/campo")} aoDescobrirCampo={aoDescobrirCampo} />;
+  return (
+    <Sistema sair={sair} email={email} abrirCampo={() => irPara("/campo")} abrirTicketCampo={() => irPara("/campo/ticket")}
+      aoDescobrirCampo={aoDescobrirCampo} />
+  );
 }
 
 function TrocarSenha({ email, aoFechar }) {
@@ -170,7 +173,7 @@ function TrocarSenha({ email, aoFechar }) {
   );
 }
 
-function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
+function Sistema({ sair, email, abrirCampo, abrirTicketCampo, aoDescobrirCampo }) {
   const { dados, pronto, erro, salvar, salvarVarios, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
 
   // Login marcado como Tratorista em Usuários: sai daqui e fica só no Modo Campo.
@@ -241,6 +244,10 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
         </nav>
         <div className="rodape">
           {email && <div style={{ marginBottom: 8, wordBreak: "break-all" }}>{email}</div>}
+          <button className="btn" style={{ marginBottom: 8 }} onClick={abrirTicketCampo}
+            title="As telas grandes do celular do lançador de ticket">
+            🧾 Modo lançador de ticket
+          </button>
           {sair && email && (
             <button className="btn" style={{ marginBottom: 8 }} onClick={() => { setTrocandoSenha(true); setMenuAberto(false); }}>
               <Icone nome="chave" /> Trocar senha
@@ -260,7 +267,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
           {!pronto ? <div className="vazio">Carregando…</div> : (
             <Pagina key={tela} dados={dados} salvar={salvar} salvarVarios={salvarVarios} remover={remover} irPara={irPara} email={email}
-              sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} abrirCampo={abrirCampo} />
+              sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} abrirCampo={abrirCampo} abrirTicketCampo={abrirTicketCampo} />
           )}
         </div>
       </main>
