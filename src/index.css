@@ -278,6 +278,9 @@ table { border-collapse: collapse; }
 .teclado button:active { background: var(--verde-pale); }
 
 .campo-aviso { background: var(--amarelo-pale); color: var(--amarelo); border-radius: 14px; padding: 14px; margin-bottom: 12px; font-weight: 700; }
+.campo-envio { background: var(--amarelo-pale); color: var(--amarelo); padding: 12px 14px; font-size: 18px; font-weight: 800; text-align: center; }
+.campo-envio.ok { background: var(--verde-pale); color: var(--verde); }
+.campo-envio.erro { background: var(--vermelho-pale); color: var(--vermelho); }
 .campo-aviso.erro { background: var(--vermelho-pale); color: var(--vermelho); }
 .resumo-linha {
   display: flex; align-items: center; gap: 14px; background: #fff; border-radius: 16px; padding: 10px 14px;

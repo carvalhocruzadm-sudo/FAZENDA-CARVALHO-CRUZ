@@ -41,7 +41,9 @@ export default defineConfig({
         },
       },
       workbox: {
-        importScripts: ["compartilhar-sw.js"],
+        // compartilhar-sw.js: comprovante compartilhado; sync-sw.js: envio da
+        // fila em segundo plano, mesmo com o app fechado.
+        importScripts: ["compartilhar-sw.js", "sync-sw.js"],
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],

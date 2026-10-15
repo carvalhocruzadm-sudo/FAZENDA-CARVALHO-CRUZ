@@ -8,14 +8,19 @@
  *
  * Como o envio acontece antes da leitura, a alteração feita no celular de
  * quem está no campo vence em caso de conflito (last-write-wins do lado local).
+ *
+ * Se o operador fechar o app antes de terminar, o service worker
+ * (public/sync-sw.js) manda a fila sozinho quando tiver sinal (Background
+ * Sync, Android/Chrome). Os dois dividem a trava "fcc-fila".
  */
 
-import { supabase, supabaseConfigurado } from "./supabase";
+import { anonKey, supabase, supabaseConfigurado, url } from "./supabase";
 import { BUCKET } from "./arquivos";
 import { enviarFoto } from "./fotos";
 import { COLECOES, MAX_TENTATIVAS, apagarArquivo, apagarOp, atualizarOp, gravarMeta, gravarTodasColecoes, lerArquivo, lerFila, lerMeta, lerTodasColecoes } from "./db";
 
 const INTERVALO_AUTO_SYNC = 60_000;
+const TAG_FILA = "fcc-fila";
 
 let estado = {
   configurado: supabaseConfigurado,
@@ -51,6 +56,38 @@ export async function atualizarContadores() {
     falhas: fila.filter((op) => op.tentativas >= MAX_TENTATIVAS).length,
   });
   return fila;
+}
+
+// ─── Envio em segundo plano ─────────────────────────────────────────────────
+
+/** Uma fila só por vez, entre o app e o service worker. */
+function comTrava(fn) {
+  if (typeof navigator !== "undefined" && navigator.locks) return navigator.locks.request(TAG_FILA, fn);
+  return fn();
+}
+
+/**
+ * Pede ao Android para mandar a fila assim que tiver internet, mesmo que o
+ * app seja fechado. Onde não existe (iPhone, modo dev) não faz nada: a fila
+ * sai na próxima vez que o app abrir.
+ */
+export async function pedirEnvioEmSegundoPlano() {
+  try {
+    const registro = await navigator.serviceWorker?.getRegistration();
+    await registro?.sync?.register(TAG_FILA);
+  } catch { /* sem Background Sync: fica para quando o app abrir */ }
+}
+
+/** O service worker não usa o cliente do Supabase: precisa do token à mão. */
+function guardarCredenciais(sessao) {
+  const valor = sessao?.access_token
+    ? { url, chave: anonKey, token: sessao.access_token, expira_em: sessao.expires_at ?? null }
+    : null;
+  gravarMeta("credenciaisSync", valor).catch(() => {});
+}
+
+if (supabaseConfigurado) {
+  supabase.auth.onAuthStateChange((_evento, sessao) => guardarCredenciais(sessao));
 }
 
 // ─── Envio ──────────────────────────────────────────────────────────────────
@@ -99,7 +136,11 @@ async function executarOp(op) {
  * operações que já estouraram MAX_TENTATIVAS, que ficam guardadas para
  * inspeção manual na tela de Sincronização e deixam a fila seguir.
  */
-export async function enviarFila() {
+export function enviarFila() {
+  return comTrava(enviarFilaSemTrava);
+}
+
+async function enviarFilaSemTrava() {
   const fila = await lerFila();
   let enviadas = 0;
 
@@ -222,13 +263,27 @@ export function iniciarAutoSync(aoReceberDados) {
     rodar();
   };
   const ficouOffline = () => definirEstado({ online: false, erro: null });
+  // Saindo do app (botão de início, trocou de app, apagou a tela): tenta
+  // mandar já e deixa pedido o envio em segundo plano para o que sobrar.
+  const saindo = () => {
+    if (!estado.pendentes) return;
+    pedirEnvioEmSegundoPlano();
+    if (estado.online) enviarFila().then(() => {}, () => {});
+  };
   const voltouAoFoco = () => {
     if (document.visibilityState === "visible") rodar();
+    else saindo();
+  };
+  // O service worker mandou a fila com o app aberto em segundo plano.
+  const avisoDoServiceWorker = (e) => {
+    if (e.data?.tipo === "fcc-fila-enviada") rodar();
   };
 
   window.addEventListener("online", ficouOnline);
   window.addEventListener("offline", ficouOffline);
   document.addEventListener("visibilitychange", voltouAoFoco);
+  window.addEventListener("pagehide", saindo);
+  navigator.serviceWorker?.addEventListener("message", avisoDoServiceWorker);
   timer = setInterval(rodar, INTERVALO_AUTO_SYNC);
 
   lerMeta("ultimaSync").then((v) => v && definirEstado({ ultimaSync: v }));
@@ -237,6 +292,8 @@ export function iniciarAutoSync(aoReceberDados) {
     window.removeEventListener("online", ficouOnline);
     window.removeEventListener("offline", ficouOffline);
     document.removeEventListener("visibilitychange", voltouAoFoco);
+    window.removeEventListener("pagehide", saindo);
+    navigator.serviceWorker?.removeEventListener("message", avisoDoServiceWorker);
     clearInterval(timer);
   };
 }

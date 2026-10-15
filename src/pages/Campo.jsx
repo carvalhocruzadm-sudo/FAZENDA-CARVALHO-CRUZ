@@ -4,6 +4,7 @@ import {
   Cartao, FiguraServico, FotoComprovante, FotoOuInicial, Ouvir, Passos, Pergunta, Rodape, Teclado, Topo,
 } from "../components/CampoUI";
 import { useDados } from "../hooks/useDados";
+import { useSync } from "../hooks/useSync";
 import { Entrada, Saida } from "./CampoDeposito";
 import CampoTicket from "./CampoTicket";
 import {
@@ -309,6 +310,39 @@ function Abastecer({ dados, salvar, maquinaId, irPara, editarServicos }) {
   );
 }
 
+// ─── Aviso de envio ─────────────────────────────────────────────────────────
+
+/**
+ * Faixa no alto de todas as telas do campo, depois de lançar: diz ao
+ * tratorista, sem dúvida, se o lançamento já chegou ao escritório, se está
+ * indo ou se está guardado no celular esperando sinal.
+ */
+function AvisoEnvio() {
+  const s = useSync();
+  // Só aparece depois que houve algo para enviar nesta abertura do app.
+  const [teveEnvio, setTeveEnvio] = useState(false);
+  if (s.pendentes > 0 && !teveEnvio) setTeveEnvio(true);
+
+  if (!supabaseConfigurado) return null;
+  if (s.falhas) {
+    return <div className="campo-envio erro">⚠️ {s.falhas} lançamento(s) não foram aceitos. Avise o escritório.</div>;
+  }
+  if (s.pendentes && !s.online) {
+    return (
+      <div className="campo-envio">
+        📵 Sem internet. Está guardado no celular e vai sozinho quando o sinal voltar.
+      </div>
+    );
+  }
+  if (s.pendentes) {
+    return <div className="campo-envio">⏳ Enviando para o escritório… espere o ✓ verde.</div>;
+  }
+  if (teveEnvio) {
+    return <div className="campo-envio ok">✓ Enviado para o escritório. Pode fechar.</div>;
+  }
+  return null;
+}
+
 // ─── Início ─────────────────────────────────────────────────────────────────
 
 /** /campo/abastecer: escolher o trator. */
@@ -427,6 +461,10 @@ export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema, emai
   } : null;
   const props = { dados, salvar, irPara };
   const inicio = <Inicio irPara={irPara} sair={sair} voltarAoSistema={voltarAoSistema} podeTicket={podeTicket} soTicket={soTicket} />;
+  return <><AvisoEnvio />{telaDoCampo({ acao, id, caminho, props, inicio, soTicket, podeTicket, editarServicos })}</>;
+}
+
+function telaDoCampo({ acao, id, caminho, props, inicio, soTicket, podeTicket, editarServicos }) {
   if (soTicket) return acao === "ticket" ? <CampoTicket key={caminho} {...props} /> : inicio;
   switch (acao) {
     case "abastecer":
