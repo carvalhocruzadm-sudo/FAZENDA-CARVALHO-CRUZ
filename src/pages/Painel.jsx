@@ -263,7 +263,7 @@ function Resumo({ dados, r, irPara }) {
     const ticketsCampo = dados.vendas.filter((v) => v.a_conferir).length;
     if (ticketsCampo) lista.push({ tipo: "atencao", texto: `${ticketsCampo} ticket(s) da balança lançado(s) pelos funcionários aguardando aprovação`, ir: "ticket" });
     for (const o of dados.pulverizacoes.filter((x) => x.situacao === "aberta")) {
-      lista.push({ tipo: "atencao", texto: `Pulverização em ${nomesTalhoesDaOrdem(dados, o)} (${data(o.data)}) esperando separar no depósito`, ir: "quimicos" });
+      lista.push({ tipo: "atencao", texto: `${o.titulo ? `${o.titulo} — ` : ""}Pulverização em ${nomesTalhoesDaOrdem(dados, o)} (${data(o.data)}) esperando separar no depósito`, ir: "quimicos" });
     }
     if (tanque.litrosEntrada && tanque.saldo < 0) lista.push({ tipo: "ruim", texto: `Tanque de diesel negativo (${numero(tanque.saldo, 0)} L) — falta lançar compra`, ir: "diesel" });
     for (const d of dados.despesas.filter((x) => !x.pago && x.vencimento)) {

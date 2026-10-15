@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { emEmbalagens, itensDaOrdem } from "../lib/deposito";
 import { ESQUEMA, prepararRegistro, registroNovo } from "../lib/esquema";
+import { compartilharPdf, gerarPdfPulverizacao } from "../lib/pdfPulverizacao";
 import { data as dataBR, nomeRef, numero } from "../lib/formato";
 import { SEM_CULTURA, chaveCultura, fazendaDoTalhao, nomesTalhoesDaOrdem, talhoesDaOrdem } from "../lib/talhoes";
 import { FotoProduto } from "./CampoUI";
@@ -10,6 +11,28 @@ import Formulario from "./Formulario";
 import { Icone, Modal } from "./ui";
 
 const n = (v) => Number(v) || 0;
+const vazio = (v) => v == null || v === "";
+const porPipa = (o) => o?.dose_por === "pipa";
+
+/**
+ * Refaz a dose e o total de um produto. Por ha: total = dose × área. Por pipa:
+ * dose por ha = dose por pipa ÷ ha que a pipa faz, e total = dose por ha × área
+ * (o mesmo que dose por pipa × número de pipas).
+ */
+function recalcular(i, o) {
+  const area = n(o.area_ha);
+  if (porPipa(o)) {
+    const hpp = n(o.ha_por_pipa);
+    let dosePipa = i.dose_pipa;
+    if (dosePipa == null && !vazio(i.dose_ha) && hpp > 0) dosePipa = +(n(i.dose_ha) * hpp).toFixed(3);
+    if (vazio(dosePipa) || !(hpp > 0)) return { ...i, dose_pipa: dosePipa };
+    const doseHa = n(dosePipa) / hpp;
+    return { ...i, dose_pipa: dosePipa, dose_ha: +doseHa.toFixed(3), quantidade: +(doseHa * area).toFixed(3) };
+  }
+  if (vazio(i.dose_ha)) return i;
+  return { ...i, quantidade: +(n(i.dose_ha) * area).toFixed(3) };
+}
+
 const SELO = { aberta: ["atencao", "Esperando separar"], separada: ["ok", "Separada"], concluida: ["neutro", "Concluída"], cancelada: ["ruim", "Cancelada"] };
 
 /**
@@ -27,6 +50,7 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
   const [areas, setAreas] = useState({}); // talhão marcado → área a pulverizar nele (ha)
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
 
   const lista = useMemo(() => dados.pulverizacoes
     .filter((o) => filtro === "todas" || ["aberta", "separada", null, undefined].includes(o.situacao))
@@ -38,15 +62,15 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
     const doTalhao = o && talhoesDaOrdem(dados, o);
     setCultura(o ? (o.cultura_id || (doTalhao.length ? chaveCultura(doTalhao[0].talhao) : "")) : "");
     setAreas(o ? Object.fromEntries(doTalhao.map((x) => [x.talhao.id, x.area_ha || x.talhao.area_ha || ""])) : {});
-    setItens(o ? dados.pulverizacao_itens.filter((i) => i.pulverizacao_id === o.id).map((i) => ({ ...i })) : [{ insumo_id: null, dose_ha: null, quantidade: null }]);
+    setItens(o ? dados.pulverizacao_itens.filter((i) => i.pulverizacao_id === o.id).map((i) => ({ ...i })) : [{ insumo_id: null, dose_ha: null, dose_pipa: null, quantidade: null }]);
   };
   const fechar = useCallback(() => setOrdem(null), []);
 
-  // Mudou a área: refaz o total dos produtos que têm dose.
+  // Mudou a área, o "dose por" ou os ha da pipa: refaz o total dos produtos.
   const setOrdemComArea = (f) => setOrdem((atual) => {
     const novo = typeof f === "function" ? f(atual) : f;
-    if (n(novo.area_ha) !== n(atual?.area_ha)) {
-      setItens((its) => its.map((i) => (i.dose_ha != null && i.dose_ha !== "" ? { ...i, quantidade: +(n(i.dose_ha) * n(novo.area_ha)).toFixed(3) } : i)));
+    if (n(novo.area_ha) !== n(atual?.area_ha) || novo.dose_por !== atual?.dose_por || n(novo.ha_por_pipa) !== n(atual?.ha_por_pipa)) {
+      setItens((its) => its.map((i) => recalcular(i, novo)));
     }
     return novo;
   });
@@ -70,7 +94,7 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
   const mudarItem = (k, patch) => setItens((its) => its.map((i, j) => {
     if (j !== k) return i;
     const novo = { ...i, ...patch };
-    if ("dose_ha" in patch) novo.quantidade = patch.dose_ha === "" ? i.quantidade : +(n(patch.dose_ha) * n(ordem.area_ha)).toFixed(3);
+    if ("dose_ha" in patch || "dose_pipa" in patch) return recalcular(novo, ordem);
     return novo;
   }));
 
@@ -90,7 +114,7 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
     const linhas = doPlanejamento.find(([g]) => g === k)?.[1] ?? [];
     setItens((its) => [
       ...its.filter((i) => i.insumo_id),
-      ...linhas.map((p) => ({ insumo_id: p.insumo_id, dose_ha: p.dose_ha, quantidade: +(n(p.dose_ha) * n(ordem.area_ha)).toFixed(3) })),
+      ...linhas.map((p) => recalcular({ insumo_id: p.insumo_id, dose_ha: p.dose_ha, dose_pipa: null, quantidade: null }, ordem)),
     ]);
   };
 
@@ -100,6 +124,7 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
     if (!ts.length) { setErro("Marque pelo menos um talhão."); return; }
     const semArea = ts.find((t) => !(n(areas[t.id]) > 0));
     if (semArea) { setErro(`Informe a área a pulverizar no talhão ${semArea.nome} (ha).`); return; }
+    if (porPipa(ordem) && !(n(ordem.ha_por_pipa) > 0)) { setErro("Informe quantos ha uma pipa faz."); return; }
     const { reg, erro: e } = prepararRegistro("pulverizacoes", {
       ...ordem, talhao_id: ts[0].id, talhoes: ts.map((t) => ({ talhao_id: t.id, area_ha: n(areas[t.id]) })),
     });
@@ -112,7 +137,7 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
       const salva = await salvar("pulverizacoes", reg);
       const antes = dados.pulverizacao_itens.filter((i) => i.pulverizacao_id === salva.id);
       for (const i of validos) {
-        const p = prepararRegistro("pulverizacao_itens", { ...i, pulverizacao_id: salva.id });
+        const p = prepararRegistro("pulverizacao_itens", { ...i, dose_pipa: porPipa(ordem) ? i.dose_pipa : null, pulverizacao_id: salva.id });
         if (p.erro) throw new Error(p.erro);
         await salvar("pulverizacao_itens", p.reg);
       }
@@ -136,6 +161,22 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
     setOrdem(null);
   };
 
+  // PDF da ordem gravada (com as fotos dos produtos) para o WhatsApp dos operadores.
+  const mandarPdf = async () => {
+    const gravada = dados.pulverizacoes.find((x) => x.id === ordem.id);
+    if (!gravada) return;
+    setGerandoPdf(true);
+    try {
+      const pdf = await gerarPdfPulverizacao(dados, gravada);
+      const r = await compartilharPdf(pdf, gravada.titulo || "Ordem de pulverização");
+      if (r === "baixado") window.alert(`O PDF "${pdf.nome}" foi baixado. Abra o WhatsApp e anexe o arquivo na conversa dos operadores.`);
+    } catch (err) {
+      setErro(`Não deu para gerar o PDF: ${err?.message ?? err}`);
+    } finally {
+      setGerandoPdf(false);
+    }
+  };
+
   const produtos = dados.insumos.filter((i) => i.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
   const separados = ordem?.id ? itensDaOrdem(dados, ordem.id) : [];
 
@@ -154,13 +195,14 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
       {!lista.length ? <div className="vazio">Nenhuma ordem de pulverização.</div> : (
         <div className="tabela cartoes">
           <table>
-            <thead><tr><th>Data</th><th>Talhões</th><th className="num">Área</th><th>Trator</th><th>Produtos</th><th>Separados</th><th>Situação</th></tr></thead>
+            <thead><tr><th>Título</th><th>Data</th><th>Talhões</th><th className="num">Área</th><th>Trator</th><th>Produtos</th><th>Separados</th><th>Situação</th></tr></thead>
             <tbody>
               {lista.map((o) => {
                 const its = itensDaOrdem(dados, o.id);
                 const [cls, rot] = SELO[o.situacao] ?? SELO.aberta;
                 return (
                   <tr key={o.id} className="clicavel" onClick={() => abrir(o)}>
+                    <td data-rotulo="Título" style={{ whiteSpace: "normal" }}><b>{o.titulo || "—"}</b></td>
                     <td data-rotulo="Data">{dataBR(o.data)}</td>
                     <td data-rotulo="Talhão" style={{ whiteSpace: "normal" }}>{nomesTalhoesDaOrdem(dados, o)}</td>
                     <td data-rotulo="Área" className="num">{numero(o.area_ha)} ha</td>
@@ -177,17 +219,22 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
       )}
 
       {ordem && (
-        <Modal titulo={ordem.id ? "Ordem de pulverização" : "Nova ordem de pulverização"} aoFechar={fechar}
+        <Modal titulo={ordem.id ? (ordem.titulo || "Ordem de pulverização") : "Nova ordem de pulverização"} aoFechar={fechar}
           rodape={(
             <>
               {ordem.id && <button className="btn perigo" onClick={apagar}><Icone nome="lixo" /> Apagar</button>}
+              {ordem.id && (
+                <button className="btn" onClick={mandarPdf} disabled={gerandoPdf} title="PDF com as fotos dos produtos (o que está salvo)">
+                  <Icone nome="exportar" /> {gerandoPdf ? "Gerando…" : "PDF / WhatsApp"}
+                </button>
+              )}
               <span className="espaco" />
               <button className="btn" onClick={fechar}>Cancelar</button>
               <button className="btn primario" onClick={gravar} disabled={salvando}><Icone nome="editar" /> {salvando ? "Salvando…" : "Salvar"}</button>
             </>
           )}>
           {erro && <div className="aviso">{erro}</div>}
-          <Formulario colecao="pulverizacoes" reg={ordem} setReg={setOrdemComArea} dados={dados} somente={["data"]} />
+          <Formulario colecao="pulverizacoes" reg={ordem} setReg={setOrdemComArea} dados={dados} somente={["titulo", "data"]} />
           <div className="form" style={{ marginTop: 12 }}>
             <EscolhaTalhoes culturas={dados.culturas} talhoes={talhoesAtivos} nomeFazenda={fazendaDoTalhao(dados)}
               cultura={cultura} aoMudarCultura={mudarCultura} areas={areas} setAreas={mudarAreas} />
@@ -198,6 +245,12 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
           </div>
 
           <h3 style={{ fontSize: 15, margin: "20px 0 10px" }}>Produtos</h3>
+          <Formulario colecao="pulverizacoes" reg={ordem} setReg={setOrdemComArea} dados={dados} somente={["dose_por", "ha_por_pipa"]} />
+          {porPipa(ordem) && n(ordem.ha_por_pipa) > 0 && n(ordem.area_ha) > 0 && (
+            <p className="descricao" style={{ margin: "8px 0 10px" }}>
+              {numero(ordem.area_ha)} ha ÷ {numero(ordem.ha_por_pipa)} ha por pipa = <b>{numero(n(ordem.area_ha) / n(ordem.ha_por_pipa), 1)} pipas</b>
+            </p>
+          )}
           {doPlanejamento.length > 0 && (
             <select className="entrada" style={{ marginBottom: 10 }} value="" onChange={(e) => e.target.value && copiarPlanejamento(e.target.value)}>
               <option value="">Copiar os produtos do Planejamento da safra…</option>
@@ -217,9 +270,15 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
                       {produtos.map((p) => <option key={p.id} value={p.id}>{p.nome} ({p.unidade})</option>)}
                     </select>
                   </label>
-                  <label className="campo"><span>Dose por ha</span>
-                    <input type="number" inputMode="decimal" step="any" value={i.dose_ha ?? ""} onChange={(e) => mudarItem(k, { dose_ha: e.target.value })} />
-                  </label>
+                  {porPipa(ordem) ? (
+                    <label className="campo"><span>Dose por pipa</span>
+                      <input type="number" inputMode="decimal" step="any" value={i.dose_pipa ?? ""} onChange={(e) => mudarItem(k, { dose_pipa: e.target.value })} />
+                    </label>
+                  ) : (
+                    <label className="campo"><span>Dose por ha</span>
+                      <input type="number" inputMode="decimal" step="any" value={i.dose_ha ?? ""} onChange={(e) => mudarItem(k, { dose_ha: e.target.value })} />
+                    </label>
+                  )}
                   <label className="campo"><span>Total {insumo ? `(${insumo.unidade})` : ""}</span>
                     <input type="number" inputMode="decimal" step="any" value={i.quantidade ?? ""} onChange={(e) => mudarItem(k, { quantidade: e.target.value })} />
                   </label>

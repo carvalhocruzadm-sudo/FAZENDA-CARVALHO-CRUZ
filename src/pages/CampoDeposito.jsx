@@ -69,14 +69,15 @@ function CartaoOrdem({ dados, ordem, aoTocar }) {
   const nomes = nomesTalhoesDaOrdem(dados, ordem);
   const varios = talhoesDaOrdem(dados, ordem).length > 1;
   const itens = itensDaOrdem(dados, ordem.id);
-  const fala = `Pulverização ${varios ? "nos talhões" : "no talhão"} ${nomes}, ${itens.length} produtos`;
+  const fala = `${ordem.titulo ? `${ordem.titulo}. ` : ""}Pulverização ${varios ? "nos talhões" : "no talhão"} ${nomes}, ${itens.length} produtos`;
   return (
     <div className="campo-item">
       <button type="button" className="ordem-cartao" onClick={aoTocar}>
         <div className="ordem-cabeca">
           {talhao?.foto ? <FotoOuInicial caminho={talhao.foto} nome={talhao.nome} /> : <span className="figura">💦</span>}
           <div>
-            <b>{nomes}</b>
+            {ordem.titulo && <b>{ordem.titulo}</b>}
+            {ordem.titulo ? <small>{nomes}</small> : <b>{nomes}</b>}
             <small>{dataBR(ordem.data)} · {nomeRef(dados, "maquinas", ordem.maquina_id)}</small>
           </div>
         </div>
@@ -167,6 +168,7 @@ export function Saida({ dados, salvar, irPara }) {
                 <div>
                   <b>{insumo.nome}</b>
                   <small>{emEmbalagens(insumo, item.quantidade).texto}</small>
+                  {ordem?.dose_por === "pipa" && item.dose_pipa != null && <small>{numero(item.dose_pipa, 3)} {insumo.unidade} por pipa</small>}
                 </div>
                 <span className="estado">{separado ? "✅" : "▶"}</span>
               </button>
