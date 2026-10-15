@@ -11,7 +11,7 @@ import {
   GRUPOS_PLANEJAMENTO, lancamentosPorLocal, noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma, totaisLocal,
 } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
-import { baixarCSV, brl, data, exibir, nomeRef, numero } from "../lib/formato";
+import { baixarCSV, brl, data, exibir, leitura, nomeRef, numero } from "../lib/formato";
 import { compradoresDoBling, textoDoArquivo } from "../lib/importarCompradores";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
@@ -132,7 +132,7 @@ function PorFazenda({ dados }) {
         <Stat rotulo="Receita (vendas)" valor={brl(t.receita)} />
         <Stat rotulo="Custos" valor={brl(t.custo)} cor="vermelho" sub={area ? `${brl(t.custo / area)}/ha` : undefined} />
         <Stat rotulo="Resultado" valor={brl(t.resultado)} cor={t.resultado < 0 ? "vermelho" : ""} sub={area ? `${brl(t.resultado / area)}/ha` : undefined} />
-        <Stat rotulo="Operações de máquina" valor={t.operacoes} cor="cinza" sub={t.horas ? `${numero(t.horas, 1)} h/km trabalhados` : undefined} />
+        <Stat rotulo="Operações de máquina" valor={t.operacoes} cor="cinza" sub={t.horas ? `${leitura(t.horas)} h/km trabalhados` : undefined} />
         <Stat rotulo="Colhido" valor={t.producao ? `${numero(t.producao)} ${exibir(ESQUEMA.colheitas.campos.unidade, t.unidade)}` : "—"} cor="cinza"
           sub={t.producao && area ? `${numero(t.producao / area)} por ha` : undefined} />
       </div>
@@ -294,11 +294,11 @@ function SituacaoMaquinas({ dados }) {
         linhas={linhas.map((l) => ({ ...l, id: l.m.id }))}
         colunas={[
           { rotulo: "Máquina", valor: (l) => l.m.nome },
-          { rotulo: "Leitura atual", num: true, valor: (l) => `${numero(l.s.atual, 1)} ${unidadeDe(l.m)}` },
-          { rotulo: "Próxima revisão", num: true, valor: (l) => (l.s.proxima ? `${numero(l.s.proxima, 0)} ${unidadeDe(l.m)}` : "—") },
-          { rotulo: "Faltam", num: true, valor: (l) => (l.s.faltam == null ? "—" : `${numero(l.s.faltam, 0)} ${unidadeDe(l.m)}`) },
+          { rotulo: "Leitura atual", num: true, valor: (l) => `${leitura(l.s.atual)} ${unidadeDe(l.m)}` },
+          { rotulo: "Próxima revisão", num: true, valor: (l) => (l.s.proxima ? `${leitura(l.s.proxima)} ${unidadeDe(l.m)}` : "—") },
+          { rotulo: "Faltam", num: true, valor: (l) => (l.s.faltam == null ? "—" : `${leitura(l.s.faltam)} ${unidadeDe(l.m)}`) },
           { rotulo: "Revisão", valor: (l) => <span className={`selo ${selo[l.s.estado][0]}`}>{selo[l.s.estado][1]}</span> },
-          { rotulo: "Trabalhado", num: true, valor: (l) => (l.c ? `${numero(l.c.trabalhado, 1)} ${unidadeDe(l.m)}` : "—") },
+          { rotulo: "Trabalhado", num: true, valor: (l) => (l.c ? `${leitura(l.c.trabalhado)} ${unidadeDe(l.m)}` : "—") },
           { rotulo: "Diesel", num: true, valor: (l) => (l.c ? `${numero(l.c.litros, 0)} L` : "—") },
           { rotulo: "Consumo", num: true, valor: (l) => (l.c?.media ? (l.m.medidor === "km" ? `${numero(l.c.media, 2)} km/L` : `${numero(l.c.media, 2)} L/h`) : "—") },
         ]}
