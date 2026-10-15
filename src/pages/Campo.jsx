@@ -3,7 +3,9 @@ import { useMemo, useState } from "react";
 import Crud from "../components/Crud";
 import { Abas, Icone } from "../components/ui";
 import { useDados } from "../hooks/useDados";
+import { useSync } from "../hooks/useSync";
 import { gravarPessoaCampo, lerPessoaCampo } from "../lib/aparelho";
+import { supabaseConfigurado } from "../lib/supabase";
 
 /**
  * Celular de campo: o aparelho do motorista ou do tratorista. Não tem login —
@@ -14,6 +16,43 @@ import { gravarPessoaCampo, lerPessoaCampo } from "../lib/aparelho";
 
 const DO_CAMPO = /tratorista|motorista|operador/i;
 const ehMotorista = (p) => /motorista/i.test(p?.funcao ?? "");
+
+/**
+ * Faixa grande depois de lançar: diz ao operador, sem ambiguidade, se o
+ * lançamento já chegou ao escritório, se está a caminho ou se está guardado
+ * no celular esperando sinal.
+ */
+function AvisoEnvio() {
+  const s = useSync();
+  // Só aparece depois que houve algo para enviar nesta abertura do app.
+  const [teveEnvio, setTeveEnvio] = useState(false);
+  if (s.pendentes > 0 && !teveEnvio) setTeveEnvio(true);
+
+  if (!supabaseConfigurado) return null;
+  if (s.falhas) {
+    return <div className="aviso aviso-envio">{s.falhas} lançamento(s) não foram aceitos pelo sistema. Avise o escritório.</div>;
+  }
+  if (s.pendentes && !s.online) {
+    return (
+      <div className="aviso info aviso-envio">
+        <b>Sem internet.</b> {s.pendentes} lançamento(s) guardado(s) neste celular. Vão sozinhos para o escritório
+        quando o sinal voltar. Não desinstale o app nem limpe os dados do navegador.
+      </div>
+    );
+  }
+  if (s.pendentes) {
+    return (
+      <div className="aviso info aviso-envio">
+        <b>Enviando para o escritório…</b> espere aparecer «Enviado» antes de fechar o app.
+        {s.erro && !s.sincronizando && <> Ainda não foi (vai tentar de novo sozinho).</>}
+      </div>
+    );
+  }
+  if (teveEnvio) {
+    return <div className="aviso ok aviso-envio"><b>✓ Enviado para o escritório.</b> Pode fechar o app.</div>;
+  }
+  return null;
+}
 
 function EscolherPessoa({ funcionarios, escolher, sair }) {
   const [todos, setTodos] = useState(false);
@@ -106,6 +145,7 @@ export default function Campo({ indicador, sair }) {
         </header>
         <div className="conteudo">
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
+          <AvisoEnvio />
           <Abas abas={abas.map(([id, rotulo]) => [id, rotulo])} atual={atual} aoTrocar={setAba} />
           <Crud key={atual} {...config} dados={dados} salvar={salvar} remover={remover} />
         </div>

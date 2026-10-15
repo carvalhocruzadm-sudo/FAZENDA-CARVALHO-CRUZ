@@ -145,6 +145,7 @@ table { border-collapse: collapse; }
 .aviso { padding: 10px 12px; border-radius: 9px; background: var(--vermelho-pale); color: var(--vermelho); font-size: 13px; margin-bottom: 12px; }
 .aviso.info { background: var(--amarelo-pale); color: var(--amarelo); }
 .aviso.ok { background: var(--verde-pale); color: var(--verde); }
+.aviso-envio { font-size: 15px; padding: 14px 16px; }
 
 /* ─── Tabela ────────────────────────────────────────────────────────────── */
 .tabela { overflow-x: auto; }

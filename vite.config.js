@@ -32,6 +32,8 @@ export default defineConfig({
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
+        // Envio da fila em segundo plano, mesmo com o app fechado (public/sync-sw.js).
+        importScripts: ["sync-sw.js"],
         clientsClaim: true,
         runtimeCaching: [
           {

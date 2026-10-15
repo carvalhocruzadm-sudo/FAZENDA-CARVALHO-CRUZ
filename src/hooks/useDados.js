@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { COLECOES, apagarItem, enfileirar, gravarItem, lerFila, lerTodasColecoes, limparLocal } from "../lib/db";
 import { SEED } from "../lib/seed";
 import { supabaseConfigurado } from "../lib/supabase";
-import { atualizarContadores, iniciarAutoSync, sincronizar } from "../lib/sync";
+import { atualizarContadores, iniciarAutoSync, pedirEnvioEmSegundoPlano, sincronizar } from "../lib/sync";
 
 const vazio = () => Object.fromEntries(COLECOES.map((c) => [c, []]));
 
@@ -82,6 +82,8 @@ export function useDados() {
     await gravarItem(colecao, item);
     await enfileirar({ tabela: colecao, acao: "upsert", payload: item });
     await atualizarContadores();
+    // Já deixa pedido: se o operador fechar o app agora, o celular manda sozinho.
+    pedirEnvioEmSegundoPlano();
     sincronizarAgora();
     return item;
   }, [sincronizarAgora]);
@@ -97,6 +99,7 @@ export function useDados() {
       await enfileirar({ tabela: colecao, acao: "upsert", payload: item });
     }
     await atualizarContadores();
+    pedirEnvioEmSegundoPlano();
     sincronizarAgora();
     return itens;
   }, [sincronizarAgora]);
@@ -106,6 +109,7 @@ export function useDados() {
     await apagarItem(colecao, id);
     await enfileirar({ tabela: colecao, acao: "delete", payload: { id } });
     await atualizarContadores();
+    pedirEnvioEmSegundoPlano();
     sincronizarAgora();
   }, [sincronizarAgora]);
 
