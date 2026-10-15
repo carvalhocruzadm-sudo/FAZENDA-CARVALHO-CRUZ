@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { COLECOES, apagarItem, enfileirar, gravarItem, lerFila, lerTodasColecoes, limparLocal } from "../lib/db";
+import { COLECOES, apagarItem, enfileirar, enfileirarVarias, gravarItem, gravarItens, lerFila, lerTodasColecoes, limparLocal } from "../lib/db";
 import { SEED } from "../lib/seed";
 import { supabaseConfigurado } from "../lib/supabase";
 import { atualizarContadores, iniciarAutoSync, sincronizar } from "../lib/sync";
@@ -92,10 +92,8 @@ export function useDados() {
     const itens = registros.map((r) => ({ ...r, id: r.id || novoId(), atualizado_em: agora }));
     const ids = new Set(itens.map((x) => x.id));
     setDados((d) => ({ ...d, [colecao]: [...d[colecao].filter((x) => !ids.has(x.id)), ...itens] }));
-    for (const item of itens) {
-      await gravarItem(colecao, item);
-      await enfileirar({ tabela: colecao, acao: "upsert", payload: item });
-    }
+    await gravarItens(colecao, itens);
+    await enfileirarVarias(itens.map((item) => ({ tabela: colecao, acao: "upsert", payload: item })));
     await atualizarContadores();
     sincronizarAgora();
     return itens;

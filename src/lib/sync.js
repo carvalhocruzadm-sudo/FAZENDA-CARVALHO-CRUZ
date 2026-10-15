@@ -11,7 +11,7 @@
  */
 
 import { supabase, supabaseConfigurado } from "./supabase";
-import { COLECOES, MAX_TENTATIVAS, apagarOp, atualizarOp, gravarMeta, gravarTodasColecoes, lerFila, lerMeta, lerTodasColecoes } from "./db";
+import { COLECOES, MAX_TENTATIVAS, apagarOps, atualizarOp, gravarMeta, gravarTodasColecoes, lerFila, lerMeta, lerTodasColecoes } from "./db";
 
 const INTERVALO_AUTO_SYNC = 60_000;
 
@@ -53,38 +53,99 @@ export async function atualizarContadores() {
 
 // ─── Envio ──────────────────────────────────────────────────────────────────
 
+// Limites de um lote: quantos registros e quantos caracteres (fotos pesam).
+const LOTE_MAX_ITENS = 500;
+const LOTE_MAX_TAMANHO = 2_000_000;
+
 async function executarOp(op) {
-  if (op.acao === "delete") {
-    const { error } = await supabase.from(op.tabela).delete().eq("id", op.payload.id);
+  return executarLote([op]);
+}
+
+/** Envia de uma vez várias operações da mesma tabela e da mesma ação. */
+async function executarLote(ops) {
+  const { tabela, acao } = ops[0];
+  if (acao === "delete") {
+    const { error } = await supabase.from(tabela).delete().in("id", ops.map((op) => op.payload.id));
     if (error) throw error;
     return;
   }
-  const { error } = await supabase.from(op.tabela).upsert(op.payload, { onConflict: "id" });
+  const payloads = ops.map((op) => op.payload);
+  const { error } = await supabase.from(tabela).upsert(payloads.length === 1 ? payloads[0] : payloads, { onConflict: "id" });
   if (error) throw error;
 }
 
+/** Chave que diz se duas operações podem ir no mesmo lote. */
+function assinatura(op) {
+  const campos = op.acao === "delete" ? "" : Object.keys(op.payload).sort().join(",");
+  return `${op.tabela}|${op.acao}|${campos}`;
+}
+
 /**
- * Processa a fila. Para no primeiro erro para não furar a ordem — exceto nas
- * operações que já estouraram MAX_TENTATIVAS, que ficam guardadas para
- * inspeção manual na tela de Sincronização e deixam a fila seguir.
+ * Junta operações VIZINHAS da mesma tabela, mesma ação e mesmos campos em
+ * lotes — assim a ordem da fila é mantida, mas 300 contatos importados viram
+ * 1 envio em vez de 300. Um mesmo registro nunca entra duas vezes no lote
+ * (o banco recusa isso), e registros com campos diferentes vão separados para
+ * que nenhum campo ausente vire "vazio" na nuvem.
+ */
+function montarLotes(ops) {
+  const lotes = [];
+  let atual = null;
+  for (const op of ops) {
+    const tamanho = JSON.stringify(op.payload).length;
+    const cabe =
+      atual &&
+      atual.assinatura === assinatura(op) &&
+      !atual.ids.has(op.payload.id) &&
+      atual.ops.length < LOTE_MAX_ITENS &&
+      atual.tamanho + tamanho <= LOTE_MAX_TAMANHO;
+    if (!cabe) {
+      atual = { assinatura: assinatura(op), ops: [], ids: new Set(), tamanho: 0 };
+      lotes.push(atual);
+    }
+    atual.ops.push(op);
+    atual.ids.add(op.payload.id);
+    atual.tamanho += tamanho;
+  }
+  return lotes.map((l) => l.ops);
+}
+
+/**
+ * Processa a fila em lotes. Se um lote falhar, reenvia as operações dele uma a
+ * uma para descobrir qual é a problemática; para no primeiro erro para não
+ * furar a ordem — exceto nas operações que já estouraram MAX_TENTATIVAS, que
+ * ficam guardadas para inspeção manual na tela de Sincronização e deixam a
+ * fila seguir.
  */
 export async function enviarFila() {
   const fila = await lerFila();
+  const ativas = fila.filter((op) => op.tentativas < MAX_TENTATIVAS); // falha permanente: não bloqueia
   let enviadas = 0;
 
-  for (const op of fila) {
-    if (op.tentativas >= MAX_TENTATIVAS) continue; // falha permanente: não bloqueia
-
+  for (const lote of montarLotes(ativas)) {
     try {
-      await executarOp(op);
-      await apagarOp(op.id);
-      enviadas++;
+      await executarLote(lote);
+      await apagarOps(lote.map((op) => op.id));
+      enviadas += lote.length;
+      definirEstado({ pendentes: Math.max(0, estado.pendentes - lote.length) });
+      continue;
     } catch (err) {
-      const tentativas = op.tentativas + 1;
-      await atualizarOp({ ...op, tentativas, erro: String(err?.message ?? err) });
-      await atualizarContadores();
-      // Interrompe esta rodada: a próxima operação pode depender desta.
-      throw err;
+      if (lote.length === 1) {
+        await registrarFalha(lote[0], err);
+        throw err;
+      }
+    }
+
+    // O lote falhou: tenta um por um para achar o culpado.
+    for (const op of lote) {
+      try {
+        await executarOp(op);
+        await apagarOps([op.id]);
+        enviadas++;
+      } catch (err) {
+        await registrarFalha(op, err);
+        // Interrompe esta rodada: a próxima operação pode depender desta.
+        throw err;
+      }
     }
   }
 
@@ -92,10 +153,33 @@ export async function enviarFila() {
   return enviadas;
 }
 
+async function registrarFalha(op, err) {
+  await atualizarOp({ ...op, tentativas: op.tentativas + 1, erro: String(err?.message ?? err) });
+  await atualizarContadores();
+}
+
 // ─── Leitura ────────────────────────────────────────────────────────────────
 
+// O Supabase devolve no máximo 1000 linhas por pedido: lê em páginas.
+const TAMANHO_PAGINA = 1000;
+
+async function lerTabelaInteira(colecao) {
+  const linhas = [];
+  for (let inicio = 0; ; inicio += TAMANHO_PAGINA) {
+    const { data, error } = await supabase
+      .from(colecao)
+      .select("*")
+      .order("id")
+      .range(inicio, inicio + TAMANHO_PAGINA - 1);
+    if (error) throw error;
+    linhas.push(...(data ?? []));
+    if (!data || data.length < TAMANHO_PAGINA) return linhas;
+  }
+}
+
 /**
- * Lê as tabelas da nuvem, uma a uma, e devolve o estado local resultante.
+ * Lê as tabelas da nuvem, todas ao mesmo tempo, e devolve o estado local
+ * resultante.
  *
  * Uma coleção que falha NÃO derruba as outras e, principalmente, não é
  * sobrescrita com vazio: se a tabela ainda não existe na nuvem — o intervalo
@@ -109,14 +193,15 @@ export async function puxar() {
   const buscados = {};
   const falhas = [];
 
-  for (const colecao of COLECOES) {
-    const { data, error } = await supabase.from(colecao).select("*");
-    if (error) {
-      falhas.push(`${colecao}: ${error.message ?? error}`);
-      continue;
-    }
-    buscados[colecao] = data ?? [];
-  }
+  await Promise.all(
+    COLECOES.map(async (colecao) => {
+      try {
+        buscados[colecao] = await lerTabelaInteira(colecao);
+      } catch (error) {
+        falhas.push(`${colecao}: ${error?.message ?? error}`);
+      }
+    })
+  );
 
   // Grava só o que realmente veio.
   await gravarTodasColecoes(buscados);

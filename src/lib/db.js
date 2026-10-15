@@ -111,10 +111,18 @@ export async function gravarColecao(store, itens) {
   await concluida;
 }
 
+/** Substitui várias stores de uma vez, numa transação só (bem mais rápido). */
 export async function gravarTodasColecoes(dados) {
-  for (const nome of COLECOES) {
-    if (Array.isArray(dados[nome])) await gravarColecao(nome, dados[nome]);
+  const nomes = COLECOES.filter((nome) => Array.isArray(dados[nome]));
+  if (!nomes.length) return;
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, nomes, "readwrite");
+  for (const nome of nomes) {
+    const os = tx.objectStore(nome);
+    os.clear();
+    for (const item of dados[nome]) os.put(item);
   }
+  await concluida;
 }
 
 export async function contarTudo() {
@@ -172,10 +180,12 @@ export async function atualizarOp(op) {
   await concluida;
 }
 
-export async function apagarOp(id) {
+export async function apagarOps(ids) {
+  if (!ids.length) return;
   const db = await abrirDB();
   const { tx, concluida } = transacao(db, ["fila"], "readwrite");
-  tx.objectStore("fila").delete(id);
+  const os = tx.objectStore("fila");
+  for (const id of ids) os.delete(id);
   await concluida;
 }
 
@@ -217,6 +227,15 @@ export async function gravarItem(store, item) {
   const db = await abrirDB();
   const { tx, concluida } = transacao(db, [store], "readwrite");
   tx.objectStore(store).put(item);
+  await concluida;
+}
+
+/** Grava (ou substitui) vários registros numa transação só. */
+export async function gravarItens(store, itens) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, [store], "readwrite");
+  const os = tx.objectStore(store);
+  for (const item of itens) os.put(item);
   await concluida;
 }
 
