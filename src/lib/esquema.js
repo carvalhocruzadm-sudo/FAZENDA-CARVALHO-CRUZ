@@ -602,6 +602,16 @@ export const ESQUEMA = {
     aoMudar: culturaDoTalhao,
     calcular: (r) => ({ valor: r.origem === "posto" ? +(num(r.litros) * num(r.preco_litro)).toFixed(2) : null }),
     porTalhao: { dividir: ["litros"] },
+    // Não deixa lançar 2 abastecimentos da mesma máquina com o mesmo operador no mesmo dia.
+    // As partes de um abastecimento dividido entre talhões não contam como repetidas.
+    validar: (r, dados) => {
+      if (!r.operador_id) return null;
+      const parteDaDivisao = (a) => r.id && a.leitura === r.leitura && a.origem === r.origem
+        && /Dividido entre/.test(a.observacao ?? "") && /Dividido entre/.test(r.observacao ?? "");
+      const repetido = (dados?.abastecimentos ?? []).some((a) => a.id !== r.id && a.data === r.data
+        && a.maquina_id === r.maquina_id && a.operador_id === r.operador_id && !parteDaDivisao(a));
+      return repetido ? "Já existe um abastecimento desta máquina com este operador nesta data." : null;
+    },
     colunas: ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "talhao_id", "valor"],
   },
 
@@ -1021,7 +1031,8 @@ export function campoVisivel(campo, reg, dados) {
 /**
  * Limpa e completa um registro antes de gravar: números viram número, campo
  * escondido vira nulo, os calculados são refeitos. Devolve { reg, erro }.
- * `dados` serve às contas que dependem de outro cadastro (o peso da saca).
+ * `dados` serve às contas que dependem de outro cadastro (o peso da saca)
+ * e ao `validar` que compara com os outros registros.
  */
 export function prepararRegistro(colecao, bruto, dados) {
   const def = ESQUEMA[colecao];
@@ -1042,6 +1053,6 @@ export function prepararRegistro(colecao, bruto, dados) {
       return { reg, erro: `Preencha: ${campo.rotulo}` };
     }
   }
-  const erro = def.validar?.(reg);
+  const erro = def.validar?.(reg, dados);
   return { reg, erro: erro || null };
 }
