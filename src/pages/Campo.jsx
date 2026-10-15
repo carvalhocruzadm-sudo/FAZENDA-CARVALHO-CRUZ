@@ -38,7 +38,7 @@ const FALA = {
   servico: "Qual serviço você fez hoje?",
   fazenda: "Em qual fazenda? Toque nela.",
   talhao: "Em qual talhão? Pode marcar mais de um. Depois toque em próximo.",
-  horimetro: "Tire a foto do horímetro e digite as horas que estão marcando agora.",
+  horimetro: "Tire a foto do horímetro e digite todos os números que estão marcando agora, inclusive o último.",
   litros: "Tire a foto da bomba e digite quantos litros de diesel colocou.",
   conferir: "Confira. Se estiver tudo certo, toque em salvar.",
   pronto: "Pronto! Abastecimento guardado. Obrigado.",
@@ -229,7 +229,7 @@ function Abastecer({ dados, salvar, maquinaId, irPara, editarServicos }) {
           <FotoComprovante caminho={r.foto_leitura} aoTirar={(c) => mudar({ foto_leitura: c })} texto="Tirar foto do horímetro" />
           <div className="visor">{r.leitura || <span className="apagado">0</span>} <small>h</small></div>
           {ultima != null && <p className="dica-anterior">Última vez: {numero(ultima, 1)} h</p>}
-          <Teclado valor={r.leitura} aoMudar={(v) => mudar({ leitura: v })} />
+          <Teclado valor={r.leitura} aoMudar={(v) => mudar({ leitura: v })} ultimoDecimal />
         </>
       );
       rodape = <Rodape aoVoltar={voltar} aoSeguir={seguir} podeSeguir={paraNumero(r.leitura) > 0} />;
