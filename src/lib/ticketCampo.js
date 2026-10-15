@@ -13,7 +13,7 @@
  * Cultura sem bags (milho, silagem…) em vários talhões: divide pela área.
  */
 
-import { ESQUEMA, prepararRegistro, registroNovo } from "./esquema";
+import { ESQUEMA, LARANJA_TERCEIROS, prepararRegistro, registroNovo } from "./esquema";
 import { dividirQuantidade } from "./talhoes";
 import { chaveTurma, culturasDaTurma } from "./turmas";
 
@@ -89,6 +89,10 @@ export const SEM_FAZENDA = "sem";
 export function daCultura(dados, culturaId) {
   const cultura = dados.culturas.find((c) => c.id === culturaId);
   const emBags = Boolean(cultura?.turma_colheita);
+  // Laranja de terceiros: não tem fazenda nem talhão, pergunta o proprietário.
+  if (culturaId === LARANJA_TERCEIROS) {
+    return { cultura, emBags, deTerceiros: true, talhoes: [], fazendas: [], proprietarios: proprietarios(dados), turmas: emBags && cultura ? turmasDaCultura(dados, cultura) : [] };
+  }
   const ativos = dados.talhoes.filter((t) => t.ativo !== false).sort(ESQUEMA.talhoes.ordem);
   const daC = ativos.filter((t) => t.cultura_id === culturaId);
   const talhoes = daC.length ? daC : ativos;
@@ -99,6 +103,16 @@ export function daCultura(dados, culturaId) {
     .map((f) => ({ id: f.id, nome: f.nome }));
   if (ids.has(SEM_FAZENDA)) fazendas.push({ id: SEM_FAZENDA, nome: "Outros talhões" });
   return { cultura, emBags, talhoes, fazendas, turmas: emBags && cultura ? turmasDaCultura(dados, cultura) : [] };
+}
+
+/** Os proprietários de laranja de terceiros já lançados, os mais recentes primeiro. */
+export function proprietarios(dados) {
+  const ultima = {};
+  for (const v of dados.vendas) {
+    const nome = String(v.proprietario ?? "").trim();
+    if (nome && String(v.data ?? "") >= String(ultima[nome] ?? "")) ultima[nome] = v.data ?? "";
+  }
+  return Object.keys(ultima).sort((a, b) => String(ultima[b]).localeCompare(String(ultima[a])) || a.localeCompare(b, "pt-BR"));
 }
 
 /**

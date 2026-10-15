@@ -31,7 +31,7 @@ import {
 export const LINK_TICKET = "/ticket";
 
 const vazio = (anterior) => ({
-  data: anterior?.data ?? hoje(), cultura_id: null, fazendas: [], talhoes: [],
+  data: anterior?.data ?? hoje(), cultura_id: null, fazendas: [], talhoes: [], proprietario: "",
   bags: {}, naoSei: false, turmas: [], peso: "", foto: null, observacao: "",
   placa: "", tipo_carro: "", tara: "", bruto: "", leitura: null,
 });
@@ -161,6 +161,7 @@ export default function Ticket({ dados, salvar, remover, email }) {
   /** O mesmo que o celular exige para deixar seguir. */
   function falta() {
     if (!cultura) return "Escolha a venda de quê.";
+    if (info.deTerceiros && !r.proprietario.trim()) return "Preencha o proprietário (de quem é a laranja).";
     if (info.fazendas.length > 1 && !r.fazendas.length) return "Marque a fazenda (ou as fazendas) desta carga.";
     if (info.talhoes.length && !r.talhoes.length) return "Marque o talhão (ou os talhões) desta carga.";
     if (emBags) {
@@ -188,6 +189,7 @@ export default function Ticket({ dados, salvar, remover, email }) {
     if (motivo) { setErro(motivo); return; }
     const resumo = [
       `Lançado no computador por ${quem}`,
+      info.deTerceiros ? `Proprietário: ${r.proprietario.trim()}` : null,
       emBags && totalBags ? `Carga: ${totalBags} bags, ${numero(kg, 0)} kg${kgPorBag ? `, ${numero(kgPorBag, 1)} kg por bag` : ""}` : null,
       talhoesEscolhidos.length > 1 ? `Talhões: ${conta.porTalhao.map((x) => `${x.talhao.nome}${emBags ? ` ${x.bags} bags` : ""}`).join(", ")}` : null,
       turmas.length > 1 ? `Turmas: ${turmas.map((k) => `${k.nome} ${k.bags} bags`).join(", ")}` : null,
@@ -208,7 +210,7 @@ export default function Ticket({ dados, salvar, remover, email }) {
     const observacao = [resumo, extras.observacao].filter(Boolean).join(" · ");
     const { regs, erro: e2 } = registrosDoTicket(dados, {
       cultura, emBags, linhas: conta.linhas, data: r.data, foto: r.foto, aConferir: !aprovaDireto,
-      extras: { ...extras, observacao },
+      extras: { ...extras, observacao, ...(info.deTerceiros ? { proprietario: r.proprietario.trim() } : {}) },
     });
     if (e2) { setErro(e2); return; }
 
@@ -265,6 +267,17 @@ export default function Ticket({ dados, salvar, remover, email }) {
           <span>Venda de quê? <em>*</em></span>
           <Escolhas opcoes={culturas.map((c) => [c.id, c.nome])} marcados={[r.cultura_id]} aoTocar={escolherCultura} />
         </div>
+
+        {info.deTerceiros && (
+          <div className="form">
+            <label className="campo"><span>Proprietário <em>*</em> <small>(de quem é a laranja)</small></span>
+              <input value={r.proprietario} list="proprietarios" onChange={(e) => mudar({ proprietario: e.target.value })} />
+              <datalist id="proprietarios">
+                {info.proprietarios.map((p) => <option key={p} value={p} />)}
+              </datalist>
+            </label>
+          </div>
+        )}
 
         {cultura && info.fazendas.length > 1 && (
           <div className="campo">

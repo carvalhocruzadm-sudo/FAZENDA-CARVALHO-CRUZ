@@ -15,6 +15,7 @@ import {
  * para quem não lê — uma pergunta por tela, figuras, 🔊 e o teclado grande.
  *
  *   quem é você → venda de quê → fazendas → talhões → bags de cada talhão
+ *   (laranja de terceiros: proprietário no lugar de fazendas e talhões)
  *   → turmas → bags e R$ por tonelada de cada turma → foto e peso → conferir
  *
  * Bags e turmas só para cultura colhida por turma (laranja). A conta (peso de
@@ -26,6 +27,7 @@ import {
 const FALA = {
   operador: "Quem é você? Toque na sua foto.",
   cultura: "Venda de quê? Toque na figura.",
+  proprietario: "De quem é a laranja? Toque no nome. Se não estiver aí, toque em outro.",
   fazenda: "De qual fazenda saiu a carga? Pode marcar mais de uma. Depois toque em próximo.",
   talhao: "De qual talhão saiu a carga? Pode marcar mais de um. Depois toque em próximo.",
   turma: "Qual turma colheu? Pode marcar mais de uma. Se não souber, toque em não sei. Depois toque em próximo.",
@@ -66,7 +68,7 @@ const DIAS = [[0, "Hoje"], [1, "Ontem"], [2, "Anteontem"]];
 const nomeDoDia = (iso) => DIAS.find(([n]) => diasAtras(n) === iso)?.[1] ?? dataBr(iso);
 
 const novo = () => ({
-  data: hoje(), operador_id: null, cultura_id: null, fazendas: [], talhoes: [],
+  data: hoje(), operador_id: null, cultura_id: null, fazendas: [], talhoes: [], proprietario: null,
   bags: {}, naoSei: false, turmas: [], peso: "", foto: null,
 });
 
@@ -85,6 +87,7 @@ const valorDaTurma = (dados, cultura, nome) => paraTeclado(ultimoValorDaTurma(da
  */
 function montarPassos(info, r) {
   const p = ["operador", "cultura"];
+  if (info.deTerceiros && info.proprietarios.length) p.push("proprietario");
   if (info.fazendas.length > 1) p.push("fazenda");
   if (info.talhoes.length) p.push("talhao");
   if (info.emBags) {
@@ -152,6 +155,7 @@ export default function CampoTicket({ dados, salvar, irPara }) {
     conferir: [
       bagsBatem ? null : `Atenção: os bags das turmas somam ${somaTurmas}, mas a carga tem ${totalBags}.`,
       `Quem lançou: ${operador?.nome}.`, `Venda de ${cultura?.nome}.`,
+      info.deTerceiros && r.proprietario ? `Proprietário: ${r.proprietario}.` : null,
       talhoesEscolhidos.length ? `${talhoesEscolhidos.length > 1 ? "Talhões" : "Talhão"}: ${talhoesEscolhidos.map((t) => t.nome).join(", ")}.` : null,
       emBags && totalBags ? `${totalBags} bags.` : null,
       ...turmas.map((k) => `${k.nome}: ${k.bags} bags, ${paraTeclado(k.valor)} reais por tonelada.`),
@@ -191,6 +195,7 @@ export default function CampoTicket({ dados, salvar, irPara }) {
     try {
       const resumo = [
         `Lançado no celular (Modo Campo) por ${operador?.nome ?? "?"}`,
+        info.deTerceiros && !r.proprietario ? "CONFERIR: proprietário não informado" : null,
         emBags && totalBags ? `Carga: ${totalBags} bags, ${numero(kg, 0)} kg${kgPorBag ? `, ${numero(kgPorBag, 1)} kg por bag` : ""}` : null,
         talhoesEscolhidos.length > 1 ? `Talhões: ${conta.porTalhao.map((x) => `${x.talhao.nome}${emBags ? ` ${x.bags} bags` : ""}`).join(", ")}` : null,
         turmas.length > 1 ? `Turmas: ${turmas.map((k) => `${k.nome} ${k.bags} bags`).join(", ")}` : null,
@@ -200,6 +205,7 @@ export default function CampoTicket({ dados, salvar, irPara }) {
       ].filter(Boolean).join(" · ");
       const { regs, erro: falha } = registrosDoTicket(dados, {
         cultura, emBags, linhas: conta.linhas, data: r.data, foto: r.foto, observacao: resumo, aConferir: true,
+        extras: info.deTerceiros ? { proprietario: r.proprietario } : {},
       });
       if (falha) throw new Error(falha);
       for (const reg of regs) await salvar("vendas", reg);
@@ -269,6 +275,28 @@ export default function CampoTicket({ dados, salvar, irPara }) {
               }}>
                 <span className="figura">{figuraCultura(c)}</span>
                 <span>{c.nome}</span>
+              </Cartao>
+            ))}
+          </div>
+        </>
+      );
+      break;
+
+    case "proprietario":
+      corpo = (
+        <>
+          <Pergunta figura="🍊">De quem é a laranja?</Pergunta>
+          <div className="campo-grade">
+            {[...info.proprietarios, null].map((nome) => (
+              <Cartao key={nome ?? "__outro"} marcado={r.proprietario === nome} fala={nome ?? "Outro"} aoTocar={() => {
+                falar(nome ?? "Outro");
+                vibrar();
+                const n = { ...r, proprietario: nome };
+                setR(n);
+                seguirCom(n);
+              }}>
+                <span className="figura">{nome ? "👤" : "🤷"}</span>
+                <span>{nome ?? "Outro / não sei"}</span>
               </Cartao>
             ))}
           </div>
@@ -477,6 +505,11 @@ export default function CampoTicket({ dados, salvar, irPara }) {
           <div className="resumo-linha" onClick={() => ir("cultura")}>
             <span className="figura">{figuraCultura(cultura)}</span><span>{cultura?.nome}</span>
           </div>
+          {info.deTerceiros && (
+            <div className="resumo-linha" onClick={() => info.proprietarios.length && ir("proprietario")}>
+              <span className="figura">👤</span><span>{r.proprietario ?? "Proprietário: o escritório preenche"}</span>
+            </div>
+          )}
           {conta.porTalhao.map((x) => (
             <div key={x.talhao.id} className="resumo-linha"
               onClick={() => ir(emBags ? `bags:${x.talhao.id}` : "talhao")}>
