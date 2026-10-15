@@ -197,19 +197,30 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
 
   // Veio do Atalho do iPhone (/?comprovantes): o comprovante já subiu para a
   // caixa de entrada; abre o lançamento do mais novo que ainda não virou despesa.
-  const [doAtalho] = useState(() => new URLSearchParams(location.search).has("comprovantes"));
+  // Aceita também "comprovante" (sem s) e /comprovantes, que é fácil digitar no Atalho.
+  // O andamento aparece na tela (o Safari às vezes engole o alert de uma aba recém-aberta).
+  const [atalho, setAtalho] = useState(() => (/(^|[?&/])comprovantes?\b/i.test(location.search + location.pathname) ? "buscando" : null));
   useEffect(() => {
-    if (!doAtalho || !pronto) return;
-    history.replaceState(null, "", "/");
-    listarCaixa(dados.despesas)
-      .then((caixa) => {
-        if (!caixa.length) throw new Error("Nenhum comprovante novo chegou. Se você acabou de enviar, o envio falhou: veja a notificação do Atalho ou abra /api/comprovante no navegador para conferir a configuração.");
-        setCompartilhado(daCaixa(caixa[0]));
-      })
-      .catch((err) => window.alert(err.message));
+    if (atalho !== "buscando" || !pronto) return undefined;
+    let vivo = true;
+    // Só limpa o endereço no fim: se a tela recarregar no meio, ela busca de novo.
+    const terminar = () => history.replaceState(null, "", "/");
+    (async () => {
+      // O arquivo acabou de subir: tenta algumas vezes antes de desistir.
+      for (let tentativa = 0; tentativa < 4 && vivo; tentativa++) {
+        const caixa = await listarCaixa(dados.despesas);
+        if (caixa.length) {
+          if (vivo) { terminar(); setCompartilhado(daCaixa(caixa[0])); setAtalho(null); }
+          return;
+        }
+        await new Promise((ok) => setTimeout(ok, 1500));
+      }
+      throw new Error("Nenhum comprovante novo chegou. Se você acabou de enviar, o envio falhou: veja a notificação do Atalho.");
+    })().catch((err) => { if (vivo) { terminar(); setAtalho(err.message); } });
+    return () => { vivo = false; };
     // Uma vez só, quando o banco do aparelho termina de abrir.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doAtalho, pronto]);
+  }, [atalho === "buscando", pronto]);
   const [trocandoSenha, setTrocandoSenha] = useState(false);
   const fecharTrocaSenha = useCallback(() => setTrocandoSenha(false), []);
 
@@ -258,6 +269,10 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
         </header>
         <div className="conteudo">
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
+          {atalho === "buscando" && <div className="aviso info">Buscando o comprovante que acabou de chegar…</div>}
+          {atalho && atalho !== "buscando" && (
+            <div className="aviso">{atalho} <button className="btn" onClick={() => setAtalho(null)}>Fechar</button></div>
+          )}
           {!pronto ? <div className="vazio">Carregando…</div> : (
             <Pagina key={tela} dados={dados} salvar={salvar} salvarVarios={salvarVarios} remover={remover} irPara={irPara} email={email}
               sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} abrirCampo={abrirCampo} />
