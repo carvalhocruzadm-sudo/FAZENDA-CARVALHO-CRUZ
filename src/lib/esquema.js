@@ -587,7 +587,7 @@ export const ESQUEMA = {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       origem: { tipo: "opcoes", rotulo: "Onde abasteceu", padrao: "tanque", opcoes: [["tanque", "Tanque da fazenda"], ["posto", "Posto"]] },
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / veículo", obrigatorio: true, filtro: (m) => m.medidor !== "nenhum" },
-      operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
+      operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista", obrigatorio: true },
       litros: { tipo: "numero", rotulo: "Litros", casas: 1, obrigatorio: true },
       leitura: { tipo: "numero", rotulo: "Horímetro / km no abastecimento", casas: 1, leituraMedidor: true },
       cultura_id: refCultura,
@@ -607,7 +607,7 @@ export const ESQUEMA = {
     validar: (r, dados) => {
       if (!r.operador_id) return null;
       const parteDaDivisao = (a) => r.id && a.leitura === r.leitura && a.origem === r.origem
-        && /Dividido entre/.test(a.observacao ?? "") && /Dividido entre/.test(r.observacao ?? "");
+        && /dividido entre/i.test(a.observacao ?? "") && /dividido entre/i.test(r.observacao ?? "");
       const repetido = (dados?.abastecimentos ?? []).some((a) => a.id !== r.id && a.data === r.data
         && a.maquina_id === r.maquina_id && a.operador_id === r.operador_id && !parteDaDivisao(a));
       return repetido ? "Já existe um abastecimento desta máquina com este operador nesta data." : null;

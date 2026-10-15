@@ -95,8 +95,8 @@ function Abastecer({ dados, salvar, maquinaId, irPara, editarServicos }) {
     setErro(null);
     try {
       const preparados = [
-        ...resumo.abastecimentos.map((reg) => ["abastecimentos", prepararRegistro("abastecimentos", reg)]),
-        ...resumo.operacoes.map((reg) => ["operacoes", prepararRegistro("operacoes", reg)]),
+        ...resumo.abastecimentos.map((reg) => ["abastecimentos", prepararRegistro("abastecimentos", reg, dados)]),
+        ...resumo.operacoes.map((reg) => ["operacoes", prepararRegistro("operacoes", reg, dados)]),
       ];
       const falha = preparados.find(([, p]) => p.erro);
       if (falha) throw new Error(falha[1].erro);
