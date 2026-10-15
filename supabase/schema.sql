@@ -727,6 +727,7 @@ alter table public.vendas add column if not exists comprador text;
 alter table public.vendas add column if not exists cultura_id uuid;
 alter table public.vendas add column if not exists safra text;
 alter table public.vendas add column if not exists talhao_id uuid;
+alter table public.vendas add column if not exists proprietario text;
 alter table public.vendas add column if not exists classificacao text;
 alter table public.vendas add column if not exists placa text;
 alter table public.vendas add column if not exists tipo_carro text;

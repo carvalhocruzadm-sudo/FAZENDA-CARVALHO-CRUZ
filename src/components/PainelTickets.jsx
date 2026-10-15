@@ -69,6 +69,7 @@ export default function PainelTickets({ dados, salvar, remover, periodoInicial =
   }
 
   const talhao = (v) => {
+    if (v.proprietario) return `Proprietário: ${v.proprietario}`;
     if (!v.talhao_id) return "—";
     const t = dados.talhoes.find((x) => x.id === v.talhao_id);
     const fazenda = t && dados.fazendas.find((f) => f.id === t.fazenda_id)?.nome;

@@ -227,7 +227,7 @@ const caminhaoPelo1620 = (reg, dados) => {
 
 // Compra de laranja é sempre laranja de terceiros (compra e revenda), separada
 // da laranja dos sítios da fazenda. Mesmo id do cadastro inicial (seed.js).
-const LARANJA_TERCEIROS = "00000000-0000-4000-8000-000000000008";
+export const LARANJA_TERCEIROS = "00000000-0000-4000-8000-000000000008";
 const laranjaDeTerceiros = (reg, dados) =>
   reg.categoria === "Compra de laranja" && dados.culturas?.some((c) => c.id === LARANJA_TERCEIROS)
     ? { centro: "cultura", cultura_id: LARANJA_TERCEIROS, talhao_id: null }
@@ -823,7 +823,12 @@ export const ESQUEMA = {
       comprador: { tipo: "sugestao", rotulo: "Comprador", sugestoesDe: ["vendas", "comprador"] },
       cultura_id: { ...refCultura, obrigatorio: true },
       safra: { tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"], historicoDaCultura: true },
-      talhao_id: { ...refTalhao, rotulo: "Talhão / sítio" },
+      talhao_id: { ...refTalhao, rotulo: "Talhão / sítio", paraCultura: (c) => c.id !== LARANJA_TERCEIROS },
+      // Laranja de terceiros não sai de talhão da fazenda: vale de quem é o pomar.
+      proprietario: {
+        tipo: "sugestao", rotulo: "Proprietário (de quem é a laranja)", sugestoesDe: ["vendas", "proprietario"],
+        paraCultura: (c) => c.id === LARANJA_TERCEIROS,
+      },
       classificacao: {
         tipo: "sugestao", rotulo: "Tipo / classificação", sugestoes: ["BOA", "SUKITA", "CASQUINOL", "Grão", "Silagem"], sugestoesDe: ["vendas", "classificacao"],
         sugestoesDaCultura: (c) => CLASSIFICACOES_POR_GRUPO[c.grupo], historicoDaCultura: true,
