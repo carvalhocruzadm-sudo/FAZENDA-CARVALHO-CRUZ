@@ -121,10 +121,15 @@ export function proprietarios(dados) {
  * as que colheram por último primeiro.
  */
 export function turmasDaCultura(dados, cultura) {
+  // Laranja de terceiros é colhida pelas mesmas turmas da laranja (as das culturas de citros).
+  const aceitas = new Set([cultura.id]);
+  if (cultura.id === LARANJA_TERCEIROS) {
+    for (const c of dados.culturas) if (c.grupo === cultura.grupo && c.turma_colheita) aceitas.add(c.id);
+  }
   const ultima = {};
   for (const t of dados.turmas ?? []) {
     const delas = culturasDaTurma(t);
-    if (t.ativo !== false && (!delas.length || delas.includes(cultura.id))) ultima[t.nome.trim()] = "";
+    if (t.ativo !== false && (!delas.length || delas.some((id) => aceitas.has(id)))) ultima[t.nome.trim()] = "";
   }
   for (const nome of String(cultura.turmas ?? "").split(",").map((x) => x.trim()).filter(Boolean)) ultima[nome] = "";
   for (const v of dados.vendas) {
