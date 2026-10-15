@@ -562,6 +562,7 @@ create table if not exists public.pulverizacoes (
   criado_em timestamptz not null default now(),
   atualizado_em timestamptz
 );
+alter table public.pulverizacoes add column if not exists titulo text;
 alter table public.pulverizacoes add column if not exists data date;
 alter table public.pulverizacoes add column if not exists cultura_id uuid;
 alter table public.pulverizacoes add column if not exists talhao_id uuid;
@@ -569,6 +570,8 @@ alter table public.pulverizacoes add column if not exists talhoes jsonb;
 alter table public.pulverizacoes add column if not exists area_ha numeric;
 alter table public.pulverizacoes add column if not exists maquina_id uuid;
 alter table public.pulverizacoes add column if not exists operador_id uuid;
+alter table public.pulverizacoes add column if not exists dose_por text;
+alter table public.pulverizacoes add column if not exists ha_por_pipa numeric;
 alter table public.pulverizacoes add column if not exists situacao text;
 alter table public.pulverizacoes add column if not exists observacao text;
 create index if not exists pulverizacoes_data_idx on public.pulverizacoes (data);
@@ -595,6 +598,7 @@ create table if not exists public.pulverizacao_itens (
 alter table public.pulverizacao_itens add column if not exists pulverizacao_id uuid;
 alter table public.pulverizacao_itens add column if not exists insumo_id uuid;
 alter table public.pulverizacao_itens add column if not exists dose_ha numeric;
+alter table public.pulverizacao_itens add column if not exists dose_pipa numeric;
 alter table public.pulverizacao_itens add column if not exists quantidade numeric;
 alter table public.pulverizacao_itens enable row level security;
 drop policy if exists "equipe acessa pulverizacao_itens" on public.pulverizacao_itens;

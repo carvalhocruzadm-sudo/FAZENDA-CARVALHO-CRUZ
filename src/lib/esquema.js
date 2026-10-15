@@ -665,6 +665,7 @@ export const ESQUEMA = {
     titulo: "Ordens de pulverização", singular: "ordem de pulverização", icone: "spray", lancamento: true, campo: "grava",
     descricao: "O gerente cria a ordem: primeiro a cultura, depois marca as fazendas e os talhões (marcar a fazenda já marca todos os talhões dela), o trator e os produtos com a dose por ha. No depósito, o tratorista abre o Modo Campo → Tirar do depósito, vê a ordem com as fotos dos produtos e separa um por um, conferindo pela foto. A saída de cada produto é dividida entre os talhões pela área.",
     campos: {
+      titulo: { tipo: "texto", rotulo: "Título", dica: "Um nome para reconhecer a ordem. Ex.: 1ª pulverização do milho" },
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       cultura_id: refCultura,
       // Primeiro talhão marcado (as ordens antigas só tinham este).
@@ -674,11 +675,14 @@ export const ESQUEMA = {
       area_ha: { tipo: "numero", rotulo: "Área a pulverizar (ha)", casas: 2, obrigatorio: true, dica: "Soma das áreas dos talhões marcados" },
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Trator / pulverizador", filtro: (m) => m.medidor === "horas" },
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Tratorista" },
+      // Dose dos produtos: por hectare ou por pipa (tanque cheio do pulverizador).
+      dose_por: { tipo: "opcoes", rotulo: "Dose por", padrao: "ha", opcoes: [["ha", "Hectare (ha)"], ["pipa", "Pipa (tanque)"]] },
+      ha_por_pipa: { tipo: "numero", rotulo: "Quantos ha uma pipa faz", casas: 2, mostrarSe: (r) => r.dose_por === "pipa", dica: "Área que um tanque cheio cobre" },
       situacao: { tipo: "opcoes", rotulo: "Situação", padrao: "aberta", opcoes: [["aberta", "Aberta (esperando separar)"], ["separada", "Produtos separados"], ["concluida", "Concluída"], ["cancelada", "Cancelada"]] },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["data", "talhao_id", "area_ha", "maquina_id", "operador_id", "situacao"],
-    resumo: (r) => `Pulverização de ${String(r.data ?? "").split("-").reverse().join("/")}`,
+    colunas: ["titulo", "data", "talhao_id", "area_ha", "maquina_id", "operador_id", "situacao"],
+    resumo: (r) => r.titulo || `Pulverização de ${String(r.data ?? "").split("-").reverse().join("/")}`,
   },
 
   pulverizacao_itens: {
@@ -687,6 +691,8 @@ export const ESQUEMA = {
       pulverizacao_id: { tipo: "ref", colecao: "pulverizacoes", rotulo: "Ordem", obrigatorio: true },
       insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
       dose_ha: { tipo: "numero", rotulo: "Dose por ha", casas: 3 },
+      // Só nas ordens com dose por pipa (a dose por ha é calculada dela).
+      dose_pipa: { tipo: "numero", rotulo: "Dose por pipa", casas: 3 },
       quantidade: { tipo: "numero", rotulo: "Quantidade total", casas: 3, obrigatorio: true },
     },
     colunas: ["pulverizacao_id", "insumo_id", "dose_ha", "quantidade"],
