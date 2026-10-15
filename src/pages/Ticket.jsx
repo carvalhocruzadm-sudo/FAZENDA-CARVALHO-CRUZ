@@ -58,7 +58,7 @@ function Escolhas({ opcoes, marcados, aoTocar }) {
   );
 }
 
-export default function Ticket({ dados, salvar, remover, email }) {
+export default function Ticket({ dados, salvar, remover, email, abrirTicketCampo }) {
   const [r, setR] = useState(() => vazio());
   const [erro, setErro] = useState(null);
   const [salvo, setSalvo] = useState(null);
@@ -247,6 +247,11 @@ export default function Ticket({ dados, salvar, remover, email }) {
             ? " Como você é administrador/gerente, o ticket já entra aprovado."
             : " O ticket fica aguardando a aprovação do escritório."}
         </p>
+        {abrirTicketCampo && (
+          <button type="button" className="btn" style={{ marginBottom: 12 }} onClick={abrirTicketCampo}>
+            🧾 Abrir o modo lançador de ticket (telas do celular)
+          </button>
+        )}
 
         {salvo && (
           <div className="aviso ok">
