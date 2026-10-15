@@ -93,9 +93,18 @@ export function Rodape({ aoVoltar, aoSeguir, podeSeguir = true, textoSeguir = "P
 }
 
 /** Teclado numérico grande (horímetro, litros). `casas={0}`: só número inteiro, sem vírgula. */
-export function Teclado({ valor, aoMudar, casas = 1 }) {
+/**
+ * Teclado numérico grande. Com `ultimoDecimal` (horímetro) não tem vírgula:
+ * o último número digitado vai sempre depois dela (58946 vira 5894,6).
+ */
+export function Teclado({ valor, aoMudar, casas = 1, ultimoDecimal = false }) {
   const digitar = (t) => {
     vibrar(20);
+    if (ultimoDecimal) {
+      const atuais = valor.replace(/\D/g, "");
+      const digitos = t === "⌫" ? atuais.slice(0, -1) : atuais.length >= 8 ? atuais : atuais + t;
+      return aoMudar(digitos ? (Number(digitos) / 10).toFixed(1).replace(".", ",") : "");
+    }
     if (t === "⌫") return aoMudar(valor.slice(0, -1));
     if (t === ",") return aoMudar(valor.includes(",") ? valor : `${valor || "0"},`);
     const [, dec] = valor.split(",");
@@ -105,7 +114,7 @@ export function Teclado({ valor, aoMudar, casas = 1 }) {
   };
   return (
     <div className="teclado">
-      {["1", "2", "3", "4", "5", "6", "7", "8", "9", ",", "0", "⌫"].map((t) => (t === "," && casas === 0
+      {["1", "2", "3", "4", "5", "6", "7", "8", "9", ",", "0", "⌫"].map((t) => (t === "," && (casas === 0 || ultimoDecimal)
         ? <span key={t} />
         : <button key={t} type="button" onClick={() => digitar(t)} aria-label={t === "⌫" ? "Apagar" : t}>{t}</button>))}
     </div>

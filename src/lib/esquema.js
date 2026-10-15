@@ -420,7 +420,7 @@ export const ESQUEMA = {
       modelo: { tipo: "texto", rotulo: "Modelo" },
       ano: { tipo: "numero", rotulo: "Ano" },
       placa: { tipo: "texto", rotulo: "Placa / chassi / série" },
-      leitura_inicial: { tipo: "numero", rotulo: "Horímetro/km no cadastro", casas: 1, dica: "A leitura atual passa a vir dos lançamentos" },
+      leitura_inicial: { tipo: "numero", rotulo: "Horímetro/km no cadastro", casas: 1, leituraMedidor: true, dica: "A leitura atual passa a vir dos lançamentos" },
       intervalo_revisao: { tipo: "numero", rotulo: "Revisão a cada (h ou km)", dica: "Ex.: 250 h, 10.000 km" },
       valor: { tipo: "dinheiro", rotulo: "Valor patrimonial" },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
@@ -532,8 +532,8 @@ export const ESQUEMA = {
       operacao: { tipo: "sugestao", rotulo: "Operação", sugestoes: OPERACOES, sugestoesDe: ["servicos", "nome"], obrigatorio: true },
       cultura_id: refCultura,
       talhao_id: refTalhao,
-      leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, obrigatorio: true },
-      leitura_final: { tipo: "numero", rotulo: "Leitura final", casas: 1, obrigatorio: true },
+      leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, leituraMedidor: true, obrigatorio: true },
+      leitura_final: { tipo: "numero", rotulo: "Leitura final", casas: 1, leituraMedidor: true, obrigatorio: true },
       trabalhado: { tipo: "numero", rotulo: "Horas / km", casas: 1, somenteLeitura: true },
       destino: { tipo: "texto", rotulo: "Destino / carga", dica: "Para viagens de caminhão" },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
@@ -557,7 +557,7 @@ export const ESQUEMA = {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / veículo", obrigatorio: true },
       tipo: { tipo: "opcoes", rotulo: "Tipo", padrao: "revisao", opcoes: [["revisao", "Revisão programada"], ["oleo", "Troca de óleo / filtros"], ["corretiva", "Conserto / corretiva"], ["pneu", "Pneus"]] },
-      leitura: { tipo: "numero", rotulo: "Horímetro / km", casas: 1 },
+      leitura: { tipo: "numero", rotulo: "Horímetro / km", casas: 1, leituraMedidor: true },
       descricao: { tipo: "textoLongo", rotulo: "O que foi feito" },
       oficina: { tipo: "texto", rotulo: "Oficina / mecânico" },
       valor: { tipo: "dinheiro", rotulo: "Valor (peças + serviço)" },
@@ -589,7 +589,7 @@ export const ESQUEMA = {
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / veículo", obrigatorio: true, filtro: (m) => m.medidor !== "nenhum" },
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
       litros: { tipo: "numero", rotulo: "Litros", casas: 1, obrigatorio: true },
-      leitura: { tipo: "numero", rotulo: "Horímetro / km no abastecimento", casas: 1 },
+      leitura: { tipo: "numero", rotulo: "Horímetro / km no abastecimento", casas: 1, leituraMedidor: true },
       cultura_id: refCultura,
       talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)" },
       posto: { tipo: "texto", rotulo: "Posto", mostrarSe: (r) => r.origem === "posto" },
@@ -602,6 +602,16 @@ export const ESQUEMA = {
     aoMudar: culturaDoTalhao,
     calcular: (r) => ({ valor: r.origem === "posto" ? +(num(r.litros) * num(r.preco_litro)).toFixed(2) : null }),
     porTalhao: { dividir: ["litros"] },
+    // Não deixa lançar 2 abastecimentos da mesma máquina com o mesmo operador no mesmo dia.
+    // As partes de um abastecimento dividido entre talhões não contam como repetidas.
+    validar: (r, dados) => {
+      if (!r.operador_id) return null;
+      const parteDaDivisao = (a) => r.id && a.leitura === r.leitura && a.origem === r.origem
+        && /Dividido entre/.test(a.observacao ?? "") && /Dividido entre/.test(r.observacao ?? "");
+      const repetido = (dados?.abastecimentos ?? []).some((a) => a.id !== r.id && a.data === r.data
+        && a.maquina_id === r.maquina_id && a.operador_id === r.operador_id && !parteDaDivisao(a));
+      return repetido ? "Já existe um abastecimento desta máquina com este operador nesta data." : null;
+    },
     colunas: ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "talhao_id", "valor"],
   },
 
@@ -1027,7 +1037,8 @@ export function campoVisivel(campo, reg, dados) {
 /**
  * Limpa e completa um registro antes de gravar: números viram número, campo
  * escondido vira nulo, os calculados são refeitos. Devolve { reg, erro }.
- * `dados` serve às contas que dependem de outro cadastro (o peso da saca).
+ * `dados` serve às contas que dependem de outro cadastro (o peso da saca)
+ * e ao `validar` que compara com os outros registros.
  */
 export function prepararRegistro(colecao, bruto, dados) {
   const def = ESQUEMA[colecao];
@@ -1048,6 +1059,6 @@ export function prepararRegistro(colecao, bruto, dados) {
       return { reg, erro: `Preencha: ${campo.rotulo}` };
     }
   }
-  const erro = def.validar?.(reg);
+  const erro = def.validar?.(reg, dados);
   return { reg, erro: erro || null };
 }
