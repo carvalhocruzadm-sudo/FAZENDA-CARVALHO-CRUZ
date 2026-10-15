@@ -55,6 +55,9 @@ async function fccEnviarFila() {
 
     for (const op of fila) {
       if (op.tentativas >= FCC_MAX_TENTATIVAS) continue; // falha permanente: fica para a tela de Sincronização
+      // Foto e comprovante precisam do app (arquivo guardado, compressão):
+      // para aqui, sem furar a ordem, e o resto sai quando o app abrir.
+      if (op.acao !== "upsert" && op.acao !== "delete") break;
 
       const base = `${cred.url}/rest/v1/${encodeURIComponent(op.tabela)}`;
       const resp = op.acao === "delete"
