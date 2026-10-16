@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useMemo, useState } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 import LancarComprovante from "./components/LancarComprovante";
@@ -69,6 +69,10 @@ function SeletorCultura({ culturas, cultura, setCultura }) {
     </select>
   );
 }
+
+/** Comprovante que chegou há menos disto abre sozinho quando o app vem para a tela. */
+const RECENTE_MS = 10 * 60 * 1000;
+const OFERECIDOS = new Set();
 
 /** O app foi aberto pelo Atalho do iPhone (/?comprovantes)? */
 const veioDoAtalho = () => /(^|[?&/])comprovantes?\b/i.test(location.search + location.pathname);
@@ -217,7 +221,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
       for (let tentativa = 0; tentativa < 4 && vivo; tentativa++) {
         const caixa = await listarCaixa(dados.despesas);
         if (caixa.length) {
-          if (vivo) { terminar(); setCompartilhado(daCaixa(caixa[0])); setAtalho(null); }
+          if (vivo) { terminar(); OFERECIDOS.add(caixa[0].caminho); setCompartilhado(daCaixa(caixa[0])); setAtalho(null); }
           return;
         }
         await new Promise((ok) => setTimeout(ok, 1500));
@@ -228,6 +232,33 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
     // Uma vez só, quando o banco do aparelho termina de abrir.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [atalho === "buscando", pronto]);
+  // Aberto pelo ícone da tela inicial logo depois do Atalho (o iPhone não deixa
+  // o Atalho abrir o ícone, só o Safari): se chegou comprovante nos últimos
+  // minutos, abre o lançamento dele. Confere ao abrir e toda vez que o app volta
+  // para a tela; cada comprovante é oferecido uma vez só.
+  const despesasRef = useRef(dados.despesas);
+  const ocupadoRef = useRef(false);
+  useEffect(() => {
+    despesasRef.current = dados.despesas;
+    ocupadoRef.current = Boolean(compartilhado) || atalho === "buscando";
+  });
+  useEffect(() => {
+    if (!pronto || !supabaseConfigurado) return undefined;
+    let vivo = true;
+    const conferir = () => {
+      if (document.visibilityState !== "visible" || ocupadoRef.current) return;
+      listarCaixa(despesasRef.current).then((caixa) => {
+        const novo = caixa.find((c) => !OFERECIDOS.has(c.caminho) && Date.now() - new Date(c.criadoEm).getTime() < RECENTE_MS);
+        if (!novo || !vivo || ocupadoRef.current) return;
+        OFERECIDOS.add(novo.caminho);
+        setCompartilhado(daCaixa(novo));
+      }).catch(() => { /* sem internet: fica para a próxima vez */ });
+    };
+    conferir();
+    document.addEventListener("visibilitychange", conferir);
+    return () => { vivo = false; document.removeEventListener("visibilitychange", conferir); };
+  }, [pronto]);
+
   const [trocandoSenha, setTrocandoSenha] = useState(false);
   const fecharTrocaSenha = useCallback(() => setTrocandoSenha(false), []);
 
