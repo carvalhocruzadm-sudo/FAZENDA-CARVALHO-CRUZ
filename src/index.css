@@ -520,3 +520,19 @@ td.acoes .btn + .btn { margin-left: 4px; }
 /* Campos opcionais do formulário: botões que abrem o campo quando ele é usado. */
 .opcionais { display: grid; gap: 6px; }
 .opcionais .escolhas button { padding: 7px 12px; font-size: 13px; }
+
+/* Funcionários (formato da folha da distribuidora) */
+.chips { display: flex; gap: 7px; flex-wrap: wrap; }
+.chip { padding: 6px 12px; border-radius: 20px; border: 0; cursor: pointer; background: #efefe8; color: var(--texto); font: inherit; font-size: 12.5px; }
+.chip.ativo { background: var(--verde); color: #fff; font-weight: 700; }
+.aviso .chip { background: #fde68a; font-weight: 600; }
+.pessoas { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.pessoa { display: flex; gap: 12px; align-items: flex-start; text-align: left; font: inherit; color: inherit; background: #fff; border: 1px solid var(--linha); border-radius: 10px; padding: 12px; cursor: pointer; }
+.pessoa:hover { border-color: var(--verde-claro); }
+.pessoa.inativa { opacity: 0.6; }
+.pessoa .nome { font-weight: 700; font-size: 14px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pessoa .rosto { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--verde-pale); }
+.pessoa .rosto.vazio { display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; color: var(--verde); }
+.linha-historico { border-top: 1px solid var(--linha); }
+.linha-historico .cabeca { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 0; background: none; border: 0; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.linha-historico.total { display: flex; justify-content: space-between; border-top-width: 2px; padding-top: 9px; font-weight: 700; }
