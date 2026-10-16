@@ -104,8 +104,9 @@ drop policy if exists "campo corrige ${tabela}" on public.${tabela};\n`;
   for select to authenticated using (${linhas});\n`;
   }
   if (def.campo === "grava") {
-    // O login só de ticket grava só onde a regra da tabela já pede o ticket (vendas).
-    const grava = def.campoSql?.includes("campo_ticket") ? linhas : `${linhas} and (select public.acesso_campo()) is distinct from 'ticket'`;
+    // O login só de ticket grava só onde a regra da tabela já pede o ticket
+    // (vendas) ou onde a tabela vale para ele também (ticketTambem: avisos).
+    const grava = def.campoSql?.includes("campo_ticket") || def.ticketTambem ? linhas : `${linhas} and (select public.acesso_campo()) is distinct from 'ticket'`;
     sql += `create policy "campo lanca ${tabela}" on public.${tabela}
   for insert to authenticated with check (${grava});
 create policy "campo corrige ${tabela}" on public.${tabela}

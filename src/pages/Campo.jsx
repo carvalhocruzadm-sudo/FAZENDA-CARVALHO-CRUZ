@@ -11,7 +11,9 @@ import {
   falar, lancamentosDoPA, maquinasDoPA, operadores, paraNumero, servicoPorNome, servicos, vibrar,
 } from "../lib/campo";
 import { hoje, prepararRegistro } from "../lib/esquema";
+import { salvarComAviso } from "../lib/avisos";
 import { guardarFotosDosCadastros } from "../lib/fotos";
+import { iniciarNtfy } from "../lib/ntfy";
 import { supabase, supabaseConfigurado } from "../lib/supabase";
 import { leitura, numero } from "../lib/formato";
 
@@ -25,6 +27,9 @@ import { leitura, numero } from "../lib/formato";
  *
  * Uma pergunta por tela, figura grande, poucas palavras e o botão 🔊 que lê
  * a pergunta em voz alta.
+ *
+ * Tudo o que for gravado aqui vira aviso no sininho do escritório e
+ * notificação no celular pelo ntfy (lib/avisos.js).
  */
 
 // ─── Abastecimento no PA ────────────────────────────────────────────────────
@@ -445,8 +450,11 @@ function useAcessoCampo(email, contaCampo) {
  * Modo Campo fica presa aqui.
  */
 export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema, email }) {
-  const { dados, pronto, erro, salvar } = useDados();
+  const { dados, pronto, erro, salvar: salvarSemAviso } = useDados();
   const { podeTicket, soTicket } = useAcessoCampo(email, !voltarAoSistema);
+  const salvar = salvarComAviso(salvarSemAviso, { dados, email });
+
+  useEffect(() => iniciarNtfy(), []);
 
   useEffect(() => { if (pronto) guardarFotosDosCadastros(dados); }, [pronto, dados]);
 

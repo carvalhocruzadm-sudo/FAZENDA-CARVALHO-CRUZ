@@ -7,8 +7,11 @@ import { CulturaAtiva } from "./hooks/useCulturaAtiva";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { daCaixa, lerCompartilhado, listarCaixa } from "./lib/arquivos";
+import { textoDoAviso } from "./lib/avisos";
+import { iniciarNtfy } from "./lib/ntfy";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Agronomo from "./pages/Agronomo";
+import Avisos from "./pages/Avisos";
 import ModoCampo from "./pages/Campo";
 import Login, { NovaSenha } from "./pages/Login";
 import Painel from "./pages/Painel";
@@ -19,6 +22,7 @@ import Ticket, { LINK_TICKET } from "./pages/Ticket";
 
 const MENU = [
   ["painel", "Painel", "painel", Painel],
+  ["avisos", "Avisos do campo", "sino", Avisos],
   ["lavoura", "Lavoura e talhões", "cultura", Lavoura],
   ["ticket", "Ticket da balança", "cesto", Ticket],
   ["vendas", "Vendas", "venda", Vendas],
@@ -43,6 +47,40 @@ function IndicadorSync({ aoClicar }) {
         : s.pendentes ? ["pendente", `${s.pendentes} para enviar`]
           : ["", "Sincronizado"];
   return <button className="sync" onClick={aoClicar}><i className={cls} /> {texto}</button>;
+}
+
+/**
+ * Fica de olho nos avisos que chegam do campo. Os que já estavam no aparelho
+ * quando o sistema abriu não incomodam (o contador do sininho já mostra); os
+ * que chegarem depois aparecem num balão e, se liberado, numa notificação do
+ * computador. O que a própria pessoa lançou não avisa ela mesma.
+ */
+function useAvisosNovos(avisos, pronto, email) {
+  const vistos = useRef(null);
+  const [balao, setBalao] = useState(null);
+
+  useEffect(() => {
+    if (!pronto) return;
+    if (!vistos.current) {
+      vistos.current = new Set(avisos.map((a) => a.id));
+      return;
+    }
+    const meu = (a) => email && String(a.email ?? "").toLowerCase() === email.toLowerCase();
+    const novos = avisos.filter((a) => !a.lido && !vistos.current.has(a.id) && !meu(a));
+    for (const a of avisos) vistos.current.add(a.id);
+    if (!novos.length) return;
+
+    const texto = novos.length === 1 ? textoDoAviso(novos[0]) : `${novos.length} lançamentos novos do campo`;
+    const detalhe = novos.length === 1 ? novos[0].resumo : novos.map(textoDoAviso).slice(0, 3).join(" · ");
+    setBalao({ texto, detalhe, ticket: novos.some((a) => a.ticket) });
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(texto, { body: detalhe ?? "", icon: "/fazenda-192.png", tag: "fcc-avisos" });
+      }
+    } catch { /* alguns celulares só notificam pelo service worker: fica o balão */ }
+  }, [avisos, pronto, email]);
+
+  return [balao, () => setBalao(null)];
 }
 
 /** Escolher a cultura aqui vale para o sistema todo (fica guardado no aparelho). */
@@ -194,6 +232,9 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
   });
   const [menuAberto, setMenuAberto] = useState(false);
+  const [balao, fecharBalao] = useAvisosNovos(dados.avisos, pronto, email);
+  const naoLidos = dados.avisos.filter((a) => !a.lido).length;
+  useEffect(() => iniciarNtfy(), []);
   const [cultura, setCultura] = useCulturaGuardada(dados.culturas, pronto);
   const culturaAtiva = useMemo(() => ({ cultura, setCultura }), [cultura, setCultura]);
   const [compartilhado, setCompartilhado] = useState(null);
@@ -286,6 +327,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
           {MENU.map(([id, r, icone]) => (
             <button key={id} className={tela === id ? "ativo" : ""} onClick={() => irPara(id)}>
               <Icone nome={icone} /> {r}
+              {id === "avisos" && naoLidos > 0 && <span className="qtd-avisos">{naoLidos}</span>}
             </button>
           ))}
         </nav>
@@ -304,6 +346,11 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
           <button className="btn icone menu" onClick={() => setMenuAberto(true)} aria-label="Abrir menu"><Icone nome="menu" /></button>
           <h1>{rotulo}</h1>
           {pronto && <SeletorCultura culturas={dados.culturas} cultura={cultura} setCultura={setCultura} />}
+          <button className="btn icone sininho" onClick={() => irPara("avisos")}
+            title={naoLidos ? `${naoLidos} aviso(s) novo(s) do campo` : "Avisos do campo"} aria-label="Avisos do campo">
+            <Icone nome="sino" />
+            {naoLidos > 0 && <span className="qtd-avisos">{naoLidos > 99 ? "99+" : naoLidos}</span>}
+          </button>
           <IndicadorSync aoClicar={() => irPara("sync")} />
         </header>
         <div className="conteudo">
@@ -324,6 +371,17 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
           aoSalvar={() => { setCompartilhado(null); irPara("financeiro"); }} />
       )}
       {trocandoSenha && <TrocarSenha email={email} aoFechar={fecharTrocaSenha} />}
+      {balao && (
+        <div className={`balao ${balao.ticket ? "ticket" : ""}`} role="status">
+          <Icone nome="sino" />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <b>{balao.texto}</b>
+            {balao.detalhe && <small>{balao.detalhe}</small>}
+          </span>
+          <button className="btn" onClick={() => { fecharBalao(); irPara("avisos"); }}>Ver</button>
+          <button className="btn icone" onClick={fecharBalao} aria-label="Fechar"><Icone nome="fechar" /></button>
+        </div>
+      )}
     </div>
     </CulturaAtiva.Provider>
   );

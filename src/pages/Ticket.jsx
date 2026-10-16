@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { BotaoFoto, Foto } from "../components/Foto";
 import PainelTickets from "../components/PainelTickets";
 import { Icone } from "../components/ui";
+import { salvarComAviso } from "../lib/avisos";
 import { hoje } from "../lib/esquema";
 import { brl, numero } from "../lib/formato";
 import { completarVenda, lerTicketDaFoto } from "../lib/leituraTicket";
@@ -217,7 +218,9 @@ export default function Ticket({ dados, salvar, remover, email }) {
 
     setSalvando(true);
     try {
-      for (const reg of regs) await salvar("vendas", reg);
+      // Ticket novo vira aviso no sininho e notificação no ntfy.
+      const salvarAvisando = salvarComAviso(salvar, { dados, email });
+      for (const reg of regs) await salvarAvisando("vendas", reg);
       setSalvo({ cultura: cultura.nome, kg, talhoes: talhoesEscolhidos.map((t) => t.nome).join(", ") });
       // Próximo ticket: mesmo dia, cultura, talhões, turmas e valores; bags, peso e foto novos.
       setR((a) => ({ ...a, ...cargaNova, turmas: a.turmas.map((k) => ({ ...k, bags: "" })) }));

@@ -300,6 +300,9 @@ export async function puxar() {
 // ─── Sincronização completa ─────────────────────────────────────────────────
 
 let emAndamento = null;
+// Pedido que chegou com outra sincronização no meio: roda de novo no fim, senão
+// o que entrou na fila depois que ela começou só sairia na rodada seguinte.
+let deNovo = false;
 
 export async function sincronizar() {
   if (!supabaseConfigurado) {
@@ -310,7 +313,10 @@ export async function sincronizar() {
     definirEstado({ erro: "Sem conexão" });
     return null;
   }
-  if (emAndamento) return emAndamento;
+  if (emAndamento) {
+    deNovo = true;
+    return emAndamento;
+  }
 
   definirEstado({ sincronizando: true, erro: null });
 
@@ -334,6 +340,10 @@ export async function sincronizar() {
     } finally {
       definirEstado({ sincronizando: false });
       emAndamento = null;
+      if (deNovo) {
+        deNovo = false;
+        sincronizar();
+      }
     }
   })();
 

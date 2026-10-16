@@ -13,6 +13,7 @@ banco próprio.
 | Menu | O que faz |
 |---|---|
 | **Painel** | Vendas, entrou/saiu do caixa, resultado, a receber, diesel no tanque e avisos: revisão vencendo, estoque baixo ou negativo, contas vencendo. |
+| **Avisos do campo** | Tudo o que é lançado no **Modo Campo** (abastecimento, depósito) e cada **ticket da balança**, com **sininho e contador** no alto da tela e balão quando chega algo novo. Também vai para o celular pelo app **ntfy** (veja abaixo). |
 | **Lavoura e talhões** | Fazendas, talhões/sítios (área, cultura, nº de pés), culturas (dá para **adicionar culturas novas**; cada uma diz o tipo — citros, grãos, hortaliças, forragem, pecuária —, em que é colhida e vendida, o peso da saca, a medida de produtividade — t/ha, sc/ha, kg/pé, cx/pé — e se a colheita é por turma), colheitas e **planejamento da safra** por fase (dessecação, plantio, coberturas, pulverizações), com dose/ha × hectares × preço, como na aba PLANEJAMENTO. |
 | **Ticket da balança** | Tela rápida para lançar os tickets que o gerente manda no grupo do WhatsApp: venda de quê, data, peso, talhão e, na laranja, a turma de colheita e o valor dela por tonelada. Abre direto pelo link **`/ticket`** (fixe no grupo). A carga entra em Vendas sem comprador e sem preço, para completar depois. |
 | **Vendas** | Uma linha por **carga**, como nas planilhas de milho, laranja e silagem: tara, peso bruto e líquido, placa, sítio, tipo (BOA/SUKITA/CASQUINOL), desconto em kg, preço por t, saca, arroba ou saco, custo/ton, frete, comissão e juros. **Recebimentos** separados e o **saldo a receber de cada comprador**. **Emissão de NF-e pelo Bling** (aba *Notas fiscais*) e cadastro dos **Compradores** com os dados da nota. |
@@ -295,6 +296,17 @@ python3 scripts/importar-planejamento.py <pasta com os .xlsx>
    sai sempre da `main`.
 
 No celular, abra o endereço do site e use **Adicionar à tela inicial** para instalar como app.
+
+### 🔔 Notificação no celular (app ntfy)
+
+1. Invente um nome difícil de adivinhar para o canal, por exemplo `fazenda-cc-avisos-8k3p2`
+   (quem souber o nome recebe as mensagens — por isso ele não fica aqui no GitHub, que é público).
+2. No Vercel, em **Settings → Environment Variables**, cadastre `VITE_NTFY_TOPICO` com esse nome e
+   faça um **Redeploy**.
+3. Em cada celular que vai receber: instale o app **ntfy**, toque em **+** e digite o mesmo nome.
+
+Pronto: cada lançamento do celular de campo chega como notificação. Se o celular de campo estiver sem
+internet, a notificação sai quando o sinal voltar.
 
 ## 🛠️ Para quem for mexer no código
 

@@ -894,6 +894,35 @@ drop policy if exists "campo le planejamento" on public.planejamento;
 drop policy if exists "campo lanca planejamento" on public.planejamento;
 drop policy if exists "campo corrige planejamento" on public.planejamento;
 
+-- Avisos do campo
+create table if not exists public.avisos (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.avisos add column if not exists momento text;
+alter table public.avisos add column if not exists pessoa text;
+alter table public.avisos add column if not exists email text;
+alter table public.avisos add column if not exists colecao text;
+alter table public.avisos add column if not exists registro_id text;
+alter table public.avisos add column if not exists acao text;
+alter table public.avisos add column if not exists ticket boolean;
+alter table public.avisos add column if not exists resumo text;
+alter table public.avisos add column if not exists lido boolean;
+alter table public.avisos enable row level security;
+drop policy if exists "equipe acessa avisos" on public.avisos;
+create policy "equipe acessa avisos" on public.avisos
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le avisos" on public.avisos;
+drop policy if exists "campo lanca avisos" on public.avisos;
+drop policy if exists "campo corrige avisos" on public.avisos;
+create policy "campo le avisos" on public.avisos
+  for select to authenticated using ((select public.eh_campo()) and lower(email) = lower(auth.jwt() ->> 'email'));
+create policy "campo lanca avisos" on public.avisos
+  for insert to authenticated with check ((select public.eh_campo()) and lower(email) = lower(auth.jwt() ->> 'email'));
+create policy "campo corrige avisos" on public.avisos
+  for update to authenticated using ((select public.eh_campo()) and lower(email) = lower(auth.jwt() ->> 'email')) with check ((select public.eh_campo()) and lower(email) = lower(auth.jwt() ->> 'email'));
+
 -- Conexão com o Bling (emissão de NF-e). Guarda as chaves de acesso: fica
 -- trancada (RLS sem nenhuma regra), só a função "bling" do Supabase lê e grava.
 create table if not exists public.bling_conexao (

@@ -1014,6 +1014,28 @@ export const ESQUEMA = {
     colunas: ["safra", "fazenda_id", "talhao_id", "fase", "insumo_id", "descricao", "dose_ha", "hectares", "preco_unitario", "total"],
     ordem: (a, b) => (a.safra || "").localeCompare(b.safra || "") || ordemFase(a.fase) - ordemFase(b.fase),
   },
+
+  // ─── Avisos ───────────────────────────────────────────────────────────────
+  // Nascem sozinhos a cada lançamento do Modo Campo e do ticket da balança e
+  // aparecem no sininho do escritório. Não têm tela de cadastro própria.
+  // No celular de campo, cada login só grava (e enxerga) os avisos dele.
+  avisos: {
+    titulo: "Avisos do campo", singular: "aviso", icone: "sino",
+    campo: "grava", ticketTambem: true, campoSql: "lower(email) = lower(auth.jwt() ->> 'email')",
+    campos: {
+      momento: { tipo: "texto", rotulo: "Quando" },
+      pessoa: { tipo: "texto", rotulo: "Quem lançou" },
+      email: { tipo: "texto", rotulo: "Login" },
+      colecao: { tipo: "texto", rotulo: "Onde" },
+      registro_id: { tipo: "texto", rotulo: "Registro" },
+      acao: { tipo: "opcoes", rotulo: "O que fez", padrao: "novo", opcoes: [["novo", "Lançou"], ["editado", "Alterou"], ["apagado", "Apagou"]] },
+      ticket: { tipo: "booleano", rotulo: "É ticket" },
+      resumo: { tipo: "textoLongo", rotulo: "Resumo" },
+      lido: { tipo: "booleano", rotulo: "Lido" },
+    },
+    colunas: ["momento", "pessoa", "acao", "colecao", "resumo"],
+    ordem: (a, b) => String(b.momento ?? "").localeCompare(String(a.momento ?? "")),
+  },
 };
 
 export const COLECOES = Object.keys(ESQUEMA);
