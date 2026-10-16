@@ -448,6 +448,25 @@ drop policy if exists "equipe acessa planejamento" on public.planejamento;
 create policy "equipe acessa planejamento" on public.planejamento
   for all to authenticated using (true) with check (true);
 
+-- Avisos do campo
+create table if not exists public.avisos (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.avisos add column if not exists momento text;
+alter table public.avisos add column if not exists pessoa text;
+alter table public.avisos add column if not exists colecao text;
+alter table public.avisos add column if not exists registro_id text;
+alter table public.avisos add column if not exists acao text;
+alter table public.avisos add column if not exists ticket boolean;
+alter table public.avisos add column if not exists resumo text;
+alter table public.avisos add column if not exists lido boolean;
+alter table public.avisos enable row level security;
+drop policy if exists "equipe acessa avisos" on public.avisos;
+create policy "equipe acessa avisos" on public.avisos
+  for all to authenticated using (true) with check (true);
+
 -- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────
 insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000001', 'Milho', 'agricola', 'sc60', true, null) on conflict (id) do nothing;
 insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000002', 'Laranja', 'agricola', 't', true, null) on conflict (id) do nothing;

@@ -525,6 +525,25 @@ export const ESQUEMA = {
     colunas: ["safra", "fazenda_id", "fase", "insumo_id", "dose_ha", "hectares", "quantidade_total", "preco_unitario", "total"],
     ordem: (a, b) => (a.safra || "").localeCompare(b.safra || "") || FASES.indexOf(a.fase) - FASES.indexOf(b.fase),
   },
+
+  // ─── Avisos ───────────────────────────────────────────────────────────────
+  // Nascem sozinhos no celular de campo, a cada lançamento do operador, e
+  // aparecem no sininho do escritório. Não têm tela de cadastro própria.
+  avisos: {
+    titulo: "Avisos do campo", singular: "aviso", icone: "sino",
+    campos: {
+      momento: { tipo: "texto", rotulo: "Quando" },
+      pessoa: { tipo: "texto", rotulo: "Quem lançou" },
+      colecao: { tipo: "texto", rotulo: "Onde" },
+      registro_id: { tipo: "texto", rotulo: "Registro" },
+      acao: { tipo: "opcoes", rotulo: "O que fez", padrao: "novo", opcoes: [["novo", "Lançou"], ["editado", "Alterou"], ["apagado", "Apagou"]] },
+      ticket: { tipo: "booleano", rotulo: "É ticket" },
+      resumo: { tipo: "textoLongo", rotulo: "Resumo" },
+      lido: { tipo: "booleano", rotulo: "Lido" },
+    },
+    colunas: ["momento", "pessoa", "acao", "colecao", "resumo"],
+    ordem: (a, b) => String(b.momento ?? "").localeCompare(String(a.momento ?? "")),
+  },
 };
 
 export const COLECOES = Object.keys(ESQUEMA);

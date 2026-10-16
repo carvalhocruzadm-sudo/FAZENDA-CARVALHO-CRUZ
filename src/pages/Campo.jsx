@@ -1,15 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Crud from "../components/Crud";
 import { Abas, Icone } from "../components/ui";
 import { useDados } from "../hooks/useDados";
 import { gravarPessoaCampo, lerPessoaCampo } from "../lib/aparelho";
+import { criarAviso } from "../lib/avisos";
+import { iniciarNtfy } from "../lib/ntfy";
 
 /**
  * Celular de campo: o aparelho do motorista ou do tratorista. Não tem login —
  * o administrador entra uma vez, liga o "modo campo" e daí em diante quem pega
  * o celular só toca no próprio nome. Tudo o que for lançado já sai com o nome
  * dele (operador / motorista).
+ *
+ * Cada lançamento, alteração ou exclusão feita aqui gera um aviso para o
+ * escritório (sininho) e uma notificação no celular pelo ntfy.
  */
 
 const DO_CAMPO = /tratorista|motorista|operador/i;
@@ -65,6 +70,21 @@ export default function Campo({ indicador, sair }) {
 
   const pessoa = dados.funcionarios.find((f) => f.id === pessoaId);
 
+  useEffect(() => iniciarNtfy(), []);
+
+  const salvarComAviso = async (colecao, reg) => {
+    const acao = reg.id ? "editado" : "novo";
+    const item = await salvar(colecao, reg);
+    await salvar("avisos", criarAviso({ colecao, reg: item, acao, pessoa, dados }));
+    return item;
+  };
+
+  const removerComAviso = async (colecao, id) => {
+    const antigo = dados[colecao].find((x) => x.id === id);
+    await remover(colecao, id);
+    if (antigo) await salvar("avisos", criarAviso({ colecao, reg: antigo, acao: "apagado", pessoa, dados }));
+  };
+
   const escolher = (id) => {
     gravarPessoaCampo(id);
     setPessoaId(id);
@@ -107,7 +127,7 @@ export default function Campo({ indicador, sair }) {
         <div className="conteudo">
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
           <Abas abas={abas.map(([id, rotulo]) => [id, rotulo])} atual={atual} aoTrocar={setAba} />
-          <Crud key={atual} {...config} dados={dados} salvar={salvar} remover={remover} />
+          <Crud key={atual} {...config} dados={dados} salvar={salvarComAviso} remover={removerComAviso} />
         </div>
       </main>
     </div>
