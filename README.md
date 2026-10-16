@@ -127,6 +127,11 @@ Configuração (uma vez):
    - **Mostrar Notificação** com o *Conteúdo da URL* (mostra "ok" ou o erro).
    - **Abrir URLs**: `https://fazenda-carvalho-cruz.vercel.app/?comprovantes`.
 
+**Várias culturas ou fazendas no mesmo comprovante.** Na tela *Lançar comprovante*, com centro de custo
+*Geral* ou *Cultura*, dá para marcar uma, várias ou **todas** as culturas e fazendas. O valor é dividido
+igual ou pela área (ha) — dá para corrigir cada parte — e cada combinação vira uma despesa com o mesmo
+comprovante. A soma das partes precisa bater com o valor pago.
+
 Limite de 4 MB por arquivo. Se o celular for perdido, troque o `COMPROVANTE_TOKEN` na Vercel.
 Abrir `https://fazenda-carvalho-cruz.vercel.app/api/comprovante` no navegador mostra se falta algo.
 
