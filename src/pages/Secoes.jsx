@@ -287,7 +287,8 @@ function SituacaoMaquinas({ dados }) {
     <div className="cartao">
       <p className="descricao">
         Leitura atual = a maior entre cadastro, operações, abastecimentos e revisões. A próxima revisão é a última
-        revisão/troca de óleo + o intervalo do cadastro.
+        revisão/troca de óleo + o intervalo do cadastro. Máquina de horímetro sem revisão lançada: considera que a
+        última foi 400 h antes da leitura atual.
       </p>
       <div className="barra"><span>Consumo no período:</span><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
       <TabelaSimples
