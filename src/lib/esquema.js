@@ -829,6 +829,11 @@ export const ESQUEMA = {
         tipo: "sugestao", rotulo: "Proprietário (de quem é a laranja)", sugestoesDe: ["vendas", "proprietario"],
         paraCultura: (c) => c.id === LARANJA_TERCEIROS,
       },
+      preco_compra_ton: {
+        tipo: "dinheiro", rotulo: "Valor pago ao proprietário por tonelada", paraCultura: (c) => c.id === LARANJA_TERCEIROS,
+        dica: "Quanto a laranja custou. O pagamento ao proprietário se lança em Despesas → Compra de laranja",
+      },
+      valor_compra: { tipo: "dinheiro", rotulo: "Valor da compra (peso × valor pago)", somenteLeitura: true, paraCultura: (c) => c.id === LARANJA_TERCEIROS },
       classificacao: {
         tipo: "sugestao", rotulo: "Tipo / classificação", sugestoes: ["BOA", "SUKITA", "CASQUINOL", "Grão", "Silagem"], sugestoesDe: ["vendas", "classificacao"],
         sugestoesDaCultura: (c) => CLASSIFICACOES_POR_GRUPO[c.grupo], historicoDaCultura: true,
@@ -892,6 +897,8 @@ export const ESQUEMA = {
         peso_liquido: liquido,
         quantidade: quantidade == null || quantidade === "" ? null : +Number(quantidade).toFixed(3),
         valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2), valor: +liquidoR.toFixed(2),
+        // Só informativo: o custo da compra entra pela despesa "Compra de laranja" (não desconta aqui para não contar duas vezes).
+        valor_compra: r.preco_compra_ton == null || r.preco_compra_ton === "" || liquido == null ? null : +((num(liquido) / 1000) * num(r.preco_compra_ton)).toFixed(2),
       };
     },
     validar: (r) => (r.quantidade == null && r.peso_liquido == null ? "Informe o peso ou a quantidade." : null),
