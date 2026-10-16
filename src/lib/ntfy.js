@@ -7,6 +7,10 @@
  *
  * O campo nem sempre tem internet: a mensagem entra numa fila guardada no
  * próprio aparelho (localStorage) e sai assim que a conexão voltar.
+ *
+ * Um lançamento pode gravar vários registros de uma vez (abastecimento +
+ * horímetro de cada talhão, ticket repartido entre turmas): o envio espera um
+ * instante e junta numa notificação só o que é da mesma pessoa.
  */
 
 const SERVIDOR = String(import.meta.env.VITE_NTFY_SERVIDOR || "https://ntfy.sh").trim().replace(/\/+$/, "");
@@ -17,6 +21,7 @@ export const enderecoNtfy = `${SERVIDOR}/${TOPICO_NTFY}`;
 const CHAVE_FILA = "fcc-fila-ntfy";
 // Mensagem velha demais já não ajuda ninguém: depois de 3 dias, descarta.
 const VALIDADE_MS = 3 * 24 * 60 * 60 * 1000;
+const ESPERA_MS = 2000;
 
 function lerFila() {
   try { return JSON.parse(localStorage.getItem(CHAVE_FILA)) || []; } catch { return []; }
@@ -36,7 +41,27 @@ async function publicar({ titulo, mensagem, tags, prioridade }) {
   if (!resp.ok) throw new Error(`ntfy respondeu ${resp.status}`);
 }
 
+/** Junta as mensagens vizinhas da mesma pessoa numa só. */
+function juntar(fila) {
+  const grupos = [];
+  for (const m of fila) {
+    const ultimo = grupos.at(-1);
+    if (ultimo && ultimo[0].quem === m.quem) ultimo.push(m);
+    else grupos.push([m]);
+  }
+  return grupos.map((g) => (g.length === 1 ? { msg: g[0], n: 1 } : {
+    n: g.length,
+    msg: {
+      titulo: `${g[0].quem}: ${g.length} lançamentos`,
+      mensagem: g.map((m) => `• ${m.linha ?? m.mensagem}`).join("\n"),
+      tags: g.some((m) => m.tags?.includes("receipt")) ? ["receipt"] : g[0].tags,
+      prioridade: Math.max(...g.map((m) => m.prioridade ?? 3)),
+    },
+  }));
+}
+
 let enviando = false;
+let agendado = null;
 
 /** Tenta mandar tudo o que está na fila. Para no primeiro erro (provavelmente sem internet). */
 export async function esvaziarFilaNtfy() {
@@ -46,12 +71,13 @@ export async function esvaziarFilaNtfy() {
   try {
     const agora = Date.now();
     let fila = lerFila().filter((m) => agora - m.criado < VALIDADE_MS);
-    while (fila.length) {
-      await publicar(fila[0]);
-      fila = fila.slice(1);
+    gravarFila(fila);
+    for (const { msg, n } of juntar(fila)) {
+      await publicar(msg);
+      // Relê: pode ter entrado mensagem nova enquanto esta ia.
+      fila = lerFila().slice(n);
       gravarFila(fila);
     }
-    gravarFila(fila);
   } catch {
     // Fica na fila para a próxima tentativa.
   } finally {
@@ -59,11 +85,12 @@ export async function esvaziarFilaNtfy() {
   }
 }
 
-/** Põe a mensagem na fila e já tenta enviar. */
+/** Põe a mensagem na fila e envia daqui a pouco (junto com as que vierem logo atrás). */
 export function notificarNtfy(msg) {
   if (!ntfyConfigurado) return;
   gravarFila([...lerFila(), { ...msg, criado: Date.now() }]);
-  esvaziarFilaNtfy();
+  clearTimeout(agendado);
+  agendado = setTimeout(esvaziarFilaNtfy, ESPERA_MS);
 }
 
 /** Liga as novas tentativas: quando a internet volta e a cada minuto. */

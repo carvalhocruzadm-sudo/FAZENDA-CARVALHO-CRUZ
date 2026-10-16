@@ -7,8 +7,7 @@ import { enderecoNtfy, ntfyConfigurado, TOPICO_NTFY } from "../lib/ntfy";
 const quando = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
 
 /**
- * O que os operadores lançaram no celular de campo: lançamentos, alterações,
- * exclusões e os tickets de frete. Marcar como lido tira do contador do sininho.
+ * O que foi lançado no Modo Campo e os tickets da balança. Marcar como lido tira do contador do sininho.
  */
 export default function Avisos({ dados, salvar, salvarVarios, irPara }) {
   const [filtro, setFiltro] = useState("naoLidos");
@@ -34,8 +33,8 @@ export default function Avisos({ dados, salvar, salvarVarios, irPara }) {
     <>
       <div className="cartao">
         <p className="descricao">
-          Tudo o que motoristas e tratoristas lançam, alteram ou apagam no celular de campo aparece aqui. Os fretes
-          aparecem como <b>ticket</b>.
+          Tudo o que é lançado no Modo Campo (abastecimento, depósito) e cada <b>ticket da balança</b> aparece aqui,
+          com o nome de quem lançou.
         </p>
         <Abas
           abas={[["naoLidos", `Não lidos (${naoLidos.length})`], ["tickets", "Tickets"], ["todos", "Todos"]]}
