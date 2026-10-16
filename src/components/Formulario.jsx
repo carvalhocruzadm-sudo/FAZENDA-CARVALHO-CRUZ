@@ -5,6 +5,7 @@ import { leitura } from "../lib/formato";
 import { SEM_CULTURA, fazendaDoTalhao } from "../lib/talhoes";
 import EscolhaTalhoes from "./EscolhaTalhoes";
 import { CampoFoto } from "./Foto";
+import { ImagemAmpliavel } from "./VerFoto";
 import { CampoArquivo } from "./Comprovante";
 import ConsultaProduto from "./ConsultaProduto";
 import LeituraTicket from "./LeituraTicket";
@@ -68,7 +69,7 @@ function Fotos({ valor, aoMudar }) {
     <div className="fotos">
       {fotos.map((f, i) => (
         <div key={i} className="foto">
-          <a href={f} target="_blank" rel="noreferrer"><img src={f} alt={`Foto ${i + 1} do rótulo`} /></a>
+          <ImagemAmpliavel src={f} alt={`Foto ${i + 1} do rótulo`} />
           <button type="button" className="btn icone perigo" aria-label="Remover foto" onClick={() => aoMudar(fotos.filter((_, j) => j !== i))}>
             <Icone nome="lixo" tamanho={14} />
           </button>

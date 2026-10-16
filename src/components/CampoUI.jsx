@@ -1,4 +1,5 @@
 import { BotaoFoto, Foto } from "./Foto";
+import { ImagemAmpliavel } from "./VerFoto";
 import { useSync } from "../hooks/useSync";
 import { falar, vibrar } from "../lib/campo";
 
@@ -145,8 +146,12 @@ export function EscolherPessoa({ pessoas, marcado, aoEscolher }) {
   );
 }
 
-/** Foto do produto químico: a primeira foto do rótulo do cadastro; sem foto, um frasco. */
-export function FotoProduto({ insumo, className = "foto" }) {
+/**
+ * Foto do produto químico: a primeira foto do rótulo do cadastro; sem foto, um frasco.
+ * `ampliar`: tocar na foto abre ela grande.
+ */
+export function FotoProduto({ insumo, className = "foto", ampliar = false }) {
   const foto = insumo?.fotos_rotulo?.[0];
+  if (foto && ampliar) return <ImagemAmpliavel src={foto} alt={insumo.nome} className={className} />;
   return foto ? <img src={foto} alt={insumo.nome} className={className} draggable={false} /> : <span className="figura">🧴</span>;
 }

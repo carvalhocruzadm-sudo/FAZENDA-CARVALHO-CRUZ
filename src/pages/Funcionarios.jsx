@@ -223,7 +223,7 @@ export default function Funcionarios({ dados, salvar, remover }) {
           <div className="pessoas">
             {pessoasNaTela.map((f) => (
               <button key={f.id} className={`pessoa${f.ativo === false ? " inativa" : ""}`} onClick={() => abrirPessoa({ ...f })} title="Editar">
-                <Foto caminho={f.foto} className="rosto" reserva={<div className="rosto vazio">{f.nome.slice(0, 1)}</div>} />
+                <Foto caminho={f.foto} alt={f.nome} ampliar className="rosto" reserva={<div className="rosto vazio">{f.nome.slice(0, 1)}</div>} />
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="nome">
                     {f.nome}

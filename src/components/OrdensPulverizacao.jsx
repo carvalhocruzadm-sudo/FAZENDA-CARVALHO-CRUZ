@@ -263,7 +263,7 @@ export default function OrdensPulverizacao({ dados, salvar, remover }) {
               const feito = separados.find((x) => x.item.id === i.id)?.separado;
               return (
                 <div key={i.id ?? `novo-${k}`} className="item-ordem">
-                  <FotoProduto insumo={insumo} className="mini" />
+                  <FotoProduto insumo={insumo} className="mini" ampliar />
                   <label className="campo"><span>Produto</span>
                     <select value={i.insumo_id ?? ""} onChange={(e) => mudarItem(k, { insumo_id: e.target.value || null })}>
                       <option value="">— escolha —</option>

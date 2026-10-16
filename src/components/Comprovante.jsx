@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { anexar, ehPdf, enderecoDoArquivo } from "../lib/arquivos";
 import { Icone } from "./ui";
+import { ImagemAmpliavel } from "./VerFoto";
 
 /** Mostra o comprovante: a foto na tela ou um botão para abrir o PDF. */
 export function PreviaComprovante({ caminho }) {
@@ -24,11 +25,7 @@ export function PreviaComprovante({ caminho }) {
   if (ehPdf(caminho)) {
     return <a className="btn" href={estado.url} target="_blank" rel="noreferrer"><Icone nome="exportar" /> Abrir o PDF</a>;
   }
-  return (
-    <a href={estado.url} target="_blank" rel="noreferrer" title="Abrir em tamanho real">
-      <img src={estado.url} alt="Comprovante" className="previa-comprovante" />
-    </a>
-  );
+  return <ImagemAmpliavel src={estado.url} alt="Comprovante" className="previa-comprovante" />;
 }
 
 /** Campo "arquivo" do formulário: anexar, ver e trocar o comprovante. */

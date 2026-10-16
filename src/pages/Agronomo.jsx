@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import EscolhaTalhoes from "../components/EscolhaTalhoes";
 import { Abas, Icone, Modal, Stat, TabelaSimples } from "../components/ui";
+import { ImagemAmpliavel } from "../components/VerFoto";
 import { ESQUEMA, hoje } from "../lib/esquema";
 import { data as dataBR, numero } from "../lib/formato";
 import { gerarPdfAplicacao } from "../lib/pdfAplicacao";
@@ -85,7 +86,7 @@ function Rotulos({ token, produto, aoFechar }) {
       {erro && <div className="aviso">{erro}</div>}
       {!fotos && !erro && <div className="vazio">Carregando fotos…</div>}
       <div className="fotos-rotulo">
-        {fotos?.map((f, i) => <img key={i} src={f} alt={`Rótulo ${i + 1} de ${produto.nome}`} />)}
+        {fotos?.map((f, i) => <ImagemAmpliavel key={i} src={f} alt={`Rótulo ${i + 1} de ${produto.nome}`} />)}
       </div>
     </Modal>
   );

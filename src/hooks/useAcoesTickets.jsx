@@ -107,7 +107,7 @@ export function useAcoesTickets({ dados, salvar, remover }) {
     <>
       {foto && (
         <Modal titulo="Foto do ticket" aoFechar={() => setFoto(null)}>
-          <Foto caminho={foto} alt="Foto do ticket da balança" className="foto-ticket-grande"
+          <Foto caminho={foto} alt="Foto do ticket da balança" className="foto-ticket-grande" ampliar
             reserva={<div className="vazio">Carregando a foto…</div>} />
         </Modal>
       )}
@@ -129,7 +129,7 @@ export function useAcoesTickets({ dados, salvar, remover }) {
         >
           {erro && <div className="aviso">{erro}</div>}
           {rascunho.foto_ticket && (
-            <Foto caminho={rascunho.foto_ticket} alt="Foto do ticket" className="foto-ticket-edicao" />
+            <Foto caminho={rascunho.foto_ticket} alt="Foto do ticket" className="foto-ticket-edicao" ampliar />
           )}
           <Formulario colecao="vendas" reg={rascunho} setReg={setRascunho} dados={dados} contexto={{}} escolha={escolha} />
         </Modal>
