@@ -115,6 +115,15 @@ export function proprietarios(dados) {
   return Object.keys(ultima).sort((a, b) => String(ultima[b]).localeCompare(String(ultima[a])) || a.localeCompare(b, "pt-BR"));
 }
 
+/** O último valor por tonelada pago a esse proprietário (para já vir preenchido). */
+export function ultimoPrecoDoProprietario(dados, nome) {
+  const alvo = String(nome ?? "").trim().toLowerCase();
+  const ultima = dados.vendas
+    .filter((v) => alvo && String(v.proprietario ?? "").trim().toLowerCase() === alvo && v.preco_compra_ton != null)
+    .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];
+  return ultima?.preco_compra_ton ?? null;
+}
+
 /**
  * As turmas da cultura: as do cadastro de Turmas de colheita (desta cultura
  * ou sem cultura), a lista antiga da cultura e as dos tickets já lançados,
