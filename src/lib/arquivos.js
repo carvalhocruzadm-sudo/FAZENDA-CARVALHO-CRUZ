@@ -154,8 +154,10 @@ async function lerComIA(blob, tipo) {
   const { data, error } = await supabase.functions.invoke("ler-comprovante", { body: { arquivo: await paraBase64(blob), tipo } });
   if (error) {
     // A função devolve { erro } mesmo quando falha: mostra essa mensagem, que é a que explica.
+    const status = error.context?.status;
     const corpo = await error.context?.json?.().catch(() => null);
-    throw new Error(corpo?.erro ?? error.message);
+    if (status === 404) throw new Error("a função ler-comprovante ainda não foi publicada no Supabase");
+    throw new Error(corpo?.erro ?? corpo?.message ?? (status ? `${error.message} (${status})` : error.message));
   }
   if (data?.erro) throw new Error(data.erro);
   const c = data?.comprovante ?? {};
