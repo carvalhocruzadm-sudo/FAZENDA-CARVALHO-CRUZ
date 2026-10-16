@@ -149,13 +149,42 @@ const paraBase64 = (blob) => new Promise((resolve, reject) => {
   leitor.readAsDataURL(blob);
 });
 
-/** Manda o comprovante para a IA do Google (função ler-comprovante no Supabase). */
-async function lerComIA(blob, tipo) {
-  const { data, error } = await supabase.functions.invoke("ler-comprovante", { body: { arquivo: await paraBase64(blob), tipo } });
+/** Foto grande vira JPEG de até 1600 px: menos para subir, a IA lê igual. PDF passa direto. */
+async function reduzirParaLeitura(blob) {
+  if (!blob.type.startsWith("image/")) return blob;
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const escala = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    if (escala === 1 && blob.size < 800_000) return blob;
+    const tela = document.createElement("canvas");
+    tela.width = Math.round(bitmap.width * escala);
+    tela.height = Math.round(bitmap.height * escala);
+    tela.getContext("2d").drawImage(bitmap, 0, 0, tela.width, tela.height);
+    return (await new Promise((ok) => tela.toBlob(ok, "image/jpeg", 0.85))) ?? blob;
+  } catch {
+    return blob;
+  }
+}
+
+/**
+ * Manda o comprovante para a IA do Google (função ler-comprovante no Supabase).
+ * `origem`: { caminho } quando o arquivo já está na nuvem (a função baixa
+ * direto, sem passar pelo celular) ou { blob } quando só existe no aparelho.
+ */
+async function lerComIA(origem) {
+  let body;
+  if (origem.caminho) body = { caminho: origem.caminho };
+  else {
+    const pronto = await reduzirParaLeitura(origem.blob);
+    body = { arquivo: await paraBase64(pronto), tipo: pronto.type || "image/jpeg" };
+  }
+  const { data, error } = await supabase.functions.invoke("ler-comprovante", { body });
   if (error) {
     // A função devolve { erro } mesmo quando falha: mostra essa mensagem, que é a que explica.
+    const status = error.context?.status;
     const corpo = await error.context?.json?.().catch(() => null);
-    throw new Error(corpo?.erro ?? error.message);
+    if (status === 404) throw new Error("a função ler-comprovante ainda não foi publicada no Supabase");
+    throw new Error(corpo?.erro ?? corpo?.message ?? (status ? `${error.message} (${status})` : error.message));
   }
   if (data?.erro) throw new Error(data.erro);
   const c = data?.comprovante ?? {};
@@ -173,29 +202,44 @@ async function lerComIA(blob, tipo) {
  * vão para a IA do Google. Nunca dá erro: o que não leu volta `null`, e
  * `aviso` explica quando a IA não respondeu.
  */
-export async function lerComprovanteDoArquivo(blob, nome = "") {
-  const pdf = blob.type === "application/pdf" || /\.pdf$/i.test(nome);
+export async function lerComprovanteDoArquivo(blob, nome = "", caminho = null) {
+  const pdf = blob ? blob.type === "application/pdf" || /\.pdf$/i.test(nome) : ehPdf(caminho);
   let lido = { valor: null, data: null, favorecido: null };
-  if (pdf) {
+  if (pdf && blob) {
     const { interpretarComprovante } = await import("./comprovanteTexto");
     lido = interpretarComprovante(await textoDoPdf(blob));
     if (lido.valor && lido.favorecido) return lido;
   }
   if (!supabaseConfigurado) return lido;
   try {
-    const ia = await lerComIA(blob, pdf ? "application/pdf" : blob.type || "image/jpeg");
+    let ia;
+    try {
+      ia = await lerComIA(caminho ? { caminho } : { blob });
+    } catch (e) {
+      // Função publicada antes de aceitar { caminho }: manda o arquivo como antes.
+      if (!caminho || !/Mande o comprovante/.test(e.message)) throw e;
+      ia = await lerComIA({ blob: blob ?? await baixar(caminho) });
+    }
     return { valor: lido.valor ?? ia.valor, data: lido.data ?? ia.data, favorecido: lido.favorecido ?? ia.favorecido };
   } catch (e) {
     return { ...lido, aviso: `Não consegui ler o comprovante sozinho (${e.message}). Digite o valor e o favorecido.` };
   }
 }
 
-/** O mesmo, para um comprovante que já está na nuvem (caixa de entrada). */
+async function baixar(caminho) {
+  const resposta = await fetch(await enderecoDoArquivo(caminho));
+  if (!resposta.ok) throw new Error(`erro ${resposta.status} ao baixar o comprovante`);
+  return resposta.blob();
+}
+
+/**
+ * O mesmo, para um comprovante que já está na nuvem (caixa de entrada). Foto
+ * vai direto para a IA, que baixa da nuvem; só o PDF é baixado aqui, para
+ * tentar ler o texto no aparelho primeiro.
+ */
 export async function lerComprovante(caminho) {
   try {
-    const resposta = await fetch(await enderecoDoArquivo(caminho));
-    if (!resposta.ok) throw new Error(`erro ${resposta.status} ao baixar`);
-    return await lerComprovanteDoArquivo(await resposta.blob(), caminho);
+    return await lerComprovanteDoArquivo(ehPdf(caminho) ? await baixar(caminho) : null, caminho, caminho);
   } catch (e) {
     return { valor: null, data: null, favorecido: null, aviso: `Não consegui abrir o comprovante para ler (${e.message}).` };
   }
