@@ -363,7 +363,7 @@ export default function Ticket({ dados, salvar, remover, email }) {
                 <BotaoFoto aoTirar={escolherFoto} lado={1600} className="btn">
                   📷 {r.foto ? "Trocar a foto" : "Escolher / tirar a foto"}
                 </BotaoFoto>
-                {r.foto && <Foto caminho={r.foto} alt="Foto do ticket" className="miniatura-ticket" />}
+                {r.foto && <Foto caminho={r.foto} alt="Foto do ticket" className="miniatura-ticket" ampliar />}
                 {r.foto && !lendo?.caminho && (
                   <button type="button" className="btn" onClick={() => escolherFoto(r.foto)}>Ler a foto de novo</button>
                 )}

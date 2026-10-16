@@ -545,3 +545,9 @@ td.acoes .btn + .btn { margin-left: 4px; }
 .balao { position: fixed; right: 16px; bottom: 16px; z-index: 55; max-width: 420px; width: calc(100% - 32px); display: flex; gap: 10px; align-items: center; background: var(--cartao); border-left: 4px solid var(--verde); border-radius: var(--raio); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); padding: 12px 14px; }
 .balao.ticket { border-color: var(--laranja); }
 .balao small { display: block; color: var(--texto-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ─── Foto em tela cheia (tocar numa foto abre ela grande) ─────────────── */
+img.ampliavel { cursor: zoom-in; }
+.janela-foto { position: fixed; inset: 0; z-index: 200; background: rgba(0, 0, 0, 0.88); display: flex; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+.janela-foto img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; cursor: default; }
+.janela-foto .fechar { position: absolute; top: 12px; right: 12px; background: #fff; }

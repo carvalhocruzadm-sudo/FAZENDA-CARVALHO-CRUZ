@@ -394,7 +394,7 @@ export function Entrada({ dados, salvar, irPara }) {
           <div className="resumo-linha" onClick={() => ir("produto")}><FotoProduto insumo={insumo} /><span>{insumo?.nome}</span></div>
           <div className="resumo-linha" onClick={() => ir("quantidade")}><span className="figura">🔢</span><span>{qtdTexto}</span></div>
           <div className="resumo-linha" onClick={() => ir("operador")}><FotoOuInicial caminho={operador?.foto} nome={operador?.nome ?? "?"} /><span>{operador?.nome}</span></div>
-          {foto && <div className="resumo-linha"><Foto caminho={foto} className="foto" /><span>Foto tirada ✓</span></div>}
+          {foto && <div className="resumo-linha"><Foto caminho={foto} alt="Foto tirada" className="foto" ampliar /><span>Foto tirada ✓</span></div>}
         </Tela>
       );
     }

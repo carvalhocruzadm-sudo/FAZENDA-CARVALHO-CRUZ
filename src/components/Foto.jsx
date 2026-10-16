@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { salvarFotoNova, urlDaFoto } from "../lib/fotos";
+import { ImagemAmpliavel } from "./VerFoto";
 
 function useUrlFoto(caminho) {
   const [res, setRes] = useState({ caminho: null, url: null });
@@ -13,10 +14,14 @@ function useUrlFoto(caminho) {
   return caminho && res.caminho === caminho ? res.url : null;
 }
 
-/** Mostra a foto guardada em `caminho`; sem foto, mostra `reserva`. */
-export function Foto({ caminho, alt = "", className, reserva = null }) {
+/**
+ * Mostra a foto guardada em `caminho`; sem foto, mostra `reserva`.
+ * `ampliar`: tocar na foto abre ela grande.
+ */
+export function Foto({ caminho, alt = "", className, reserva = null, ampliar = false }) {
   const url = useUrlFoto(caminho);
   if (!url) return reserva;
+  if (ampliar) return <ImagemAmpliavel src={url} alt={alt} className={className} />;
   return <img src={url} alt={alt} className={className} draggable={false} />;
 }
 
@@ -59,7 +64,7 @@ export function BotaoFoto({ aoTirar, lado, camera, className, children }) {
 export function CampoFoto({ valor, aoMudar, lado }) {
   return (
     <div className="campo-foto">
-      <Foto caminho={valor} className="miniatura" reserva={<div className="miniatura vazia">📷</div>} />
+      <Foto caminho={valor} className="miniatura" alt="Foto" ampliar reserva={<div className="miniatura vazia">📷</div>} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
         <BotaoFoto aoTirar={aoMudar} lado={lado} className="btn">{valor ? "Trocar foto" : "Tirar / escolher foto"}</BotaoFoto>
         {valor && <button type="button" className="btn perigo" onClick={() => aoMudar(null)}>Tirar a foto</button>}
