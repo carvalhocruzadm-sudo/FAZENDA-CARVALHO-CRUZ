@@ -70,8 +70,15 @@ function SeletorCultura({ culturas, cultura, setCultura }) {
   );
 }
 
+/** O app foi aberto pelo Atalho do iPhone (/?comprovantes)? */
+const veioDoAtalho = () => /(^|[?&/])comprovantes?\b/i.test(location.search + location.pathname);
+
 function AvisoAtualizacao() {
   const { needRefresh: [precisa], updateServiceWorker } = useRegisterSW();
+  // Pelo Atalho não há ninguém no meio de um lançamento: atualiza sozinho, para
+  // a versão guardada no Safari não ficar velha (o Safari e o ícone da tela
+  // inicial guardam cópias separadas do sistema). O endereço é mantido.
+  useEffect(() => { if (precisa && veioDoAtalho()) updateServiceWorker(true); }, [precisa, updateServiceWorker]);
   if (!precisa) return null;
   return (
     <div style={{ position: "fixed", bottom: 16, left: 16, right: 16, zIndex: 60, display: "flex", justifyContent: "center" }}>
@@ -199,7 +206,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
   // caixa de entrada; abre o lançamento do mais novo que ainda não virou despesa.
   // Aceita também "comprovante" (sem s) e /comprovantes, que é fácil digitar no Atalho.
   // O andamento aparece na tela (o Safari às vezes engole o alert de uma aba recém-aberta).
-  const [atalho, setAtalho] = useState(() => (/(^|[?&/])comprovantes?\b/i.test(location.search + location.pathname) ? "buscando" : null));
+  const [atalho, setAtalho] = useState(() => (veioDoAtalho() ? "buscando" : null));
   useEffect(() => {
     if (atalho !== "buscando" || !pronto) return undefined;
     let vivo = true;
