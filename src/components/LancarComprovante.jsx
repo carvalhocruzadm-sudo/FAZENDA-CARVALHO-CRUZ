@@ -2,13 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 
 import useEscolhaTalhoes from "../hooks/useEscolhaTalhoes";
 import { anexar, lerComprovante, lerComprovanteDoArquivo, valorDoTexto } from "../lib/arquivos";
-import { CATEGORIAS_DESPESA, registroNovo } from "../lib/esquema";
+import { CATEGORIAS_DESPESA, ESQUEMA, registroNovo } from "../lib/esquema";
 import { PreviaComprovante } from "./Comprovante";
 import Formulario from "./Formulario";
+import { RATEIO_VAZIO, linhasDoRateio } from "../lib/rateio";
+import RateioDespesa from "./RateioDespesa";
 import { Icone, Modal } from "./ui";
 
 /** O essencial para lançar rápido; o resto fica em "Mais campos". */
 const ESSENCIAIS = ["descricao", "valor", "data", "favorecido", "forma_pagamento", "centro", "cultura_id", "talhao_id"];
+const TODOS = Object.keys(ESQUEMA.despesas.campos);
 
 /**
  * Abre quando alguém compartilha um comprovante do app do banco com o app da
@@ -56,7 +59,41 @@ export default function LancarComprovante({ compartilhado, dados, salvar, aoFech
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [tudo, setTudo] = useState(false);
+  const [rateio, setRateio] = useState(RATEIO_VAZIO);
   const escolha = useEscolhaTalhoes("despesas", dados);
+
+  // Centro "Cultura" ou "Geral": cultura e fazenda saem do formulário e viram
+  // fichas que aceitam várias (RateioDespesa). "Talhão" continua com a escolha
+  // de talhões, que já divide por área.
+  const porTalhao = reg.centro === "talhao";
+  const tirar = new Set(porTalhao ? [] : ["fazenda_id", "cultura_id"]);
+  const campos = (tudo ? TODOS : ESSENCIAIS).filter((c) => !tirar.has(c));
+
+  /** Uma despesa por linha do rateio (ou pela escolha de talhões). */
+  const montarTodas = () => {
+    if (porTalhao) return escolha.montar(reg);
+    if (reg.centro === "cultura" && !rateio.culturas.length) return { regs: [], erro: "Marque pelo menos uma cultura." };
+    const total = Number(reg.valor) || 0;
+    const linhas = linhasDoRateio(rateio, total, dados);
+    if (linhas.length > 1) {
+      const soma = linhas.reduce((s, l) => s + (Number(l.valor) || 0), 0);
+      if (Math.abs(soma - total) >= 0.01) return { regs: [], erro: "A soma das partes precisa dar o valor do comprovante." };
+    }
+    const regs = [];
+    for (const l of linhas) {
+      const parte = Number(l.valor) || 0;
+      const r = escolha.montar({
+        ...reg,
+        valor: parte,
+        litros: reg.litros && total ? +(Number(reg.litros) * (parte / total)).toFixed(2) : reg.litros,
+        cultura_id: l.cultura ?? (reg.centro === "cultura" ? null : reg.cultura_id),
+        fazenda_id: l.fazenda ?? null,
+      });
+      if (r.erro) return r;
+      regs.push(...r.regs);
+    }
+    return { regs, erro: null };
+  };
 
   const naCaixa = Boolean(compartilhado.caminho);
   const fechar = useCallback(() => {
@@ -64,7 +101,7 @@ export default function LancarComprovante({ compartilhado, dados, salvar, aoFech
   }, [aoFechar, naCaixa]);
 
   const gravar = async () => {
-    const { regs, erro: e } = escolha.montar(reg);
+    const { regs, erro: e } = montarTodas();
     if (e) { setErro(e); return; }
     setSalvando(true);
     try {
@@ -110,7 +147,12 @@ export default function LancarComprovante({ compartilhado, dados, salvar, aoFech
       </div>
 
       {erro && <div className="aviso">{erro}</div>}
-      <Formulario colecao="despesas" reg={reg} setReg={setReg} dados={dados} somente={tudo ? undefined : ESSENCIAIS} escolha={escolha} />
+      <Formulario colecao="despesas" reg={reg} setReg={setReg} dados={dados} somente={campos} escolha={escolha} />
+      {!porTalhao && (
+        <div style={{ marginTop: 14 }}>
+          <RateioDespesa rateio={rateio} setRateio={setRateio} total={reg.valor} dados={dados} comCulturas={reg.centro === "cultura"} />
+        </div>
+      )}
       {!tudo && <button type="button" className="btn" style={{ marginTop: 14 }} onClick={() => setTudo(true)}>Mais campos</button>}
     </Modal>
   );
