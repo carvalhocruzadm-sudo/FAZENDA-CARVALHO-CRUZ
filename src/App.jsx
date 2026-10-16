@@ -15,7 +15,8 @@ import Avisos from "./pages/Avisos";
 import ModoCampo from "./pages/Campo";
 import Login, { NovaSenha } from "./pages/Login";
 import Painel from "./pages/Painel";
-import { CadastrosCampo, Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Turmas, Usuarios, Vendas } from "./pages/Secoes";
+import Funcionarios from "./pages/Funcionarios";
+import { CadastrosCampo, Diesel, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Turmas, Usuarios, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 import Ticket, { LINK_TICKET } from "./pages/Ticket";
 
@@ -31,7 +32,7 @@ const MENU = [
   ["diesel", "Diesel", "combustivel", Diesel],
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],
   ["fretes", "Caminhões e fretes", "caminhao", Fretes],
-  ["equipe", "Funcionários", "pessoas", Equipe],
+  ["equipe", "Funcionários", "pessoas", Funcionarios],
   ["campo", "Modo Campo", "trator", CadastrosCampo],
   ["usuarios", "Usuários", "pessoas", Usuarios],
   ["sync", "Sincronização", "nuvem", Sincronizacao],
@@ -326,7 +327,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
           {MENU.map(([id, r, icone]) => (
             <button key={id} className={tela === id ? "ativo" : ""} onClick={() => irPara(id)}>
               <Icone nome={icone} /> {r}
-              {id === "avisos" && naoLidos > 0 && <span className="contador">{naoLidos}</span>}
+              {id === "avisos" && naoLidos > 0 && <span className="qtd-avisos">{naoLidos}</span>}
             </button>
           ))}
         </nav>
@@ -348,7 +349,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
           <button className="btn icone sininho" onClick={() => irPara("avisos")}
             title={naoLidos ? `${naoLidos} aviso(s) novo(s) do campo` : "Avisos do campo"} aria-label="Avisos do campo">
             <Icone nome="sino" />
-            {naoLidos > 0 && <span className="contador">{naoLidos > 99 ? "99+" : naoLidos}</span>}
+            {naoLidos > 0 && <span className="qtd-avisos">{naoLidos > 99 ? "99+" : naoLidos}</span>}
           </button>
           <IndicadorSync aoClicar={() => irPara("sync")} />
         </header>
