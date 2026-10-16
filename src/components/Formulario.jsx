@@ -45,6 +45,9 @@ function reduzirFoto(arquivo) {
 
 const MAX_FOTOS = 6;
 
+/** Campo já usado (abre sozinho o botão do campo opcional). Zero conta como vazio. */
+const temValor = (v) => (Array.isArray(v) ? v.length > 0 : v != null && v !== "" && v !== false && Number(v) !== 0);
+
 function Fotos({ valor, aoMudar }) {
   const fotos = valor ?? [];
   const [erro, setErro] = useState(null);
@@ -238,8 +241,13 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
  */
 export default function Formulario({ colecao, reg, setReg, dados, contexto, somente, escolha }) {
   const def = ESQUEMA[colecao];
+  // Botões dos campos opcionais que a pessoa abriu.
+  const [abertos, setAbertos] = useState(() => new Set());
 
   const aoMudar = (chave, v) => {
+    // Quem está digitando num opcional: ele fica aberto mesmo se o campo for apagado.
+    const grupo = def.campos[chave]?.opcional;
+    if (grupo && !abertos.has(grupo)) setAbertos((atual) => new Set(atual).add(grupo));
     setReg((atual) => {
       let novo = { ...atual, [chave]: v };
       const extra = def.aoMudar?.[chave]?.(novo, dados, contexto);
@@ -253,6 +261,16 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
     const novo = { ...atual, ...patch };
     return { ...novo, ...(def.calcular?.(novo, dados) ?? {}) };
   });
+
+  // Fechar um opcional apaga o que foi digitado nele (os calculados se refazem).
+  const alternar = (grupo, campos, aberto) => {
+    setAbertos((atual) => {
+      const novo = new Set(atual);
+      if (aberto) novo.delete(grupo); else novo.add(grupo);
+      return novo;
+    });
+    if (aberto) preencher(Object.fromEntries(campos.filter(([, c]) => !c.somenteLeitura).map(([k]) => [k, null])));
+  };
 
   // A cultura vem logo depois da data: é ela que decide o que mais se pergunta.
   const campos = useMemo(() => {
@@ -273,12 +291,28 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
   // A escolha entra no lugar do primeiro dos dois (cultura ou talhão); o outro some.
   const lugar = comEscolha && visiveis.find(([c]) => c === "cultura_id" || c === "talhao_id")?.[0];
 
+  // Campos opcionais: ficam atrás de um botão e só aparecem quando ele é marcado
+  // (ou quando já têm valor). Os abertos aparecem logo abaixo dos botões.
+  const grupos = [];
+  for (const [chave, campo] of visiveis) {
+    if (!campo.opcional) continue;
+    let g = grupos.find((x) => x.nome === campo.opcional);
+    if (!g) grupos.push((g = { nome: campo.opcional, campos: [] }));
+    g.campos.push([chave, campo]);
+  }
+  for (const g of grupos) {
+    g.aberto = abertos.has(g.nome) || g.campos.some(([k, c]) => !c.somenteLeitura && temValor(reg[k]));
+  }
+  const principais = visiveis.filter(([, c]) => !c.opcional);
+  const opcionaisAbertos = visiveis.filter(([, c]) => c.opcional && grupos.find((g) => g.nome === c.opcional).aberto);
+  const mostrar = ([chave, c]) => <Campo key={chave} colecao={colecao} chave={chave} campo={c} reg={reg} dados={dados} aoMudar={aoMudar} />;
+
   return (
     <div className="form">
       {colecao === "vendas" && reg.foto_ticket && (
         <div className="largo"><LeituraTicket reg={reg} dados={dados} preencher={preencher} /></div>
       )}
-      {visiveis.map(([chave, campo]) => {
+      {principais.map(([chave, c]) => {
         if (comEscolha && (chave === "cultura_id" || chave === "talhao_id")) {
           if (chave !== lugar) return null;
           return (
@@ -290,8 +324,22 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
               obrigatorio={campoObrigatorio(def.campos.talhao_id, reg)} todasCulturas />
           );
         }
-        return <Campo key={chave} colecao={colecao} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />;
+        return mostrar([chave, c]);
       })}
+      {grupos.length > 0 && (
+        <div className="largo opcionais">
+          <small>Mais informações (toque para abrir):</small>
+          <div className="escolhas">
+            {grupos.map((g) => (
+              <button type="button" key={g.nome} className={g.aberto ? "ativa" : ""} aria-pressed={g.aberto}
+                onClick={() => alternar(g.nome, g.campos, g.aberto)}>
+                {g.aberto ? "✓ " : "+ "}{g.nome}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {opcionaisAbertos.map(mostrar)}
       {faltaCultura && <small className="largo dica-cultura">Escolha a cultura para ver os campos dela.</small>}
       {colecao === "insumos" && <div className="largo"><ConsultaProduto reg={reg} setReg={setReg} /></div>}
     </div>

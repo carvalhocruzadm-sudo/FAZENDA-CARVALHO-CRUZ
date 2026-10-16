@@ -29,6 +29,10 @@
  * campo que recebe a área do talhão, `leituras` emenda o horímetro, `zerar`
  * os campos que não fazem sentido repartir. Ver lib/talhoes.js.
  *
+ * `opcional: "Desconto"` esconde o campo atrás de um botão com esse nome
+ * (campos com o mesmo nome abrem juntos). Abre sozinho se já tiver valor;
+ * fechar o botão apaga o que foi digitado nele.
+ *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
  * outro enquanto se digita (escolher o talhão já traz a cultura dele).
@@ -822,7 +826,7 @@ export const ESQUEMA = {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       comprador: { tipo: "sugestao", rotulo: "Comprador", sugestoesDe: ["vendas", "comprador"] },
       cultura_id: { ...refCultura, obrigatorio: true },
-      safra: { tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"], historicoDaCultura: true },
+      safra: { opcional: "Safra", tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"], historicoDaCultura: true },
       talhao_id: { ...refTalhao, rotulo: "Talhão / sítio", paraCultura: (c) => c.id !== LARANJA_TERCEIROS },
       // Laranja de terceiros não sai de talhão da fazenda: vale de quem é o pomar.
       proprietario: {
@@ -835,39 +839,41 @@ export const ESQUEMA = {
       },
       valor_compra: { tipo: "dinheiro", rotulo: "Valor da compra (peso × valor pago)", somenteLeitura: true, paraCultura: (c) => c.id === LARANJA_TERCEIROS },
       classificacao: {
+        opcional: "Tipo / classificação",
         tipo: "sugestao", rotulo: "Tipo / classificação", sugestoes: ["BOA", "SUKITA", "CASQUINOL", "Grão", "Silagem"], sugestoesDe: ["vendas", "classificacao"],
         sugestoesDaCultura: (c) => CLASSIFICACOES_POR_GRUPO[c.grupo], historicoDaCultura: true,
       },
-      placa: { tipo: "sugestao", rotulo: "Placa", sugestoesDe: ["vendas", "placa"] },
-      tipo_carro: { tipo: "sugestao", rotulo: "Tipo de carro", sugestoes: ["Rodocaçamba", "Graneleiro", "Caçambão", "9 eixos", "Truck", "Toco"] },
-      peso_entrada: { tipo: "numero", rotulo: "Peso entrada / tara (kg)", casas: 1 },
-      peso_saida: { tipo: "numero", rotulo: "Peso saída / bruto (kg)", casas: 1 },
+      placa: { opcional: "Placa e tipo de carro", tipo: "sugestao", rotulo: "Placa", sugestoesDe: ["vendas", "placa"] },
+      tipo_carro: { opcional: "Placa e tipo de carro", tipo: "sugestao", rotulo: "Tipo de carro", sugestoes: ["Rodocaçamba", "Graneleiro", "Caçambão", "9 eixos", "Truck", "Toco"] },
+      peso_entrada: { opcional: "Peso de entrada e saída", tipo: "numero", rotulo: "Peso entrada / tara (kg)", casas: 1 },
+      peso_saida: { opcional: "Peso de entrada e saída", tipo: "numero", rotulo: "Peso saída / bruto (kg)", casas: 1 },
       peso_liquido: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1, dica: "Sai da entrada e saída; sem elas, digite o peso do ticket" },
-      volumes: { tipo: "numero", rotulo: "Nº de sacos / volumes", casas: 1, paraCultura: soGrupos("graos", "forragem", "hortalicas") },
-      desconto_kg: { tipo: "numero", rotulo: "Desconto (kg)", casas: 1 },
+      volumes: { opcional: "Nº de sacos / volumes", tipo: "numero", rotulo: "Nº de sacos / volumes", casas: 1, paraCultura: soGrupos("graos", "forragem", "hortalicas") },
+      desconto_kg: { opcional: "Desconto", tipo: "numero", rotulo: "Desconto (kg)", casas: 1 },
       unidade: { tipo: "opcoes", rotulo: "Preço por", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t", opcoesDaCultura: unidadesDaCultura },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 3, dica: "Calculada pelo peso quando o preço é por peso" },
       preco_unitario: { tipo: "dinheiro", rotulo: "Preço", casas: 4 },
       valor_bruto: { tipo: "dinheiro", rotulo: "Valor bruto", somenteLeitura: true },
-      valor_desconto: { tipo: "dinheiro", rotulo: "Valor do desconto", somenteLeitura: true },
+      valor_desconto: { opcional: "Desconto", tipo: "dinheiro", rotulo: "Valor do desconto", somenteLeitura: true },
       turma: {
+        opcional: "Turma de colheita",
         tipo: "sugestao", rotulo: "Turma de colheita", dica: "A turma que colheu", sugestoesDe: ["vendas", "turma"], historicoDaCultura: true,
         // Só nas culturas colhidas por turma (no cadastro da cultura; a laranja vem marcada).
         paraCultura: (c) => Boolean(c.turma_colheita),
       },
-      custo_ton: { tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
-      frete_cobrado: { tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
-      frete: { tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
-      comissao: { tipo: "dinheiro", rotulo: "Comissão" },
-      juros: { tipo: "dinheiro", rotulo: "Juros / antecipação" },
+      custo_ton: { opcional: "Custo de colheita / carregamento", tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
+      frete_cobrado: { opcional: "Frete cobrado do comprador", tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
+      frete: { opcional: "Frete pago", tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
+      comissao: { opcional: "Comissão", tipo: "dinheiro", rotulo: "Comissão" },
+      juros: { opcional: "Juros / antecipação", tipo: "dinheiro", rotulo: "Juros / antecipação" },
       valor: { tipo: "dinheiro", rotulo: "Valor líquido", somenteLeitura: true },
-      motorista_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Motorista" },
-      caminhao_id: { tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio", filtro: (m) => m.categoria === "caminhao" },
-      vencimento: { tipo: "data", rotulo: "Vencimento" },
-      nota_fiscal: { tipo: "texto", rotulo: "Nº da nota fiscal" },
+      motorista_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "funcionarios", rotulo: "Motorista" },
+      caminhao_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio", filtro: (m) => m.categoria === "caminhao" },
+      vencimento: { opcional: "Vencimento", tipo: "data", rotulo: "Vencimento" },
+      nota_fiscal: { opcional: "Nota fiscal", tipo: "texto", rotulo: "Nº da nota fiscal" },
       a_conferir: { tipo: "booleano", rotulo: "Aguardando aprovação (ticket lançado por funcionário)" },
       foto_ticket: { tipo: "foto", rotulo: "Foto do ticket da balança", lado: 1600 },
-      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      observacao: { opcional: "Observação", tipo: "textoLongo", rotulo: "Observação" },
     },
     aoMudar: {
       talhao_id: (reg, dados) => {

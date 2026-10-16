@@ -516,3 +516,7 @@ td.acoes .btn + .btn { margin-left: 4px; }
 .cascata td { padding: 7px 4px; border-bottom: 1px solid #f0f0ea; }
 .cascata td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cascata tr.total td { font-weight: 700; border-top: 2px solid var(--linha); border-bottom: 0; }
+
+/* Campos opcionais do formulário: botões que abrem o campo quando ele é usado. */
+.opcionais { display: grid; gap: 6px; }
+.opcionais .escolhas button { padding: 7px 12px; font-size: 13px; }
