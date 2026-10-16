@@ -3,11 +3,16 @@
 // a IA do Google (Gemini), a mesma chave da função ler-ticket. Só quem está
 // logado no app consegue chamar.
 //
+// Recebe { caminho } (o arquivo já está no bucket "comprovantes": a função
+// baixa direto, sem passar pelo celular — mais rápido no 4G) ou { arquivo, tipo }
+// (base64, para o que ainda está só no aparelho).
+//
 // Chave: a mesma GEMINI_API_KEY da ler-ticket (Edge Functions → Secrets).
 // Deploy: Edge Functions → Deploy a new function → Via Editor → nome
 //         ler-comprovante → colar este arquivo → Deploy
 //         ou: supabase functions deploy ler-comprovante
-// (opcional) MODELO_TICKET = outro modelo do Gemini (padrão: gemini-flash-latest)
+// (opcional) MODELO_COMPROVANTE = outro modelo do Gemini (padrão: gemini-flash-lite-latest,
+//            o mais rápido; ler comprovante não precisa do modelo que "pensa")
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -30,6 +35,24 @@ O que não conseguir ler com segurança, deixe null. Não invente.`;
 
 const TIPOS = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"]);
 
+const TIPO_DA_EXTENSAO: Record<string, string> = { pdf: "application/pdf", png: "image/png", webp: "image/webp", heic: "image/heic" };
+
+function base64(bytes: Uint8Array) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/** Baixa o comprovante do bucket com a chave do servidor (o Supabase já a dá às funções). */
+async function baixar(caminho: string) {
+  if (!/^[\w\-/]+\.[a-z0-9]{2,5}$/i.test(caminho) || caminho.includes("..")) throw new Error("Caminho de comprovante inválido.");
+  const url = Deno.env.get("SUPABASE_URL"), chave = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const r = await fetch(`${url}/storage/v1/object/comprovantes/${caminho}`, { headers: { apikey: chave!, Authorization: `Bearer ${chave}` } });
+  if (!r.ok) throw new Error(`Não achei o comprovante na nuvem (${r.status}).`);
+  const ext = caminho.split(".").pop()!.toLowerCase();
+  return { arquivo: base64(new Uint8Array(await r.arrayBuffer())), tipo: TIPO_DA_EXTENSAO[ext] ?? "image/jpeg" };
+}
+
 /** O primeiro { … } do texto, lido como JSON. */
 function lerJson(texto: string) {
   const i = texto.indexOf("{"), f = texto.lastIndexOf("}");
@@ -43,10 +66,14 @@ Deno.serve(async (req) => {
   const chave = Deno.env.get("GEMINI_API_KEY");
   if (!chave) return json({ erro: "A chave da IA do Google ainda não foi configurada no Supabase (GEMINI_API_KEY)." }, 500);
 
-  const { arquivo, tipo } = await req.json().catch(() => ({}));
+  const corpo = await req.json().catch(() => ({}));
+  let { arquivo, tipo } = corpo;
+  if (!arquivo && corpo.caminho) {
+    try { ({ arquivo, tipo } = await baixar(String(corpo.caminho))); } catch (e) { return json({ erro: (e as Error).message }, 400); }
+  }
   if (!arquivo) return json({ erro: "Mande o comprovante." }, 400);
 
-  const modelo = Deno.env.get("MODELO_TICKET") ?? "gemini-flash-latest";
+  const modelo = Deno.env.get("MODELO_COMPROVANTE") ?? "gemini-flash-lite-latest";
   const resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": chave, "content-type": "application/json" },
