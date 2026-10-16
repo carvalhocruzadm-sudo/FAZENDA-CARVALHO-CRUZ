@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import CaixaComprovantes from "../components/CaixaComprovantes";
 import Crud from "../components/Crud";
+import LancarComprovante from "../components/LancarComprovante";
 import NotasFiscais from "../components/NotasFiscais";
 import OrdensPulverizacao from "../components/OrdensPulverizacao";
 import PainelTickets from "../components/PainelTickets";
@@ -856,11 +857,51 @@ function Despesas(props) {
   );
 }
 
+/**
+ * Pix feito pelo computador: o banco gera um PDF. Aqui se anexa esse PDF e
+ * abre a mesma tela do comprovante compartilhado (lê valor, data e
+ * favorecido; a pessoa diz do que é a despesa). Embaixo, as despesas que já
+ * têm comprovante.
+ */
+function PixComprovante(props) {
+  const [lancando, setLancando] = useState(null);
+  const escolher = (e) => {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (arquivo) setLancando({ arquivo, texto: "" });
+  };
+  const anexar = (
+    <label className="btn primario">
+      <Icone nome="mais" /> Anexar PDF do Pix
+      <input type="file" accept="application/pdf,.pdf" hidden onChange={escolher} />
+    </label>
+  );
+  return (
+    <>
+      <div className="cartao" style={{ marginBottom: 16 }}>
+        <h2>Pix feito pelo computador</h2>
+        <p className="descricao">
+          Anexe o PDF que o banco gera. O valor, a data e o favorecido são lidos do comprovante; você escolhe
+          a categoria e escreve do que é a despesa. Ela entra junto com as outras despesas, com o PDF guardado.
+        </p>
+        {anexar}
+      </div>
+      <Crud colecao="despesas" {...props} filtro={(d) => Boolean(d.comprovante)} padrao={{ forma_pagamento: "PIX" }}
+        colunas={["data", "categoria", "descricao", "favorecido", "cultura_id", "valor", "comprovante"]} />
+      {lancando && (
+        <LancarComprovante compartilhado={lancando} dados={props.dados} salvar={props.salvar}
+          aoFechar={() => setLancando(null)} aoSalvar={() => setLancando(null)} />
+      )}
+    </>
+  );
+}
+
 export function Financeiro(props) {
   return (
     <Secao props={props} abas={[
       ["resumo", "Resumo do mês", ResumoFinanceiro],
       ["despesas", "Despesas", Despesas],
+      ["pix", "Pix com comprovante", PixComprovante],
       ["entradas", "Outras entradas"],
       ["custos", "Custo por cultura e talhão", Custos],
     ]} />
