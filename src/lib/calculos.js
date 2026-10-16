@@ -54,9 +54,13 @@ export function ultimaLeitura(dados, maquinaId) {
   return Math.max(0, ...leituras);
 }
 
+/** Sem revisão lançada, quantas horas atrás se considera que foi a última. */
+const HORAS_DESDE_ULTIMA_REVISAO = 400;
+
 /**
  * Situação da revisão: a próxima é a última revisão programada (ou troca de
- * óleo) + o intervalo. Sem revisão lançada, conta da leitura do cadastro.
+ * óleo) + o intervalo. Sem revisão lançada, considera que a última foi
+ * 400 h antes da leitura atual (horímetro) ou a leitura do cadastro (km).
  */
 export function situacaoRevisao(dados, maquina) {
   const intervaloRev = n(maquina.intervalo_revisao);
@@ -65,7 +69,8 @@ export function situacaoRevisao(dados, maquina) {
   const ultimas = dados.revisoes
     .filter((r) => r.maquina_id === maquina.id && ["revisao", "oleo"].includes(r.tipo) && r.leitura != null)
     .map((r) => n(r.leitura));
-  const base = ultimas.length ? Math.max(...ultimas) : n(maquina.leitura_inicial);
+  const semRevisao = maquina.medidor === "km" ? n(maquina.leitura_inicial) : atual - HORAS_DESDE_ULTIMA_REVISAO;
+  const base = ultimas.length ? Math.max(...ultimas) : semRevisao;
   const proxima = base + intervaloRev;
   const faltam = proxima - atual;
   const estado = faltam <= 0 ? "vencida" : faltam <= intervaloRev * 0.1 ? "proxima" : "ok";
