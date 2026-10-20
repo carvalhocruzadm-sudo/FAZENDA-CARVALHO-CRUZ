@@ -97,6 +97,57 @@ export function custoAbastecimento(a, precoMedio) {
   return a.origem === "posto" ? n(a.valor) : n(a.litros) * precoMedio;
 }
 
+/**
+ * O que a lista de abastecimentos mostra além do que foi lançado, por id:
+ * - horas: horímetro/km deste abastecimento − o do abastecimento anterior da
+ *   mesma máquina (o trabalho que este diesel cobriu). Abastecimento dividido
+ *   entre talhões tem a mesma leitura nas partes: as horas são repartidas
+ *   pelos litros de cada parte, para o total não contar em dobro.
+ * - servico: as operações lançadas para a máquina no mesmo dia.
+ * - cultura: a lançada; sem ela, a do talhão ou a das operações do dia.
+ * - custo: no posto, o que se pagou; do tanque, litros × preço médio.
+ */
+export function detalhesAbastecimentos(dados) {
+  const { precoMedio } = diesel(dados);
+  const talhoes = new Map((dados.talhoes ?? []).map((t) => [t.id, t]));
+  const opsDoDia = new Map();
+  for (const o of dados.operacoes ?? []) {
+    const k = `${o.maquina_id}|${o.data}`;
+    if (!opsDoDia.has(k)) opsDoDia.set(k, []);
+    opsDoDia.get(k).push(o);
+  }
+  const porMaquina = new Map();
+  for (const a of dados.abastecimentos) {
+    if (a.leitura == null || a.leitura === "") continue;
+    if (!porMaquina.has(a.maquina_id)) porMaquina.set(a.maquina_id, []);
+    porMaquina.get(a.maquina_id).push(a);
+  }
+  const resultado = new Map();
+  for (const a of dados.abastecimentos) {
+    const ops = opsDoDia.get(`${a.maquina_id}|${a.data}`) ?? [];
+    const servico = [...new Set(ops.map((o) => o.operacao).filter(Boolean))].join(", ") || null;
+    const culturasOps = [...new Set(ops.map((o) => o.cultura_id).filter(Boolean))];
+    const cultura = a.cultura_id || talhoes.get(a.talhao_id)?.cultura_id
+      || (culturasOps.length === 1 ? culturasOps[0] : null);
+
+    let horas = null;
+    const lista = porMaquina.get(a.maquina_id);
+    if (lista && a.leitura != null && a.leitura !== "") {
+      const atual = n(a.leitura);
+      const anteriores = lista.filter((x) => n(x.leitura) < atual).map((x) => n(x.leitura));
+      if (anteriores.length) {
+        const total = atual - Math.max(...anteriores);
+        // Partes do mesmo abastecimento (mesma leitura, mesmo dia) repartem as horas.
+        const partes = lista.filter((x) => n(x.leitura) === atual && x.data === a.data);
+        const litrosPartes = soma(partes, (x) => x.litros);
+        horas = partes.length > 1 && litrosPartes ? total * n(a.litros) / litrosPartes : total;
+      }
+    }
+    resultado.set(a.id, { servico, cultura, horas, custo: custoAbastecimento(a, precoMedio) || null });
+  }
+  return resultado;
+}
+
 /** Consumo por máquina no período: litros, horas/km trabalhados e média. */
 export function consumoPorMaquina(dados, periodo) {
   const abast = noPeriodo(dados.abastecimentos, periodo);

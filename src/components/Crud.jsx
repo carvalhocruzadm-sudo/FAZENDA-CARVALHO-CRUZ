@@ -11,7 +11,7 @@ import { Icone, Modal, SeletorPeriodo } from "./ui";
 /** Colunas que ganham total no rodapé da lista. */
 const SOMAVEIS = new Set([
   "valor", "valor_bruto", "valor_desconto", "total", "litros", "quantidade", "trabalhado",
-  "peso_liquido", "peso_kg", "km", "quantidade_total", "area_ha", "pes", "frete", "comissao",
+  "peso_liquido", "peso_kg", "km", "horas", "custo", "quantidade_total", "area_ha", "pes", "frete", "comissao",
 ]);
 
 /** Tipos de coluna que viram filtro de caixinha quando a coleção não define `filtros`. */
@@ -30,14 +30,14 @@ function referencias(dados, colecao, id) {
   return total;
 }
 
-function exportarCSV(nome, colunas, def, linhas, dados) {
+function exportarCSV(nome, colunas, campos, valorDe, linhas, dados) {
   const corpo = linhas.map((l) => colunas.map((c) => {
-    const campo = def.campos[c];
-    const v = l[c];
+    const campo = campos[c];
+    const v = valorDe(l, c);
     if (["numero", "dinheiro"].includes(campo.tipo)) return v == null ? "" : Number(v);
     return exibir(campo, v, dados);
   }));
-  baixarCSV(`${nome}-${hoje()}.csv`, [colunas.map((c) => def.campos[c].rotulo), ...corpo]);
+  baixarCSV(`${nome}-${hoje()}.csv`, [colunas.map((c) => campos[c].rotulo), ...corpo]);
 }
 
 /**
@@ -45,9 +45,14 @@ function exportarCSV(nome, colunas, def, linhas, dados) {
  * total no rodapé, formulário para incluir/editar, repetir e apagar.
  * `filtro` restringe a lista (ex.: só os abastecimentos de posto) e
  * `padrao` preenche o registro novo e `acoes` entra como botão extra na barra.
+ * `calculadas` são colunas só da lista, que não vão para o banco:
+ * `{ campos: { chave: { tipo, rotulo… } }, calcular: (dados) => Map(id → { chave: valor }) }`.
  */
-export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes }) {
+export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes, calculadas }) {
   const def = ESQUEMA[colecao];
+  const campos = useMemo(() => ({ ...def.campos, ...calculadas?.campos }), [def, calculadas]);
+  const valores = useMemo(() => calculadas?.calcular(dados), [calculadas, dados]);
+  const valorDe = useCallback((l, c) => (calculadas?.campos[c] ? valores?.get(l.id)?.[c] : l[c]), [calculadas, valores]);
   const [busca, setBusca] = useState("");
   const [escolhas, setEscolhas] = useState({});
   const [periodo, setPeriodo] = useState(periodoInicial ?? (def.lancamento ? "mes" : "tudo"));
@@ -72,32 +77,32 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   }, [dados, colecao, filtro, def, periodo, cultura]);
 
   /** Filtros de caixinha: cada um lista os valores que aparecem (ex.: as fazendas que têm talhão). */
-  const filtros = useMemo(() => (def.filtros ?? colunas.filter((c) => FILTRAVEIS.has(def.campos[c].tipo))).map((c) => {
-    const campo = def.campos[c];
-    const valores = [...new Set(base.map((l) => String(exibir(campo, l[c], dados))))]
+  const filtros = useMemo(() => (def.filtros ?? colunas.filter((c) => FILTRAVEIS.has(campos[c].tipo))).map((c) => {
+    const campo = campos[c];
+    const valores = [...new Set(base.map((l) => String(exibir(campo, valorDe(l, c), dados))))]
       .sort((a, b) => (a === "—") - (b === "—") || a.localeCompare(b, "pt-BR", { numeric: true }));
     return { c, campo, valores };
-  }).filter((f) => f.valores.length > 1 || escolhas[f.c]), [def, colunas, base, dados, escolhas]);
+  }).filter((f) => f.valores.length > 1 || escolhas[f.c]), [def, campos, valorDe, colunas, base, dados, escolhas]);
 
   const linhas = useMemo(() => {
     let lista = base;
     for (const [c, v] of Object.entries(escolhas)) {
-      if (v) lista = lista.filter((l) => String(exibir(def.campos[c], l[c], dados)) === v);
+      if (v) lista = lista.filter((l) => String(exibir(campos[c], valorDe(l, c), dados)) === v);
     }
     const termo = busca.trim().toLowerCase();
     if (termo) {
       // Linhas que apontam para um produto também são achadas pelo fabricante e pelo princípio ativo dele.
       const insumos = new Map((dados.insumos ?? []).map((i) => [i.id, i]));
       const extra = (l) => colunas
-        .filter((c) => def.campos[c].tipo === "ref" && def.campos[c].colecao === "insumos")
+        .filter((c) => campos[c].tipo === "ref" && campos[c].colecao === "insumos")
         .map((c) => insumos.get(l[c])).filter(Boolean)
         .map((i) => `${i.fabricante ?? ""} ${i.principio_ativo ?? ""}`).join(" ");
       lista = lista.filter((l) => extra(l).toLowerCase().includes(termo)
-        || colunas.some((c) => String(exibir(def.campos[c], l[c], dados)).toLowerCase().includes(termo)));
+        || colunas.some((c) => String(exibir(campos[c], valorDe(l, c), dados)).toLowerCase().includes(termo)));
     }
     const ordem = def.ordem ?? ((a, b) => String(b.data ?? "").localeCompare(String(a.data ?? "")) || String(b.atualizado_em ?? "").localeCompare(String(a.atualizado_em ?? "")));
     return [...lista].sort(ordem);
-  }, [base, escolhas, dados, def, busca, colunas]);
+  }, [base, escolhas, dados, def, campos, valorDe, busca, colunas]);
 
   const temFiltro = Object.values(escolhas).some(Boolean);
 
@@ -145,8 +150,8 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   const totais = colunas.map((c, i) => {
     if (i === 0) return `${linhas.length} ${linhas.length === 1 ? "registro" : "registros"}`;
     if (!SOMAVEIS.has(c)) return "";
-    const campo = def.campos[c];
-    const t = linhas.reduce((s, l) => s + (Number(l[c]) || 0), 0);
+    const campo = campos[c];
+    const t = linhas.reduce((s, l) => s + (Number(valorDe(l, c)) || 0), 0);
     if (campo.leituraMedidor) return leitura(t);
     return campo.tipo === "dinheiro" ? exibir({ tipo: "dinheiro" }, t) : numero(t, campo.casas ?? 2);
   });
@@ -172,7 +177,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
         )}
         <span className="espaco" />
         {acoes}
-        <button className="btn" onClick={() => exportarCSV(colecao, colunas, def, linhas, dados)} disabled={!linhas.length} title="Baixar planilha (CSV)">
+        <button className="btn" onClick={() => exportarCSV(colecao, colunas, campos, valorDe, linhas, dados)} disabled={!linhas.length} title="Baixar planilha (CSV)">
           <Icone nome="exportar" /> Planilha
         </button>
         <button className="btn primario" onClick={novo}><Icone nome="mais" /> Novo</button>
@@ -189,7 +194,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
             <thead>
               <tr>
                 {colunas.map((c) => {
-                  const campo = def.campos[c];
+                  const campo = campos[c];
                   return <th key={c} className={["numero", "dinheiro"].includes(campo.tipo) ? "num" : ""}>{campo.rotulo}</th>;
                 })}
                 <th />
@@ -199,10 +204,10 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
               {linhas.map((l) => (
                 <tr key={l.id} className="clicavel" onClick={() => abrir({ ...l })}>
                   {colunas.map((c) => {
-                    const campo = def.campos[c];
+                    const campo = campos[c];
                     return (
                       <td key={c} data-rotulo={campo.rotulo} className={["numero", "dinheiro"].includes(campo.tipo) ? "num" : ""}>
-                        {exibir(campo, l[c], dados)}
+                        {exibir(campo, valorDe(l, c), dados)}
                       </td>
                     );
                   })}
