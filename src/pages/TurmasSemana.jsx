@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { Stat, TabelaSimples } from "../components/ui";
+import { Modal, Stat, TabelaSimples } from "../components/ui";
 import { quemLancou, useAcoesTickets } from "../hooks/useAcoesTickets";
 import { hoje, prepararRegistro, registroNovo, segundaDaSemana } from "../lib/esquema";
 import { baixarCSV, brl, data, nomeRef, numero } from "../lib/formato";
@@ -15,7 +15,8 @@ function lerValor(texto) {
 /**
  * Turmas de colheita → A pagar por semana: o que cada turma colheu na semana
  * (segunda a domingo), quanto tem a receber, quanto já foi pago e quanto
- * falta. O botão Pagar lança o que falta em Pagamentos.
+ * falta. O botão Pagar lança o que falta em Pagamentos e pergunta se o valor
+ * entra também nas Despesas (no Financeiro) ou se é só para dar baixa.
  *
  * As cargas lançadas pelos funcionários chegam "Aguardando aprovação": ao
  * abrir a turma dá para ver a foto do ticket e aprovar, editar ou apagar.
@@ -33,19 +34,48 @@ export default function TurmasSemana({ dados, salvar, remover }) {
   // Uma carga dividida entre turmas aparece em mais de uma linha: conta uma vez só.
   const pendentes = [...new Map(comCarga.flatMap(aAprovar).map((v) => [v.id, v])).values()];
 
-  const pagar = async (l) => {
+  // Janela do botão Pagar: { linha, valor (texto digitado) }.
+  const [pagando, setPagando] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+
+  const pagar = (l) => {
     setErro(null);
     if (!l.turma) { setErro(`Cadastre a turma "${l.nome}" na aba Cadastro para registrar o pagamento.`); return; }
     const semAprovar = aAprovar(l).length;
     if (semAprovar && !window.confirm(`A ${l.nome} tem ${semAprovar} carga(s) desta semana aguardando aprovação.\nPagar mesmo assim?`)) return;
-    const valor = window.prompt(`Pagamento da ${l.nome}, semana ${data(segunda)} a ${data(domingo)}.\nValor pago (R$):`, String(l.falta.toFixed(2)).replace(".", ","));
-    if (valor == null) return;
+    setPagando({ linha: l, valor: String(l.falta.toFixed(2)).replace(".", ","), erro: null });
+  };
+
+  /** Grava o pagamento; com `nasDespesas` lança também uma despesa com o mesmo valor. */
+  const confirmarPagamento = async (nasDespesas) => {
+    const l = pagando.linha;
     const { reg, erro: e } = prepararRegistro("pagamentos_turmas", {
-      ...registroNovo("pagamentos_turmas"), turma_id: l.turma.id, semana: segunda, valor: lerValor(valor),
+      ...registroNovo("pagamentos_turmas"), turma_id: l.turma.id, semana: segunda, valor: lerValor(pagando.valor),
+      observacao: nasDespesas ? "Também lançado nas despesas" : null,
     }, dados);
-    if (e) { setErro(e); return; }
-    if (!(reg.valor > 0)) { setErro("Digite um valor maior que zero."); return; }
-    await salvar("pagamentos_turmas", reg);
+    if (e) { setPagando((p) => ({ ...p, erro: e })); return; }
+    if (!(reg.valor > 0)) { setPagando((p) => ({ ...p, erro: "Digite um valor maior que zero." })); return; }
+    let despesa = null;
+    if (nasDespesas) {
+      // Todas as cargas da semana numa cultura só: a despesa vai para ela; senão, geral da fazenda.
+      const culturas = [...new Set(l.cargas.map((v) => v.cultura_id).filter(Boolean))];
+      const r = prepararRegistro("despesas", {
+        ...registroNovo("despesas"), data: reg.data, categoria: "Serviços", tipo: "Turma de colheita",
+        descricao: `Pagamento da ${l.nome}, semana ${data(segunda)} a ${data(domingo)}`,
+        valor: reg.valor, favorecido: l.nome, pago: true,
+        centro: culturas.length === 1 ? "cultura" : "geral", cultura_id: culturas.length === 1 ? culturas[0] : null,
+      }, dados);
+      if (r.erro) { setPagando((p) => ({ ...p, erro: r.erro })); return; }
+      despesa = r.reg;
+    }
+    setSalvando(true);
+    try {
+      await salvar("pagamentos_turmas", reg);
+      if (despesa) await salvar("despesas", despesa);
+      setPagando(null);
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const exportar = () => baixarCSV(`turmas-${segunda}.csv`, [
@@ -161,6 +191,39 @@ export default function TurmasSemana({ dados, salvar, remover }) {
           )}
         </div>
       ))}
+
+      {pagando && (
+        <Modal
+          titulo={`Pagar ${pagando.linha.nome}`}
+          aoFechar={() => setPagando(null)}
+          rodape={
+            <>
+              <button type="button" className="btn" onClick={() => setPagando(null)}>Cancelar</button>
+              <span className="espaco" />
+              <button type="button" className="btn" onClick={() => confirmarPagamento(false)} disabled={salvando}>Só dar baixa</button>
+              <button type="button" className="btn primario" onClick={() => confirmarPagamento(true)} disabled={salvando}>
+                {salvando ? "Salvando…" : "Dar baixa e lançar nas despesas"}
+              </button>
+            </>
+          }
+        >
+          {pagando.erro && <div className="aviso">{pagando.erro}</div>}
+          <p>Semana {data(segunda)} a {data(domingo)}. Falta pagar {brl(pagando.linha.falta)}.</p>
+          <div className="form">
+            <label className="campo">
+              <span>Valor pago (R$) <em>*</em></span>
+              <input inputMode="decimal" value={pagando.valor} autoFocus
+                onChange={(e) => setPagando((p) => ({ ...p, valor: e.target.value, erro: null }))} />
+            </label>
+          </div>
+          <p className="descricao" style={{ marginTop: 12 }}>
+            <b>Só dar baixa:</b> registra o pagamento da turma e pronto.<br />
+            <b>Lançar nas despesas:</b> também cria uma despesa “Serviços — Turma de colheita” no Financeiro com o mesmo valor.
+            Atenção: o custo da turma já é descontado no valor líquido de cada carga vendida, então lançar nas despesas
+            faz ele aparecer duas vezes no resultado.
+          </p>
+        </Modal>
+      )}
 
       {acoes.janelas}
     </>
