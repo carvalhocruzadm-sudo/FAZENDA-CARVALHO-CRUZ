@@ -8,7 +8,7 @@ import OrdensPulverizacao from "../components/OrdensPulverizacao";
 import PainelTickets from "../components/PainelTickets";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
-  PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
+  PERIODOS, aReceber, consumoPorMaquina, custos, detalhesAbastecimentos, diesel, entradasDoPeriodo, estoqueInsumos,
   GRUPOS_PLANEJAMENTO, lancamentosPorLocal, noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma, totaisLocal,
 } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
@@ -384,6 +384,18 @@ function ConsumoDiesel({ dados }) {
   );
 }
 
+/** Colunas a mais na lista de abastecimentos, tiradas dos outros lançamentos (não vão para o banco). */
+const ABAST_CALCULADAS = {
+  campos: {
+    cultura: { tipo: "ref", colecao: "culturas", rotulo: "Cultura" },
+    servico: { tipo: "texto", rotulo: "Serviço (operações do dia)" },
+    horas: { tipo: "numero", rotulo: "Horas / km trabalhados", leituraMedidor: true },
+    custo: { tipo: "dinheiro", rotulo: "Custo do diesel" },
+  },
+  calcular: detalhesAbastecimentos,
+};
+const ABAST_COLUNAS = ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "horas", "talhao_id", "cultura", "servico", "custo"];
+
 export function Diesel(props) {
   const d = diesel(props.dados);
   return (
@@ -395,7 +407,7 @@ export function Diesel(props) {
         <Stat rotulo="Total abastecido do tanque" valor={`${numero(d.litrosSaida, 0)} L`} cor="cinza" />
       </div>
       <Secao props={props} abas={[
-        ["abastecimentos", "Abastecimentos"],
+        ["abastecimentos", "Abastecimentos", { calculadas: ABAST_CALCULADAS, colunas: ABAST_COLUNAS }],
         ["diesel_entradas", "Compras (entrada no tanque)"],
         ["consumo", "Consumo por máquina", ConsumoDiesel],
       ]} />
@@ -742,7 +754,7 @@ export function Fretes(props) {
     <Secao props={props} abas={[
       ["resumo", "Resumo", ResumoFretes],
       ["fretes", "Fretes"],
-      ["abast", "Abastecimentos", { colecao: "abastecimentos", filtro: soCaminhao, padrao: { origem: "posto" } }],
+      ["abast", "Abastecimentos", { colecao: "abastecimentos", filtro: soCaminhao, padrao: { origem: "posto" }, calculadas: ABAST_CALCULADAS, colunas: ABAST_COLUNAS }],
       ["custos", "Custos do caminhão", { colecao: "despesas", filtro: (d) => caminhoes.has(d.maquina_id) }],
     ]} />
   );
