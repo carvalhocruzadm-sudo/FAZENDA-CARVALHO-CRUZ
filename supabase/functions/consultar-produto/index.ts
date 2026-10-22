@@ -71,8 +71,9 @@ Se não tiver certeza de algum dado, diga que não encontrou em vez de inventar.
   });
 
   // Tenta com a pesquisa no Google e, se o limite dela acabou (429) ou o modelo
-  // está sobrecarregado (503), sem pesquisa e depois com outros modelos.
-  const modelos = [Deno.env.get("MODELO_CONSULTA") ?? "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash"];
+  // está sobrecarregado (503), sem pesquisa e depois com o outro modelo.
+  // Só nomes "-latest": o Google troca o modelo por trás e os nomes fixos antigos são desligados.
+  const modelos = [Deno.env.get("MODELO_CONSULTA") ?? "gemini-flash-latest", "gemini-flash-lite-latest"];
   const tentativas = modelos.flatMap((m, i) => (i === 0 ? [[m, true], [m, false]] : [[m, false]]) as [string, boolean][]);
   let resposta: Response | undefined;
   for (const [modelo, comPesquisa] of tentativas) {
@@ -84,7 +85,8 @@ Se não tiver certeza de algum dado, diga que não encontrou em vez de inventar.
       resposta = undefined;
       continue;
     }
-    if (![429, 500, 503].includes(resposta.status)) break;
+    // 404: modelo desligado pelo Google; também passa para o próximo.
+    if (![404, 429, 500, 503].includes(resposta.status)) break;
   }
 
   if (!resposta) return json({ erro: "A IA do Google não respondeu a tempo. Tente de novo daqui a alguns minutos." }, 503);
