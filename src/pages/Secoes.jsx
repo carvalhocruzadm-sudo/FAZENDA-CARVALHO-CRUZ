@@ -15,6 +15,8 @@ import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
 import { baixarCSV, brl, data, exibir, leitura, nomeRef, numero } from "../lib/formato";
 import { compradoresDoBling, textoDoArquivo } from "../lib/importarCompradores";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
+import { principioDe } from "../lib/principiosAtivos";
+import { supabase } from "../lib/supabase";
 import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
 import TurmasSemana from "./TurmasSemana";
 
@@ -579,6 +581,67 @@ function BalancoEstoque({ dados, salvar }) {
   );
 }
 
+/** Pergunta à IA (função consultar-produto) só o princípio ativo de um produto. */
+async function principioPelaIA(p) {
+  const { data, error } = await supabase.functions.invoke("consultar-produto", {
+    body: { modo: "principio", nome: p.nome, fabricante: p.fabricante, tipo: p.tipo },
+  });
+  if (error) throw new Error(error.message);
+  if (data?.erro) throw new Error(data.erro);
+  // Função antiga (sem o modo "principio") devolve o texto longo: não serve aqui.
+  if (!("principio_ativo" in (data ?? {}))) throw new Error("Atualize a função consultar-produto no Supabase.");
+  return data.principio_ativo;
+}
+
+/** Aba Produtos: o cadastro normal + botão que preenche os princípios ativos em branco. */
+function ProdutosQuimicos(props) {
+  const { dados, salvarVarios } = props;
+  const [aviso, setAviso] = useState(null);
+  const [andamento, setAndamento] = useState(null);
+  // Sementes e ração não têm princípio ativo.
+  const vazios = dados.insumos.filter((p) => !p.principio_ativo?.trim() && !["semente", "racao"].includes(p.tipo));
+
+  const preencher = async () => {
+    setAviso(null);
+    const pelaTabela = vazios.map((p) => ({ ...p, principio_ativo: principioDe(p.nome) })).filter((p) => p.principio_ativo);
+    if (pelaTabela.length) await salvarVarios("insumos", pelaTabela);
+    const faltam = vazios.filter((p) => !pelaTabela.some((x) => x.id === p.id));
+    let pelaIA = 0;
+    let falha = null;
+    if (faltam.length && supabase && navigator.onLine
+      && window.confirm(`${pelaTabela.length} preenchido(s) pela tabela. Faltam ${faltam.length}: pesquisar na internet com a IA? Demora uns segundos por produto.`)) {
+      for (const [i, p] of faltam.entries()) {
+        setAndamento(`Pesquisando ${i + 1} de ${faltam.length}: ${p.nome}…`);
+        try {
+          const principio = (await principioPelaIA(p))?.trim();
+          if (principio) { await salvarVarios("insumos", [{ ...p, principio_ativo: principio }]); pelaIA += 1; }
+        } catch (e) {
+          falha = String(e?.message ?? e);
+          break;
+        }
+      }
+      setAndamento(null);
+    }
+    const resto = faltam.length - pelaIA;
+    setAviso([falha ? "" : "ok", `${pelaTabela.length + pelaIA} produto(s) ganharam princípio ativo`
+      + (pelaIA ? ` (${pelaIA} pela pesquisa da IA — confira com o rótulo)` : "")
+      + (resto ? `. ${resto} ficaram em branco: preencha à mão pelo rótulo.` : ".")
+      + (falha ? ` A pesquisa parou: ${falha}` : "")]);
+  };
+
+  return (
+    <>
+      {aviso && <div className={`aviso ${aviso[0]}`}>{aviso[1]}</div>}
+      <Crud colecao="insumos" {...props} acoes={
+        <button className="btn" onClick={preencher} disabled={!vazios.length || Boolean(andamento)}
+          title={vazios.length ? `${vazios.length} produto(s) sem princípio ativo` : "Todos os produtos já têm princípio ativo"}>
+          <Icone nome="busca" /> {andamento ?? `Preencher princípios ativos${vazios.length ? ` (${vazios.length})` : ""}`}
+        </button>
+      } />
+    </>
+  );
+}
+
 export function Quimicos(props) {
   const novas = props.dados.recomendacoes.filter((r) => r.situacao === "nova").length;
   return (
@@ -591,7 +654,7 @@ export function Quimicos(props) {
       ["insumo_ajustes", "Histórico de balanços"],
       ["aplicacoes", "Aplicações / saídas"],
       ["insumo_entradas", "Entradas / compras"],
-      ["insumos", "Produtos"],
+      ["insumos", "Produtos", ProdutosQuimicos],
     ]} />
   );
 }
