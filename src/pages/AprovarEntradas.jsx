@@ -44,11 +44,15 @@ function rascunhos(ent, dados) {
   const jaTem = ent.insumo_id ? null : dados.insumos.find((i) => mesmoNome(i.nome, ent.produto_novo));
   const entrada = { ...ent, insumo_id: ent.insumo_id ?? jaTem?.id ?? null, a_conferir: false };
   const produto = { ...registroNovo("insumos"), nome: ent.produto_novo ?? "", unidade: ent.unidade_nova || "L" };
-  let boleto = {
-    ...registroNovo("boletos"), categoria: "Produtos químicos", linha_digitavel: ent.linha_digitavel,
-    observacao: "Compra já lançada no estoque (Entradas / compras): ao pagar, não precisa lançar de novo em Despesas.",
-  };
-  if (boleto.linha_digitavel) boleto = { ...boleto, ...ESQUEMA.boletos.aoMudar.linha_digitavel(boleto) };
+  // Boleto lido no depósito já está na Programação de pagamentos: aqui só se confere.
+  const jaLancado = ent.boleto_id && dados.boletos.find((b) => b.id === ent.boleto_id);
+  let boleto = jaLancado
+    ? { ...jaLancado, empresa: jaLancado.a_conferir && /^A conferir/.test(jaLancado.empresa ?? "") ? "" : jaLancado.empresa }
+    : {
+      ...registroNovo("boletos"), categoria: "Produtos químicos", linha_digitavel: ent.linha_digitavel,
+      observacao: "Compra já lançada no estoque (Entradas / compras): ao pagar, não precisa lançar de novo em Despesas.",
+    };
+  if (!jaLancado && boleto.linha_digitavel) boleto = { ...boleto, ...ESQUEMA.boletos.aoMudar.linha_digitavel(boleto) };
   // Sem preço ainda: o valor do boleto é o melhor palpite para o valor da compra.
   if (entrada.valor == null && boleto.valor) entrada.valor = boleto.valor;
   return { entrada, produto, boleto, novo: !entrada.insumo_id, comBoleto: Boolean(ent.linha_digitavel || ent.foto_boleto) };
@@ -78,7 +82,7 @@ function Aprovacao({ ent, dados, salvar, remover, aoFechar }) {
     if (e.erro) { setErro(`Entrada no estoque — ${e.erro}`); return; }
     const nomeProduto = novo ? p.reg.nome : nomeRef(dados, "insumos", e.reg.insumo_id);
     const b = comBoleto ? prepararRegistro("boletos", {
-      ...boleto, empresa: boleto.empresa || e.reg.fornecedor,
+      ...boleto, a_conferir: false, empresa: boleto.empresa || e.reg.fornecedor,
       descricao: boleto.descricao || `Compra de ${nomeProduto}${e.reg.nota ? ` — NF ${e.reg.nota}` : ""}`,
     }, dados) : null;
     if (b?.erro) { setErro(`Boleto — ${b.erro}`); return; }
@@ -93,8 +97,12 @@ function Aprovacao({ ent, dados, salvar, remover, aoFechar }) {
       }
       let boletoId = e.reg.boleto_id;
       if (b) {
-        const foto = await fotoParaCadastro(ent.foto_boleto);
+        const foto = b.reg.fotos?.length || b.reg.foto ? null : await fotoParaCadastro(ent.foto_boleto);
         boletoId = (await salvar("boletos", { ...b.reg, fotos: foto ? [foto] : b.reg.fotos })).id;
+      } else if (boletoId && dados.boletos.some((x) => x.id === boletoId && x.a_conferir)) {
+        // Desmarcou o boleto: o que o depósito lançou sai da programação.
+        await remover("boletos", boletoId);
+        boletoId = null;
       }
       await salvar("insumo_entradas", { ...e.reg, insumo_id: insumoId, boleto_id: boletoId });
       aoFechar();
@@ -105,8 +113,9 @@ function Aprovacao({ ent, dados, salvar, remover, aoFechar }) {
   };
 
   const recusar = async () => {
-    if (!window.confirm("Recusar esta entrada? O lançamento do depósito será apagado.")) return;
+    if (!window.confirm("Recusar esta entrada? O lançamento do depósito (e o boleto que ele lançou) será apagado.")) return;
     setSalvando(true);
+    if (dados.boletos.some((x) => x.id === ent.boleto_id && x.a_conferir)) await remover("boletos", ent.boleto_id);
     await remover("insumo_entradas", ent.id);
     aoFechar();
   };
@@ -153,6 +162,7 @@ function Aprovacao({ ent, dados, salvar, remover, aoFechar }) {
         somente={novo ? CAMPOS_ENTRADA.filter((c) => c !== "insumo_id") : CAMPOS_ENTRADA} />
 
       <h3 style={{ marginTop: 18 }}>Boleto</h3>
+      {ent.boleto_id && <p className="descricao">Lido no depósito: já está na Programação de pagamentos. Confira a empresa e o resto.</p>}
       <label className="campo check" style={{ marginBottom: 10 }}>
         <input type="checkbox" checked={comBoleto} onChange={(e) => setComBoleto(e.target.checked)} />
         <span>Lançar na Programação de pagamentos</span>

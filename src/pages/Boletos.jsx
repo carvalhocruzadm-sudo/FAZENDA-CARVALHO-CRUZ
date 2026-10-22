@@ -279,7 +279,7 @@ function Calendario({ dados, abrir, pagar }) {
           linhas={lista}
           colunas={[
             { rotulo: "Vencimento", valor: (b) => data(b.vencimento) },
-            { rotulo: "Empresa", valor: (b) => b.empresa },
+            { rotulo: "Empresa", valor: (b) => (b.a_conferir ? <>{b.empresa} <span className="selo atencao">Lido no depósito</span></> : b.empresa) },
             { rotulo: "Descrição", valor: (b) => b.descricao || "—" },
             { rotulo: "Forma", valor: (b) => b.forma_pagamento || "Boleto" },
             { rotulo: "Valor", num: true, valor: (b) => brl(b.valor) },

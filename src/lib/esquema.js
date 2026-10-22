@@ -777,6 +777,8 @@ export const ESQUEMA = {
 
   boletos: {
     titulo: "Programação de pagamentos", singular: "pagamento", icone: "calendario",
+    // O Modo Campo lança o boleto lido no depósito (e só vê esses), marcado "falta conferir".
+    campo: "grava", campoSql: "a_conferir = true",
     descricao: "Contas a pagar — boleto, PIX, transferência, cartão, cheque… — com a empresa, o valor e o vencimento. No boleto, o código (linha digitável) já preenche valor, vencimento e banco. Ao pagar, dá para lançar em Despesas na hora.",
     campos: {
       empresa: { tipo: "sugestao", rotulo: "Empresa (quem recebe)", obrigatorio: true, sugestoesDe: [["boletos", "empresa"], ["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"], ["despesas", "favorecido"]] },
@@ -791,7 +793,9 @@ export const ESQUEMA = {
       pago: { tipo: "booleano", rotulo: "Pago", padrao: false },
       data_pagamento: { tipo: "data", rotulo: "Pago em", mostrarSe: (r) => r.pago },
       fotos: { tipo: "fotos", rotulo: "Foto do boleto / nota" },
+      foto: { tipo: "foto", rotulo: "Foto do boleto (tirada no depósito)", lado: 1800 },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      a_conferir: { tipo: "booleano", rotulo: "Lido no depósito — falta conferir a empresa" },
       despesa_id: { tipo: "texto", rotulo: "Despesa lançada", oculto: true },
     },
     aoMudar: {
