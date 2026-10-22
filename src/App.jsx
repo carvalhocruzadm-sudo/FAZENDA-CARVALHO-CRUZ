@@ -6,6 +6,7 @@ import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { desligarModoCampo, ligarModoCampo, modoCampoLigado } from "./lib/aparelho";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
+import Boletos from "./pages/Boletos";
 import Campo from "./pages/Campo";
 import Login from "./pages/Login";
 import Painel from "./pages/Painel";
@@ -17,6 +18,7 @@ const MENU = [
   ["lavoura", "Lavoura e talhões", "cultura", Lavoura],
   ["vendas", "Vendas", "venda", Vendas],
   ["financeiro", "Financeiro", "dinheiro", Financeiro],
+  ["boletos", "Programação de boletos", "calendario", Boletos],
   ["maquinas", "Máquinas e horímetro", "trator", Maquinas],
   ["diesel", "Diesel", "combustivel", Diesel],
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],

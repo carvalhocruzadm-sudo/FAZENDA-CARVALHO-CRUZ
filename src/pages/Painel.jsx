@@ -56,6 +56,10 @@ export default function Painel({ dados, irPara }) {
       if (d.vencimento < hojeIso) alertas.push({ tipo: "ruim", texto: `Conta vencida ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
       else if (d.vencimento <= em7) alertas.push({ tipo: "atencao", texto: `Vence ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
     }
+    for (const b of dados.boletos.filter((x) => !x.pago && x.vencimento)) {
+      if (b.vencimento < hojeIso) alertas.push({ tipo: "ruim", texto: `Boleto vencido ${data(b.vencimento)}: ${b.empresa} — ${brl(b.valor)}`, ir: "boletos" });
+      else if (b.vencimento <= em7) alertas.push({ tipo: "atencao", texto: `Boleto vence ${data(b.vencimento)}: ${b.empresa} — ${brl(b.valor)}`, ir: "boletos" });
+    }
 
     const porCultura = {};
     for (const v of vendas) {

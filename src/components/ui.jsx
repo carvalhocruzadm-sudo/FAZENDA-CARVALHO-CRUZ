@@ -33,6 +33,12 @@ const P = {
   nuvem: "M7 18a5 5 0 01-.5-10A6 6 0 0118 9a4.5 4.5 0 01-.5 9z",
   exportar: "M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4",
   importar: "M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4",
+  calendario: "M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2zM4 10h16M8 2v4M16 2v4",
+  camera: "M4 8a2 2 0 012-2h1.5l1.5-2h6l1.5 2H18a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2zM12 17a4 4 0 100-8 4 4 0 000 8z",
+  barras: "M4 5v14M7 5v14M10 5v14M14 5v14M16 5v14M20 5v14",
+  check: "M5 12l5 5L20 7",
+  esquerda: "M15 18l-6-6 6-6",
+  direita: "M9 18l6-6-6-6",
 };
 
 export function Icone({ nome, tamanho = 18, className }) {

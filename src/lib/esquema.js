@@ -18,7 +18,12 @@
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
  * outro enquanto se digita (escolher o talhão já traz a cultura dele).
+ *
+ * `oculto: true` guarda a coluna sem mostrar no formulário (ligações feitas
+ * pelo próprio sistema, como a despesa lançada a partir de um boleto).
  */
+
+import { lerCodigoBoleto } from "./boleto.js";
 
 export const hoje = () => new Date().toISOString().slice(0, 10);
 
@@ -367,6 +372,40 @@ export const ESQUEMA = {
       centro: (r) => (r.centro === "geral" ? { cultura_id: null, talhao_id: null } : r.centro === "cultura" ? { talhao_id: null } : {}),
     },
     colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago"],
+  },
+
+  boletos: {
+    titulo: "Programação de boletos", singular: "boleto", icone: "calendario",
+    descricao: "Boletos a pagar, com a empresa, o valor e o vencimento. O código do boleto (linha digitável) já preenche valor, vencimento e banco. Ao pagar, dá para lançar em Despesas na hora.",
+    campos: {
+      empresa: { tipo: "sugestao", rotulo: "Empresa (quem recebe)", obrigatorio: true, sugestoesDe: [["boletos", "empresa"], ["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"], ["despesas", "favorecido"]] },
+      descricao: { tipo: "texto", rotulo: "Descrição", dica: "Ex.: Adubo safra 26/27 — parcela 2/3" },
+      valor: { tipo: "dinheiro", rotulo: "Valor", obrigatorio: true },
+      vencimento: { tipo: "data", rotulo: "Vencimento", obrigatorio: true },
+      categoria: { tipo: "sugestao", rotulo: "Categoria", sugestoes: CATEGORIAS_DESPESA, dica: "A mesma das despesas; vai junto quando lançar o pagamento" },
+      linha_digitavel: { tipo: "texto", rotulo: "Código do boleto (linha digitável)", dica: "Cole ou digite os números: o valor, o vencimento e o banco se preenchem sozinhos" },
+      banco: { tipo: "texto", rotulo: "Banco", somenteLeitura: true },
+      pago: { tipo: "booleano", rotulo: "Pago", padrao: false },
+      data_pagamento: { tipo: "data", rotulo: "Pago em", mostrarSe: (r) => r.pago },
+      fotos: { tipo: "fotos", rotulo: "Foto do boleto" },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      despesa_id: { tipo: "texto", rotulo: "Despesa lançada", oculto: true },
+    },
+    aoMudar: {
+      linha_digitavel: (reg) => {
+        const lido = lerCodigoBoleto(reg.linha_digitavel);
+        if (lido.erro) return {};
+        return {
+          banco: lido.banco,
+          ...(lido.valor ? { valor: lido.valor } : {}),
+          ...(lido.vencimento ? { vencimento: lido.vencimento } : {}),
+        };
+      },
+      pago: (reg) => ({ data_pagamento: reg.pago ? reg.data_pagamento || hoje() : null }),
+    },
+    validar: (r) => (r.linha_digitavel && lerCodigoBoleto(r.linha_digitavel).erro) || null,
+    colunas: ["vencimento", "empresa", "descricao", "categoria", "valor", "pago", "data_pagamento"],
+    ordem: (a, b) => String(a.vencimento ?? "").localeCompare(String(b.vencimento ?? "")),
   },
 
   entradas: {

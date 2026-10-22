@@ -172,7 +172,7 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
 
   return (
     <div className="form">
-      {campos.filter(([, c]) => campoVisivel(c, reg)).map(([chave, campo]) => (
+      {campos.filter(([, c]) => !c.oculto && campoVisivel(c, reg)).map(([chave, campo]) => (
         <Campo key={chave} chave={chave} campo={campo} reg={reg} dados={dados} aoMudar={aoMudar} />
       ))}
       {colecao === "insumos" && <div className="largo"><ConsultaProduto reg={reg} setReg={setReg} /></div>}
