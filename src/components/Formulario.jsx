@@ -288,7 +288,7 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
   // Campos que dependem da cultura só aparecem depois de escolhê-la.
   const temCultura = Boolean(def.campos.cultura_id && campoVisivel(def.campos.cultura_id, reg, dados));
   const faltaCultura = temCultura && !reg.cultura_id && campos.some(([, c]) => c.paraCultura);
-  const visiveis = campos.filter(([, c]) => campoVisivel(c, reg, dados) && !(faltaCultura && c.paraCultura));
+  const visiveis = campos.filter(([, c]) => !c.oculto && campoVisivel(c, reg, dados) && !(faltaCultura && c.paraCultura));
   // A escolha entra no lugar do primeiro dos dois (cultura ou talhão); o outro some.
   const lugar = comEscolha && visiveis.find(([c]) => c === "cultura_id" || c === "talhao_id")?.[0];
 

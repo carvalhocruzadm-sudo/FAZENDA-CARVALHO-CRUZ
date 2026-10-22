@@ -647,6 +647,34 @@ drop policy if exists "campo le despesas" on public.despesas;
 drop policy if exists "campo lanca despesas" on public.despesas;
 drop policy if exists "campo corrige despesas" on public.despesas;
 
+-- Programação de pagamentos
+create table if not exists public.boletos (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.boletos add column if not exists empresa text;
+alter table public.boletos add column if not exists descricao text;
+alter table public.boletos add column if not exists valor numeric;
+alter table public.boletos add column if not exists vencimento date;
+alter table public.boletos add column if not exists forma_pagamento text;
+alter table public.boletos add column if not exists categoria text;
+alter table public.boletos add column if not exists linha_digitavel text;
+alter table public.boletos add column if not exists banco text;
+alter table public.boletos add column if not exists chave_pix text;
+alter table public.boletos add column if not exists pago boolean;
+alter table public.boletos add column if not exists data_pagamento date;
+alter table public.boletos add column if not exists fotos jsonb;
+alter table public.boletos add column if not exists observacao text;
+alter table public.boletos add column if not exists despesa_id text;
+alter table public.boletos enable row level security;
+drop policy if exists "equipe acessa boletos" on public.boletos;
+create policy "equipe acessa boletos" on public.boletos
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le boletos" on public.boletos;
+drop policy if exists "campo lanca boletos" on public.boletos;
+drop policy if exists "campo corrige boletos" on public.boletos;
+
 -- Outras entradas
 create table if not exists public.entradas (
   id uuid primary key default gen_random_uuid(),

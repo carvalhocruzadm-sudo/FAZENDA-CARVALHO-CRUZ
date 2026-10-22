@@ -10,6 +10,7 @@ import { daCaixa, lerCompartilhado, listarCaixa } from "./lib/arquivos";
 import { textoDoAviso } from "./lib/avisos";
 import { iniciarNtfy } from "./lib/ntfy";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
+import Boletos from "./pages/Boletos";
 import Agronomo from "./pages/Agronomo";
 import Avisos from "./pages/Avisos";
 import ModoCampo from "./pages/Campo";
@@ -28,6 +29,7 @@ const MENU = [
   ["vendas", "Vendas", "venda", Vendas],
   ["turmas", "Turmas de colheita", "pessoas", Turmas],
   ["financeiro", "Financeiro", "dinheiro", Financeiro],
+  ["boletos", "Programação de pagamentos", "calendario", Boletos],
   ["maquinas", "Máquinas e horímetro", "trator", Maquinas],
   ["diesel", "Diesel", "combustivel", Diesel],
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],

@@ -270,6 +270,10 @@ function Resumo({ dados, r, irPara }) {
       if (d.vencimento < hojeIso) lista.push({ tipo: "ruim", texto: `Conta vencida ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
       else if (d.vencimento <= em7) lista.push({ tipo: "atencao", texto: `Vence ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
     }
+    for (const b of dados.boletos.filter((x) => !x.pago && x.vencimento)) {
+      if (b.vencimento < hojeIso) lista.push({ tipo: "ruim", texto: `Pagamento vencido ${data(b.vencimento)}: ${b.empresa} — ${brl(b.valor)} (${b.forma_pagamento || "Boleto"})`, ir: "boletos" });
+      else if (b.vencimento <= em7) lista.push({ tipo: "atencao", texto: `Pagamento vence ${data(b.vencimento)}: ${b.empresa} — ${brl(b.valor)} (${b.forma_pagamento || "Boleto"})`, ir: "boletos" });
+    }
     return lista;
   }, [dados]);
 

@@ -25,7 +25,7 @@ import TurmasSemana from "./TurmasSemana";
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
  * cadastro) ou um relatório próprio.
  */
-function Secao({ abas, props }) {
+export function Secao({ abas, props }) {
   const [atual, setAtual] = useState(abas[0][0]);
   const aba = abas.find(([id]) => id === atual) ?? abas[0];
   const [id, , conteudo] = aba;
