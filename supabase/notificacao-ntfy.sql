@@ -6,17 +6,15 @@
 -- quem manda é o próprio banco, assim que a despesa chega na nuvem.
 --
 -- Como usar:
---   1. Troque COLOQUE-O-TOPICO-AQUI (logo abaixo) pelo nome do seu tópico.
---      Invente um nome difícil de adivinhar: quem souber o nome recebe os avisos.
---   2. SQL Editor do Supabase → cole tudo → Run. Pode rodar de novo quando
---      quiser trocar o tópico.
---   3. No celular: instale o app "ntfy", toque em + e assine o mesmo tópico.
+--   1. SQL Editor do Supabase → cole tudo → Run. Pode rodar de novo quando
+--      quiser trocar o tópico (o nome logo abaixo; maiúsculas contam).
+--   2. No celular: app "ntfy" assinando o tópico FAZENDA-CC (ntfy.sh/FAZENDA-CC).
 --
 -- Para desligar:  drop trigger if exists despesas_ntfy on public.despesas;
 -- ════════════════════════════════════════════════════════════════════════
 
 create or replace function public.ntfy_topico() returns text
-language sql immutable as $$ select 'COLOQUE-O-TOPICO-AQUI' $$;
+language sql immutable as $$ select 'FAZENDA-CC' $$;
 
 -- pg_net: o que deixa o banco chamar um endereço da internet.
 create extension if not exists pg_net with schema extensions;
