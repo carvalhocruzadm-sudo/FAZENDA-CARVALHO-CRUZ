@@ -482,10 +482,16 @@ create table if not exists public.insumo_entradas (
 );
 alter table public.insumo_entradas add column if not exists data date;
 alter table public.insumo_entradas add column if not exists insumo_id uuid;
+alter table public.insumo_entradas add column if not exists produto_novo text;
+alter table public.insumo_entradas add column if not exists unidade_nova text;
 alter table public.insumo_entradas add column if not exists quantidade numeric;
 alter table public.insumo_entradas add column if not exists valor numeric;
 alter table public.insumo_entradas add column if not exists a_conferir boolean;
 alter table public.insumo_entradas add column if not exists foto text;
+alter table public.insumo_entradas add column if not exists foto_nota text;
+alter table public.insumo_entradas add column if not exists foto_boleto text;
+alter table public.insumo_entradas add column if not exists linha_digitavel text;
+alter table public.insumo_entradas add column if not exists boleto_id text;
 alter table public.insumo_entradas add column if not exists responsavel_id uuid;
 alter table public.insumo_entradas add column if not exists cultura_id uuid;
 alter table public.insumo_entradas add column if not exists fornecedor text;
