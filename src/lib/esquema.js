@@ -15,6 +15,9 @@
  *              uma lista delas, cada uma com um filtro opcional na 3ª posição
  *   ref      → aponta para outra coleção (`colecao`, `filtro` opcional)
  *
+ * `quemLancou: true` grava em `lancado_por` quem estava logado ao criar o
+ * registro (o e-mail do login); editar depois não muda.
+ *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
  * outro enquanto se digita (escolher o talhão já traz a cultura dele).
@@ -341,7 +344,7 @@ export const ESQUEMA = {
   },
 
   despesas: {
-    titulo: "Despesas", singular: "despesa", icone: "dinheiro", lancamento: true,
+    titulo: "Despesas", singular: "despesa", icone: "dinheiro", lancamento: true, quemLancou: true,
     descricao: "Como na planilha FINANCEIRO: categoria, tipo, forma de pagamento e favorecido. Toda despesa vai para um centro de custo: geral, uma cultura ou um talhão. Compra de diesel para o tanque e de químicos para o estoque se lança nas telas deles, não aqui.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
@@ -361,12 +364,13 @@ export const ESQUEMA = {
       vencimento: { tipo: "data", rotulo: "Vencimento" },
       pago: { tipo: "booleano", rotulo: "Pago", padrao: true },
       nota: { tipo: "texto", rotulo: "Nota / documento" },
+      lancado_por: { tipo: "texto", rotulo: "Lançado por", somenteLeitura: true, mostrarSe: (r) => Boolean(r.lancado_por) },
     },
     aoMudar: {
       ...culturaDoTalhao,
       centro: (r) => (r.centro === "geral" ? { cultura_id: null, talhao_id: null } : r.centro === "cultura" ? { talhao_id: null } : {}),
     },
-    colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago"],
+    colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago", "lancado_por"],
   },
 
   entradas: {

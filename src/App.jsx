@@ -1,6 +1,7 @@
 import { Component, useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
+import AlertaDespesas from "./components/AlertaDespesas";
 import { Icone } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
@@ -50,7 +51,7 @@ function AvisoAtualizacao() {
 }
 
 function Sistema({ sair, email, virarCampo }) {
-  const { dados, pronto, erro, salvar, salvarVarios, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
+  const { dados, pronto, erro, salvar, salvarVarios, remover, sincronizarAgora, recarregarDaNuvem } = useDados(email);
   const [tela, setTela] = useState(() => {
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
   });
@@ -97,6 +98,7 @@ function Sistema({ sair, email, virarCampo }) {
         </header>
         <div className="conteudo">
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
+          {pronto && <AlertaDespesas despesas={dados.despesas} usuario={email} irPara={irPara} />}
           {!pronto ? <div className="vazio">Carregando…</div> : (
             <Pagina key={tela} dados={dados} salvar={salvar} salvarVarios={salvarVarios} remover={remover} irPara={irPara}
               sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} />
