@@ -17,7 +17,7 @@ import ModoCampo from "./pages/Campo";
 import Login, { NovaSenha } from "./pages/Login";
 import Painel from "./pages/Painel";
 import Funcionarios from "./pages/Funcionarios";
-import { CadastrosCampo, Diesel, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Turmas, Usuarios, Vendas } from "./pages/Secoes";
+import { CadastrosCampo, Diesel, Financeiro, Fretes, Lavoura, Maquinas, Pluviometro, Quimicos, Turmas, Usuarios, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 import Ticket, { LINK_TICKET } from "./pages/Ticket";
 
@@ -34,6 +34,7 @@ const MENU = [
   ["diesel", "Diesel", "combustivel", Diesel],
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],
   ["fretes", "Caminhões e fretes", "caminhao", Fretes],
+  ["pluviometro", "Pluviômetro", "chuva", Pluviometro],
   ["equipe", "Funcionários", "pessoas", Funcionarios],
   ["campo", "Modo Campo", "trator", CadastrosCampo],
   ["usuarios", "Usuários", "pessoas", Usuarios],

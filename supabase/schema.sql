@@ -11,8 +11,8 @@
 -- lança abastecimento, horímetro, as saídas/entradas do depósito de químicos e
 -- o ticket da balança (só quem está marcado em Usuários → "Lança ticket da
 -- balança"; e só vê os tickets que ainda faltam completar, sem preço).
--- Perfil "Lançador de ticket": login só do ticket da balança (não lança
--- abastecimento nem depósito).
+-- Perfil "Lançador de ticket": login só do ticket da balança e da chuva do
+-- pluviômetro (não lança abastecimento nem depósito).
 -- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
 -- aqui (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
@@ -925,6 +925,33 @@ create policy "equipe acessa planejamento" on public.planejamento
 drop policy if exists "campo le planejamento" on public.planejamento;
 drop policy if exists "campo lanca planejamento" on public.planejamento;
 drop policy if exists "campo corrige planejamento" on public.planejamento;
+
+-- Pluviômetro
+create table if not exists public.chuvas (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.chuvas add column if not exists data date;
+alter table public.chuvas add column if not exists milimetros numeric;
+alter table public.chuvas add column if not exists pluviometro text;
+alter table public.chuvas add column if not exists responsavel_id uuid;
+alter table public.chuvas add column if not exists foto text;
+alter table public.chuvas add column if not exists observacao text;
+create index if not exists chuvas_data_idx on public.chuvas (data);
+alter table public.chuvas enable row level security;
+drop policy if exists "equipe acessa chuvas" on public.chuvas;
+create policy "equipe acessa chuvas" on public.chuvas
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le chuvas" on public.chuvas;
+drop policy if exists "campo lanca chuvas" on public.chuvas;
+drop policy if exists "campo corrige chuvas" on public.chuvas;
+create policy "campo le chuvas" on public.chuvas
+  for select to authenticated using ((select public.eh_campo()));
+create policy "campo lanca chuvas" on public.chuvas
+  for insert to authenticated with check ((select public.eh_campo()));
+create policy "campo corrige chuvas" on public.chuvas
+  for update to authenticated using ((select public.eh_campo())) with check ((select public.eh_campo()));
 
 -- Avisos do campo
 create table if not exists public.avisos (

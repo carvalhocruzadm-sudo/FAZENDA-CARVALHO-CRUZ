@@ -23,6 +23,7 @@ banco próprio.
 | **Diesel** | O **tanque da fazenda**: compras (entrada) e abastecimentos (saída), com saldo em litros e preço médio. Abastecimentos em **posto** também. |
 | **Químicos e insumos** | Produtos, entradas (compras) e aplicações por talhão. **Estoque** = entradas − aplicações, com custo médio, estoque mínimo e valor em estoque. |
 | **Caminhões e fretes** | Fretes próprios (contratante, produto, origem, destino, peso, R$/ton, km), abastecimentos e custos do caminhão; resultado e **R$/km**, como na planilha FRETES. |
+| **Pluviômetro** | A chuva da fazenda: cada leitura com os milímetros, quem leu e a **foto do pluviômetro** (obrigatória). Mostra a chuva de hoje, dos últimos 7 dias, do mês, do ano e **mês a mês**. No celular (Modo Campo), tratoristas e o **Lançador de ticket** têm o botão **Lançar chuva**. |
 | **Funcionários** | Gerentes, tratoristas, trabalhadores de campo, motoristas, secretária… |
 | **Sincronização** | O que ainda falta enviar para a nuvem, erros e "recarregar tudo da nuvem". |
 

@@ -6,6 +6,7 @@ import {
 import { useDados } from "../hooks/useDados";
 import { useSync } from "../hooks/useSync";
 import { Entrada, Saida } from "./CampoDeposito";
+import CampoChuva from "./CampoChuva";
 import CampoTicket from "./CampoTicket";
 import {
   falar, lancamentosDoPA, maquinasDoPA, operadores, paraNumero, servicoPorNome, servicos, vibrar,
@@ -24,6 +25,7 @@ import { leitura, numero } from "../lib/formato";
  *   /campo/abastecer/<máquina>  → abastecimento no PA
  *   /campo/saida, /campo/entrada → depósito de químicos (CampoDeposito.jsx)
  *   /campo/ticket               → ticket da balança (venda) (CampoTicket.jsx)
+ *   /campo/chuva                → chuva do pluviômetro (CampoChuva.jsx)
  *
  * Uma pergunta por tela, figura grande, poucas palavras e o botão 🔊 que lê
  * a pergunta em voz alta.
@@ -374,21 +376,23 @@ function EscolherTrator({ dados, irPara }) {
   );
 }
 
-const FALA_INICIO = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, guardar produto no depósito, ou lançar o ticket da balança.";
+const FALA_INICIO = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, guardar produto no depósito, lançar o ticket da balança, ou lançar a chuva.";
 
-const FALA_INICIO_SEM_TICKET = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, ou guardar produto no depósito.";
+const FALA_INICIO_SEM_TICKET = "O que você vai fazer? Abastecer o trator, tirar produto do depósito, guardar produto no depósito, ou lançar a chuva.";
 
-const FALA_INICIO_SO_TICKET = "Toque no ticket da balança para lançar uma venda.";
+const FALA_INICIO_SO_TICKET = "Toque no ticket da balança para lançar uma venda, ou no pluviômetro para lançar a chuva.";
 
 function Inicio({ irPara, sair, voltarAoSistema, podeTicket, soTicket }) {
   const fala = soTicket ? FALA_INICIO_SO_TICKET : podeTicket ? FALA_INICIO : FALA_INICIO_SEM_TICKET;
   useEffect(() => { falar(fala); }, [fala]);
   const ticket = ["/campo/ticket", "🧾", "Ticket da balança (venda)"];
-  const opcoes = soTicket ? [ticket] : [
+  const chuva = ["/campo/chuva", "🌧️", "Lançar chuva (pluviômetro)"];
+  const opcoes = soTicket ? [ticket, chuva] : [
     ["/campo/abastecer", "⛽", "Abastecer trator"],
     ["/campo/saida", "📤", "Tirar do depósito (pulverização)"],
     ["/campo/entrada", "📥", "Guardar no depósito"],
     ...(podeTicket ? [ticket] : []),
+    chuva,
   ];
   return (
     <div className="campo-app">
@@ -415,9 +419,9 @@ function Inicio({ irPara, sair, voltarAoSistema, podeTicket, soTicket }) {
  * O que este login faz no Modo Campo (o banco responde pela função
  * acesso_campo, que lê o cadastro de Usuários, e também barra o resto):
  *   - sistema completo ou modo demonstração: tudo;
- *   - Lançador de ticket: só o ticket da balança;
+ *   - Lançador de ticket: só o ticket da balança e a chuva;
  *   - tratorista: abastecer e depósito, e o ticket se estiver marcado em
- *     Usuários → "Lança ticket da balança no celular".
+ *     Usuários → "Lança ticket da balança no celular". A chuva, todos.
  * A resposta fica guardada no aparelho para funcionar sem internet.
  */
 function useAcessoCampo(email, contaCampo) {
@@ -473,6 +477,7 @@ export default function ModoCampo({ caminho, irPara, sair, voltarAoSistema, emai
 }
 
 function telaDoCampo({ acao, id, caminho, props, inicio, soTicket, podeTicket, editarServicos }) {
+  if (acao === "chuva") return <CampoChuva key={caminho} {...props} />;
   if (soTicket) return acao === "ticket" ? <CampoTicket key={caminho} {...props} /> : inicio;
   switch (acao) {
     case "abastecer":
