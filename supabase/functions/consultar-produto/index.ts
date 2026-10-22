@@ -52,18 +52,25 @@ Pesquise na internet (de preferência bula, ficha técnica do fabricante, AGROFI
 Se não tiver certeza de algum dado, diga que não encontrou em vez de inventar. Termine com os links das fontes. Lembre que vale o rótulo/bula e a receita do engenheiro agrônomo.`;
 
   const modelo = Deno.env.get("MODELO_CONSULTA") ?? "gemini-flash-latest";
-  const resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+  const perguntar = (comPesquisa: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": chave, "content-type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: pedido }] }],
-      tools: [{ google_search: {} }],
+      ...(comPesquisa ? { tools: [{ google_search: {} }] } : {}),
       generationConfig: { temperature: 0 },
     }),
   });
 
+  // A pesquisa no Google tem limite próprio (bem menor no plano gratuito):
+  // se ele acabar, pergunta de novo sem pesquisar, só com o que a IA já sabe.
+  let resposta = await perguntar(true);
+  if (resposta.status === 429) resposta = await perguntar(false);
+
   const dados = await resposta.json().catch(() => ({}));
-  if (resposta.status === 429) return json({ erro: "O limite gratuito da IA do Google acabou por hoje. Tente de novo mais tarde." }, 429);
+  if (resposta.status === 429) {
+    return json({ erro: `O limite gratuito da IA do Google acabou. Tente de novo mais tarde. (Google: ${dados?.error?.message ?? "sem detalhe"})` }, 429);
+  }
   if (!resposta.ok) return json({ erro: dados?.error?.message ?? "A consulta falhou." }, 502);
 
   const texto = (dados.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("").trim();
