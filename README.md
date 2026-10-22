@@ -188,18 +188,16 @@ A aplicação enviada aparece em **Químicos e insumos → Aplicações do agrô
 Para funcionar, rode de novo o `supabase/schema.sql` no SQL Editor (ele cria as funções do link).
 Para o agrônomo ver a **validade**, lance a data de validade nas **Entradas / compras**.
 
-## 🤖 Consulta de produto (uso, dose e substitutos)
+## 🤖 Consulta de produto (princípio ativo, uso, dose e substitutos)
 
 No cadastro de um produto, o botão **Consultar uso, dose e substitutos** pesquisa pelo nome comercial e
-fabricante. Para funcionar, uma vez só (precisa do [Supabase CLI](https://supabase.com/docs/guides/cli)):
+fabricante; na aba Produtos, **Preencher princípios ativos** pesquisa os que a tabela do app não conhece.
+Usa a IA do Google (Gemini) com pesquisa na internet, com a mesma chave `GEMINI_API_KEY` do ticket.
+Para funcionar, uma vez só: no Supabase, **Edge Functions → Deploy a new function → Via Editor**, nome
+`consultar-produto`, cole o arquivo `supabase/functions/consultar-produto/index.ts` e clique em **Deploy**
+(ou `supabase functions deploy consultar-produto`).
 
-```bash
-supabase functions deploy consultar-produto
-supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic.com
-```
-
-A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
-tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
+O resultado é apoio: vale o rótulo/bula e o agrônomo.
 
 ## 📷 Leitura da foto do ticket da balança
 

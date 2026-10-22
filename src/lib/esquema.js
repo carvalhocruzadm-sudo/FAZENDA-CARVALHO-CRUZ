@@ -38,6 +38,8 @@
  * outro enquanto se digita (escolher o talhão já traz a cultura dele).
  */
 
+import { principioDe } from "./principiosAtivos.js";
+
 export const hoje = () => new Date().toISOString().slice(0, 10);
 
 /** A segunda-feira da semana de uma data ("2026-10-09" → "2026-10-05"). */
@@ -478,6 +480,8 @@ export const ESQUEMA = {
     },
     // Ao mexer no tamanho ou nas embalagens o total é refeito; depois dá para corrigir o total à mão.
     aoMudar: {
+      // Princípio ativo em branco? Preenche pela tabela de nomes comerciais.
+      nome: (r) => (r.principio_ativo?.trim() ? {} : { principio_ativo: principioDe(r.nome) }),
       tamanho_embalagem: (r) => (r.qtd_embalagens == null || r.qtd_embalagens === "" ? {} : { estoque_inicial: totalEmbalagens(r) }),
       qtd_embalagens: (r) => ({ estoque_inicial: r.qtd_embalagens === "" || r.qtd_embalagens == null ? null : totalEmbalagens(r) }),
     },
