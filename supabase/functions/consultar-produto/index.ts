@@ -19,7 +19,15 @@ const json = (corpo: unknown, status = 200) =>
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  // Qualquer erro inesperado volta como { erro } com o motivo, para aparecer no app.
+  try {
+    return await atender(req);
+  } catch (e) {
+    return json({ erro: `Falha na função consultar-produto: ${e instanceof Error ? e.message : String(e)}` }, 500);
+  }
+});
 
+async function atender(req: Request) {
   const chave = Deno.env.get("GEMINI_API_KEY");
   if (!chave) return json({ erro: "A chave da IA do Google ainda não foi configurada no Supabase (GEMINI_API_KEY)." }, 500);
 
@@ -54,6 +62,7 @@ Se não tiver certeza de algum dado, diga que não encontrou em vez de inventar.
   const perguntar = (modelo: string, comPesquisa: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": chave, "content-type": "application/json" },
+    signal: AbortSignal.timeout(25000),
     body: JSON.stringify({
       contents: [{ parts: [{ text: pedido }] }],
       ...(comPesquisa ? { tools: [{ google_search: {} }] } : {}),
@@ -68,11 +77,17 @@ Se não tiver certeza de algum dado, diga que não encontrou em vez de inventar.
   let resposta: Response | undefined;
   for (const [modelo, comPesquisa] of tentativas) {
     await resposta?.body?.cancel();
-    resposta = await perguntar(modelo, comPesquisa);
+    try {
+      resposta = await perguntar(modelo, comPesquisa);
+    } catch {
+      // Demorou demais ou caiu a conexão: passa para a próxima tentativa.
+      resposta = undefined;
+      continue;
+    }
     if (![429, 500, 503].includes(resposta.status)) break;
   }
 
-  if (!resposta) return json({ erro: "A consulta falhou." }, 502);
+  if (!resposta) return json({ erro: "A IA do Google não respondeu a tempo. Tente de novo daqui a alguns minutos." }, 503);
   const dados = await resposta.json().catch(() => ({}));
   if (resposta.status === 503 || resposta.status === 500) {
     return json({ erro: "A IA do Google está sobrecarregada agora. Tente de novo daqui a alguns minutos." }, 503);
@@ -90,4 +105,4 @@ Se não tiver certeza de algum dado, diga que não encontrou em vez de inventar.
     return json({ principio_ativo: achou ? linha : null });
   }
   return json({ texto: texto || "Não encontrei informações sobre esse produto." });
-});
+}
