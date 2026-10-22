@@ -35,13 +35,163 @@ function paraPdf(g, dados) {
   };
 }
 
-function Detalhe({ grupo, dados, salvar, aoFechar }) {
+const novoGrupo = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+/**
+ * Editar a aplicação toda (vale para todos os talhões dela): nome, data, alvo,
+ * calda, dose por ha ou por pipa, produtos e a área de cada talhão.
+ */
+function Editar({ grupo, dados, salvar, aoFechar }) {
+  const talhoes = talhoesDe(grupo, dados);
+  const pipaAntes = porPipa(grupo);
+  const [f, setF] = useState({
+    nome: grupo.nome ?? "", data: grupo.data ?? "", alvo: grupo.alvo ?? "", observacao: grupo.observacao ?? "",
+    calda_l_ha: grupo.calda_l_ha ?? "", dose_por: pipaAntes ? "pipa" : "ha", ha_por_pipa: grupo.ha_por_pipa ?? "",
+  });
+  // A dose fica como foi passada: por pipa nas aplicações por pipa, por ha nas outras.
+  const [itens, setItens] = useState(() => grupo.itens.map((i) => ({ ...i, dose: (pipaAntes ? i.dose_pipa : i.dose_ha) ?? "" })));
+  const [areas, setAreas] = useState(() => Object.fromEntries(talhoes.map((t) => [t.rec.id, t.area_ha])));
+  const [novoProduto, setNovoProduto] = useState("");
+  const [erro, setErro] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+
+  const pipa = f.dose_por === "pipa";
+  const haPorPipa = Number(f.ha_por_pipa) || 0;
+  const doseHa = (i) => { const d = Number(i.dose) || 0; return pipa ? (haPorPipa > 0 ? d / haPorPipa : 0) : d; };
+  const areaTotal = talhoes.reduce((s, t) => s + (Number(areas[t.rec.id]) || 0), 0);
+
+  const produtos = dados.insumos.filter((p) => p.ativo !== false && !itens.some((i) => i.insumo_id === p.id))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  const adicionar = (id) => {
+    const p = dados.insumos.find((x) => x.id === id);
+    if (p) setItens((l) => [...l, { insumo_id: p.id, nome: p.nome, fabricante: p.fabricante, principio_ativo: p.principio_ativo, unidade: p.unidade, dose: "" }]);
+    setNovoProduto("");
+  };
+  const mudarDose = (k, v) => setItens((l) => l.map((i, j) => (j === k ? { ...i, dose: v } : i)));
+
+  const gravar = async () => {
+    if (!f.data) { setErro("Informe a data."); return; }
+    if (pipa && !(haPorPipa > 0)) { setErro("Informe quantos ha uma pipa faz."); return; }
+    if (!itens.length) { setErro("Coloque pelo menos um produto."); return; }
+    if (itens.some((i) => !(Number(i.dose) > 0))) { setErro(`Informe a dose por ${pipa ? "pipa" : "hectare"} de todos os produtos.`); return; }
+    const semArea = talhoes.find((t) => !(Number(areas[t.rec.id]) > 0));
+    if (semArea) { setErro(`Informe a área do talhão ${semArea.talhao} (ha).`); return; }
+    setSalvando(true);
+    // As antigas ganham um grupo agora: depois de editar continuam juntas.
+    const grupoId = grupo.grupo_id || novoGrupo();
+    try {
+      for (const t of talhoes) {
+        const area = Number(areas[t.rec.id]);
+        await salvar("recomendacoes", {
+          ...t.rec, ...f, grupo_id: grupoId, nome: f.nome.trim() || null, area_ha: area,
+          calda_l_ha: f.calda_l_ha === "" ? null : Number(f.calda_l_ha),
+          dose_por: pipa ? "pipa" : "ha", ha_por_pipa: pipa ? haPorPipa : null,
+          itens: itens.map(({ dose, ...i }) => {
+            const dh = doseHa({ dose });
+            return { ...i, dose_ha: +dh.toFixed(3), dose_pipa: pipa ? Number(dose) : undefined, total: +(dh * area).toFixed(3) };
+          }),
+        });
+      }
+      aoFechar();
+    } catch (e) {
+      setErro(String(e?.message ?? e));
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Modal
+      titulo="Editar aplicação"
+      aoFechar={aoFechar}
+      rodape={
+        <>
+          <span className="espaco" />
+          <button className="btn" onClick={aoFechar}>Cancelar</button>
+          <button className="btn primario" onClick={gravar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
+        </>
+      }
+    >
+      {erro && <div className="aviso">{erro}</div>}
+      <div className="form">
+        <div className="campo largo"><span><label>Nome da aplicação</label></span><input value={f.nome} placeholder="Ex.: Dessecação do milho" onChange={(e) => set("nome", e.target.value)} /></div>
+        <div className="campo"><span><label>Data</label></span><input type="date" value={f.data} onChange={(e) => set("data", e.target.value)} /></div>
+        <div className="campo"><span><label>Calda (L/ha)</label></span><input type="number" inputMode="decimal" step="any" value={f.calda_l_ha} onChange={(e) => set("calda_l_ha", e.target.value)} /></div>
+        <div className="campo largo"><span><label>Alvo (praga, doença, planta daninha)</label></span><input value={f.alvo} onChange={(e) => set("alvo", e.target.value)} /></div>
+
+        <div className="campo largo">
+          <span><label>Talhões e área (ha)</label></span>
+          {talhoes.map((t) => (
+            <div key={t.rec.id} className="item-dose">
+              <div><b>{t.talhao}</b><small>{t.fazenda}</small></div>
+              <label>
+                Área
+                <span className="com-unidade">
+                  <input type="number" inputMode="decimal" step="any" value={areas[t.rec.id]}
+                    onChange={(e) => setAreas((a) => ({ ...a, [t.rec.id]: e.target.value }))} />
+                  <i>ha</i>
+                </span>
+              </label>
+              <div className="total-item"><Selo situacao={t.rec.situacao} /></div>
+            </div>
+          ))}
+          <small>Total: {numero(areaTotal)} ha</small>
+        </div>
+
+        <div className="campo largo">
+          <span><label>A dose é por hectare ou por pipa?</label></span>
+          <div className="barra" style={{ marginBottom: 0 }}>
+            <label className="marcar"><input type="radio" name="dose_por_editar" checked={!pipa} onChange={() => set("dose_por", "ha")} /> Por hectare (ha)</label>
+            <label className="marcar"><input type="radio" name="dose_por_editar" checked={pipa} onChange={() => set("dose_por", "pipa")} /> Por pipa (tanque cheio)</label>
+          </div>
+        </div>
+        {pipa && (
+          <div className="campo">
+            <span><label>Quantos ha uma pipa faz</label></span>
+            <input type="number" inputMode="decimal" step="any" value={f.ha_por_pipa} onChange={(e) => set("ha_por_pipa", e.target.value)} />
+            {haPorPipa > 0 && areaTotal > 0 && <small>{numero(areaTotal / haPorPipa, 1)} pipas para {numero(areaTotal)} ha</small>}
+          </div>
+        )}
+
+        <div className="campo largo">
+          <span><label>Produtos e doses</label></span>
+          {itens.map((i, k) => (
+            <div key={i.insumo_id} className="item-dose">
+              <div><b>{i.nome}</b><small>{i.fabricante || "sem fabricante"}</small></div>
+              <label>
+                Dose por {pipa ? "pipa" : "ha"}
+                <span className="com-unidade">
+                  <input type="number" inputMode="decimal" step="any" value={i.dose} onChange={(e) => mudarDose(k, e.target.value)} />
+                  <i>{i.unidade}</i>
+                </span>
+                {pipa && doseHa(i) > 0 && <small>= {numero(doseHa(i), 3)} {i.unidade}/ha</small>}
+              </label>
+              <div className="total-item">
+                Total<b>{numero(doseHa(i) * areaTotal, 2)} {i.unidade}</b>
+                <button className="btn perigo" onClick={() => setItens((l) => l.filter((_, j) => j !== k))} aria-label={`Tirar ${i.nome}`}><Icone nome="lixo" /></button>
+              </div>
+            </div>
+          ))}
+          <select className="entrada" value={novoProduto} onChange={(e) => adicionar(e.target.value)} aria-label="Acrescentar produto">
+            <option value="">+ Acrescentar produto…</option>
+            {produtos.map((p) => <option key={p.id} value={p.id}>{p.nome}{p.fabricante ? ` (${p.fabricante})` : ""}</option>)}
+          </select>
+        </div>
+        <div className="campo largo"><span><label>Observações</label></span><textarea rows={2} value={f.observacao} onChange={(e) => set("observacao", e.target.value)} /></div>
+      </div>
+    </Modal>
+  );
+}
+
+function Detalhe({ grupo, dados, salvar, aoFechar, aoEditar }) {
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState(null);
   const itens = grupo.itens;
   const talhoes = talhoesDe(grupo, dados);
   const abertas = grupo.recs.filter(aberta);
   const pipa = porPipa(grupo);
+  // Depois da baixa no estoque não dá para mudar (a saída já foi lançada com esses números).
+  const podeEditar = !grupo.recs.some((r) => r.situacao === "aplicada");
 
   // Aprovar/cancelar vale para todos os talhões que ainda não foram aplicados.
   const mudar = async (situacao, lista = abertas) => {
@@ -83,6 +233,7 @@ function Detalhe({ grupo, dados, salvar, aoFechar }) {
           <button className="btn" onClick={() => gerarPdfAplicacao(paraPdf(grupo, dados), `aplicacao-${grupo.data}.pdf`)}>
             <Icone nome="exportar" /> PDF
           </button>
+          {podeEditar && <button className="btn" onClick={aoEditar} disabled={ocupado}><Icone nome="editar" /> Editar</button>}
           <span className="espaco" />
           {abertas.length > 0 && <button className="btn perigo" onClick={() => mudar("cancelada").then(aoFechar)} disabled={ocupado}>Cancelar aplicação</button>}
           {abertas.some((r) => r.situacao === "nova") && <button className="btn" onClick={() => mudar("aprovada").then(aoFechar)} disabled={ocupado}>Aprovar</button>}
@@ -125,6 +276,7 @@ function Detalhe({ grupo, dados, salvar, aoFechar }) {
 
 export function AplicacoesAgronomo({ dados, salvar }) {
   const [aberta, setAberta] = useState(null);
+  const [editando, setEditando] = useState(false);
   const [busca, setBusca] = useState("");
   const termo = busca.trim().toLowerCase();
   // Acha pelo nome da aplicação, pelo nome, fabricante e princípio ativo dos produtos, e também por agrônomo, talhão e alvo.
@@ -154,6 +306,7 @@ export function AplicacoesAgronomo({ dados, salvar }) {
         <input className="entrada busca" placeholder="Buscar aplicação, produto, fabricante, talhão…" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar" />
       </div>
       <TabelaSimples
+        aoClicar={(g) => setAberta(g.chave)}
         vazio="Nenhuma aplicação do agrônomo ainda. Mande o link para ele na aba “Link do agrônomo”."
         linhas={lista}
         colunas={[
@@ -166,10 +319,13 @@ export function AplicacoesAgronomo({ dados, salvar }) {
           { rotulo: "Dose por", valor: (g) => (porPipa(g) ? "Pipa" : "ha") },
           { rotulo: "Alvo", valor: (g) => g.alvo || "—" },
           { rotulo: "Situação", valor: (g) => <Selo situacao={g.situacao} /> },
-          { rotulo: "", valor: (g) => <button className="btn" onClick={() => setAberta(g.chave)}>Abrir</button> },
+          { rotulo: "", valor: () => <button className="btn">Abrir</button> },
         ]}
       />
-      {abertaAtual && <Detalhe grupo={abertaAtual} dados={dados} salvar={salvar} aoFechar={() => setAberta(null)} />}
+      {abertaAtual && !editando && (
+        <Detalhe grupo={abertaAtual} dados={dados} salvar={salvar} aoFechar={() => setAberta(null)} aoEditar={() => setEditando(true)} />
+      )}
+      {abertaAtual && editando && <Editar grupo={abertaAtual} dados={dados} salvar={salvar} aoFechar={() => setEditando(false)} />}
     </div>
   );
 }

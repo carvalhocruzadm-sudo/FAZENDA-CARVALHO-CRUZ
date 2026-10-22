@@ -107,8 +107,8 @@ export function SeletorPeriodo({ periodos, valor, aoMudar }) {
   );
 }
 
-/** Tabela simples de relatório. `colunas`: [{ rotulo, valor(linha), num }] */
-export function TabelaSimples({ colunas, linhas, rodape, vazio = "Nada para mostrar." }) {
+/** Tabela simples de relatório. `colunas`: [{ rotulo, valor(linha), num }]. `aoClicar(linha)`: a linha toda abre. */
+export function TabelaSimples({ colunas, linhas, rodape, vazio = "Nada para mostrar.", aoClicar }) {
   if (!linhas.length) return <div className="vazio">{vazio}</div>;
   return (
     <div className="tabela cartoes">
@@ -116,7 +116,7 @@ export function TabelaSimples({ colunas, linhas, rodape, vazio = "Nada para most
         <thead><tr>{colunas.map((c) => <th key={c.rotulo} className={c.num ? "num" : ""}>{c.rotulo}</th>)}</tr></thead>
         <tbody>
           {linhas.map((l, i) => (
-            <tr key={l.id ?? i}>
+            <tr key={l.id ?? i} className={aoClicar ? "clicavel" : undefined} onClick={aoClicar ? () => aoClicar(l) : undefined}>
               {colunas.map((c) => <td key={c.rotulo} data-rotulo={c.rotulo} className={c.num ? "num" : ""}>{c.valor(l)}</td>)}
             </tr>
           ))}
