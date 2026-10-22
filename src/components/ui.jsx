@@ -10,6 +10,7 @@ const P = {
   frasco: "M9 3h6M10 3v6L5 18a2 2 0 002 3h10a2 2 0 002-3l-5-9V3M7.5 14h9",
   relogio: "M12 7v5l3 2M12 21a9 9 0 100-18 9 9 0 000 18z",
   chave: "M14.7 6.3a4 4 0 00-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 005.2-5.4l-2.6 2.6-2.8-.8-.8-2.8z",
+  chuva: "M7 15a4.5 4.5 0 01-.4-9A5.5 5.5 0 0117 7.5a3.8 3.8 0 01.5 7.5M8 18l-1 2M12 18l-1 2M16 18l-1 2",
   gota: "M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z",
   combustivel: "M3 21V5a2 2 0 012-2h7a2 2 0 012 2v16M3 21h11M6 8h5M14 10h2a2 2 0 012 2v5a1.5 1.5 0 003 0V9l-3-3",
   caixa: "M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",
@@ -28,11 +29,18 @@ const P = {
   fechar: "M6 6l12 12M18 6L6 18",
   menu: "M4 6h16M4 12h16M4 18h16",
   sync: "M4 4v5h5M20 20v-5h-5M5.5 15a7 7 0 0012.4 2M18.5 9A7 7 0 006.1 7",
+  sino: "M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 003.4 0",
   alerta: "M12 9v4M12 17h.01M10.3 3.9L2 18a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z",
   sair: "M15 17l5-5-5-5M20 12H9M12 21H5a2 2 0 01-2-2V5a2 2 0 012-2h7",
   nuvem: "M7 18a5 5 0 01-.5-10A6 6 0 0118 9a4.5 4.5 0 01-.5 9z",
   exportar: "M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4",
   importar: "M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4",
+  calendario: "M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2zM4 10h16M8 2v4M16 2v4",
+  camera: "M4 8a2 2 0 012-2h1.5l1.5-2h6l1.5 2H18a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2zM12 17a4 4 0 100-8 4 4 0 000 8z",
+  barras: "M4 5v14M7 5v14M10 5v14M14 5v14M16 5v14M20 5v14",
+  check: "M5 12l5 5L20 7",
+  esquerda: "M15 18l-6-6 6-6",
+  direita: "M9 18l6-6-6-6",
 };
 
 export function Icone({ nome, tamanho = 18, className }) {
@@ -99,8 +107,8 @@ export function SeletorPeriodo({ periodos, valor, aoMudar }) {
   );
 }
 
-/** Tabela simples de relatório. `colunas`: [{ rotulo, valor(linha), num }] */
-export function TabelaSimples({ colunas, linhas, rodape, vazio = "Nada para mostrar." }) {
+/** Tabela simples de relatório. `colunas`: [{ rotulo, valor(linha), num }]. `aoClicar(linha)`: a linha toda abre. */
+export function TabelaSimples({ colunas, linhas, rodape, vazio = "Nada para mostrar.", aoClicar }) {
   if (!linhas.length) return <div className="vazio">{vazio}</div>;
   return (
     <div className="tabela cartoes">
@@ -108,7 +116,7 @@ export function TabelaSimples({ colunas, linhas, rodape, vazio = "Nada para most
         <thead><tr>{colunas.map((c) => <th key={c.rotulo} className={c.num ? "num" : ""}>{c.rotulo}</th>)}</tr></thead>
         <tbody>
           {linhas.map((l, i) => (
-            <tr key={l.id ?? i}>
+            <tr key={l.id ?? i} className={aoClicar ? "clicavel" : undefined} onClick={aoClicar ? () => aoClicar(l) : undefined}>
               {colunas.map((c) => <td key={c.rotulo} data-rotulo={c.rotulo} className={c.num ? "num" : ""}>{c.valor(l)}</td>)}
             </tr>
           ))}
