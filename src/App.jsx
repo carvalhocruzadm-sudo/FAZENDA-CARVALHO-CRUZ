@@ -1,7 +1,7 @@
 import { Component, useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
-import AlertaDespesas from "./components/AlertaDespesas";
+import AlertaDespesas, { BotaoNotificacoes } from "./components/AlertaDespesas";
 import { Icone } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
@@ -83,6 +83,7 @@ function Sistema({ sair, email, virarCampo }) {
         </nav>
         <div className="rodape">
           {email && <div style={{ marginBottom: 8, wordBreak: "break-all" }}>{email}</div>}
+          <BotaoNotificacoes estilo={{ marginBottom: 8 }} />
           <button className="btn" style={{ marginBottom: 8 }} onClick={virarCampo}
             title="Para o celular do motorista ou tratorista: sem senha, só escolher o nome">
             <Icone nome="trator" /> Virar celular de campo
