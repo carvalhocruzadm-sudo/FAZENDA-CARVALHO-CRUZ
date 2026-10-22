@@ -337,13 +337,17 @@ create table if not exists public.recomendacoes (
   criado_em timestamptz not null default now(),
   atualizado_em timestamptz
 );
+alter table public.recomendacoes add column if not exists nome text;
 alter table public.recomendacoes add column if not exists data date;
 alter table public.recomendacoes add column if not exists agronomo text;
+alter table public.recomendacoes add column if not exists grupo_id text;
 alter table public.recomendacoes add column if not exists cultura_id uuid;
 alter table public.recomendacoes add column if not exists talhao_id uuid;
 alter table public.recomendacoes add column if not exists area_ha numeric;
 alter table public.recomendacoes add column if not exists alvo text;
 alter table public.recomendacoes add column if not exists calda_l_ha numeric;
+alter table public.recomendacoes add column if not exists dose_por text;
+alter table public.recomendacoes add column if not exists ha_por_pipa numeric;
 alter table public.recomendacoes add column if not exists itens jsonb;
 alter table public.recomendacoes add column if not exists observacao text;
 alter table public.recomendacoes add column if not exists situacao text;
@@ -1033,7 +1037,7 @@ begin
       select jsonb_agg(jsonb_build_object('id', c.id, 'nome', c.nome)) from public.culturas c where coalesce(c.ativo, true)), '[]'::jsonb),
     'minhas', coalesce((
       select jsonb_agg(to_jsonb(r) order by r.criado_em desc) from (
-        select id, criado_em, data, agronomo, talhao_id, cultura_id, area_ha, alvo, calda_l_ha, itens, observacao, situacao
+        select id, criado_em, nome, grupo_id, data, agronomo, talhao_id, cultura_id, area_ha, alvo, calda_l_ha, dose_por, ha_por_pipa, itens, observacao, situacao
         from public.recomendacoes where link_id = v_link order by criado_em desc limit 50) r), '[]'::jsonb)
   );
 end $$;
@@ -1056,9 +1060,11 @@ begin
   if jsonb_typeof(v_itens) <> 'array' or jsonb_array_length(v_itens) = 0 or jsonb_array_length(v_itens) > 40 then
     raise exception 'Escolha de 1 a 40 produtos';
   end if;
-  insert into public.recomendacoes (id, atualizado_em, data, agronomo, talhao_id, cultura_id, area_ha, alvo, calda_l_ha, itens, observacao, situacao, link_id)
+  insert into public.recomendacoes (id, atualizado_em, nome, grupo_id, data, agronomo, talhao_id, cultura_id, area_ha, alvo, calda_l_ha, dose_por, ha_por_pipa, itens, observacao, situacao, link_id)
   values (
     v_id, now(),
+    left(p_dados ->> 'nome', 120),
+    left(p_dados ->> 'grupo_id', 60),
     coalesce(nullif(p_dados ->> 'data', '')::date, current_date),
     left(p_dados ->> 'agronomo', 120),
     nullif(p_dados ->> 'talhao_id', '')::uuid,
@@ -1066,6 +1072,8 @@ begin
     nullif(p_dados ->> 'area_ha', '')::numeric,
     left(p_dados ->> 'alvo', 200),
     nullif(p_dados ->> 'calda_l_ha', '')::numeric,
+    case when p_dados ->> 'dose_por' = 'pipa' then 'pipa' else 'ha' end,
+    nullif(p_dados ->> 'ha_por_pipa', '')::numeric,
     v_itens,
     left(p_dados ->> 'observacao', 2000),
     'nova', v_link
