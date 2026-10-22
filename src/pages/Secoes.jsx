@@ -18,6 +18,7 @@ import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 import { principioDe } from "../lib/principiosAtivos";
 import { contarNovas } from "../lib/recomendacoes";
 import { supabase } from "../lib/supabase";
+import AprovarEntradas from "./AprovarEntradas";
 import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
 import TurmasSemana from "./TurmasSemana";
 
@@ -472,8 +473,8 @@ function EstoqueQuimicos({ dados }) {
       </div>
       {aConferir > 0 && (
         <div className="aviso info">
-          {aConferir} entrada(s) lançada(s) no depósito pelo Modo Campo ainda sem preço. Abra a aba Entradas / compras,
-          complete o valor e a nota e desmarque "Falta conferir".
+          {aConferir} entrada(s) lançada(s) no depósito pelo Modo Campo esperando aprovação. Abra a aba Aprovar entradas,
+          confira as fotos e complete o valor e a nota.
         </div>
       )}
       <TabelaSimples
@@ -656,8 +657,12 @@ function ProdutosQuimicos(props) {
 
 export function Quimicos(props) {
   const novas = contarNovas(props.dados.recomendacoes);
+  // Com entrada do depósito esperando, a aba de aprovar vem primeiro.
+  const aprovar = props.dados.insumo_entradas.filter((e) => e.a_conferir).length;
+  const abaAprovar = ["aprovar", aprovar ? `Aprovar entradas (${aprovar})` : "Aprovar entradas", AprovarEntradas];
   return (
     <Secao props={props} abas={[
+      ...(aprovar ? [abaAprovar] : []),
       ["estoque", "Estoque", EstoqueQuimicos],
       ["ordens", "Ordens de pulverização", OrdensPulverizacao],
       ["agronomo", `Aplicações do agrônomo${novas ? ` (${novas} ${novas === 1 ? "nova" : "novas"})` : ""}`, AplicacoesAgronomo],
@@ -667,6 +672,7 @@ export function Quimicos(props) {
       ["aplicacoes", "Aplicações / saídas"],
       ["insumo_entradas", "Entradas / compras"],
       ["insumos", "Produtos", ProdutosQuimicos],
+      ...(aprovar ? [] : [abaAprovar]),
     ]} />
   );
 }

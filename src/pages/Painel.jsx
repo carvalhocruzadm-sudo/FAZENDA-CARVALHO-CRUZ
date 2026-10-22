@@ -259,7 +259,7 @@ function Resumo({ dados, r, irPara }) {
       else if (x.baixo) lista.push({ tipo: "atencao", texto: `${x.insumo.nome}: estoque baixo (${numero(x.saldo)} ${x.insumo.unidade})`, ir: "quimicos" });
     }
     const aConferir = dados.insumo_entradas.filter((e) => e.a_conferir).length;
-    if (aConferir) lista.push({ tipo: "atencao", texto: `${aConferir} entrada(s) de produto lançada(s) no depósito sem preço — falta conferir`, ir: "quimicos" });
+    if (aConferir) lista.push({ tipo: "atencao", texto: `${aConferir} entrada(s) de produto lançada(s) no depósito esperando sua aprovação`, ir: "quimicos" });
     const ticketsCampo = dados.vendas.filter((v) => v.a_conferir).length;
     if (ticketsCampo) lista.push({ tipo: "atencao", texto: `${ticketsCampo} ticket(s) da balança lançado(s) pelos funcionários aguardando aprovação`, ir: "ticket" });
     for (const o of dados.pulverizacoes.filter((x) => x.situacao === "aberta")) {

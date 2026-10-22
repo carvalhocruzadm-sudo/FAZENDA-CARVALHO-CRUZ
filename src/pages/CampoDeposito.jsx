@@ -4,18 +4,23 @@ import {
   Cartao, EscolherPessoa, FotoComprovante, FotoOuInicial, FotoProduto, Ouvir, Pergunta, Rodape, Teclado, Topo,
 } from "../components/CampoUI";
 import { Foto } from "../components/Foto";
+import LeitorBoleto from "../components/LeitorBoleto";
 import { falar, operadores, paraNumero, vibrar } from "../lib/campo";
 import {
   emEmbalagens, itensDaOrdem, ordensAbertas, ordensSeparadas, saidaDaSeparacao, sobraDaOrdem,
 } from "../lib/deposito";
 import { hoje, prepararRegistro } from "../lib/esquema";
 import { nomesTalhoesDaOrdem, talhoesDaOrdem } from "../lib/talhoes";
-import { data as dataBR, nomeRef, numero } from "../lib/formato";
+import { brl, data as dataBR, nomeRef, numero } from "../lib/formato";
 
 /**
  * Depósito de químicos no Modo Campo:
  *   /campo/saida    → tirar do depósito: as pulverizações para separar, produto por produto
  *   /campo/entrada  → guardar no depósito: produto novo (compra) ou sobra que voltou
+ *
+ * Na compra, o produto que ainda não tem cadastro também entra: o operador
+ * tira a foto, escreve o nome se souber e a unidade, fotografa a nota e o
+ * boleto (ou lê o código dele) e manda para o escritório aprovar.
  */
 
 // ─── Peças ──────────────────────────────────────────────────────────────────
@@ -248,20 +253,35 @@ export function Entrada({ dados, salvar, irPara }) {
   const [foto, setFoto] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  // Produto sem cadastro: o nome que o operador escreveu e a unidade.
+  const [novo, setNovo] = useState(false);
+  const [nomeNovo, setNomeNovo] = useState("");
+  const [unidadeNova, setUnidadeNova] = useState(null);
+  // Documentos da compra.
+  const [fotoNota, setFotoNota] = useState(null);
+  const [fotoBoleto, setFotoBoleto] = useState(null);
+  const [boleto, setBoleto] = useState(null);
+  const [lendoBoleto, setLendoBoleto] = useState(false);
 
-  const insumo = dados.insumos.find((i) => i.id === insumoId);
+  // O produto novo vira um "produto" de mentira só para as telas (nome, unidade, sem embalagem).
+  const insumo = novo
+    ? { nome: nomeNovo.trim() || "Produto novo", unidade: unidadeNova ?? "" }
+    : dados.insumos.find((i) => i.id === insumoId);
   const ordem = dados.pulverizacoes.find((o) => o.id === ordemId);
   const quantidade = typeof qtd === "number" ? qtd : paraNumero(qtd);
   const ir = (p) => { setAviso(null); setPasso(p); window.scrollTo(0, 0); };
-  const escolherProduto = (id) => { setInsumoId(id); setQtd(""); ir("quantidade"); };
+  const escolherProduto = (id) => { setNovo(false); setInsumoId(id); setQtd(""); ir("quantidade"); };
 
   const gravar = async () => {
     setSalvando(true);
     try {
       const [colecao, brutos] = tipo === "compra"
         ? ["insumo_entradas", [{
-          data: hoje(), insumo_id: insumo.id, quantidade, valor: null, a_conferir: true, foto,
-          responsavel_id: operadorId, observacao: "Entrada pelo depósito (Modo Campo)",
+          data: hoje(), insumo_id: novo ? null : insumo.id, quantidade, valor: null, a_conferir: true, foto,
+          produto_novo: novo ? insumo.nome : null, unidade_nova: novo ? unidadeNova : null,
+          foto_nota: fotoNota, foto_boleto: fotoBoleto, linha_digitavel: boleto?.linha_digitavel ?? null,
+          responsavel_id: operadorId,
+          observacao: novo ? "Produto sem cadastro, lançado no depósito (Modo Campo)" : "Entrada pelo depósito (Modo Campo)",
         }]]
         : ["aplicacoes", sobraDaOrdem(dados, ordem, insumo.id, quantidade, operadorId, hoje())];
       const regs = brutos.map((b) => prepararRegistro(colecao, b));
@@ -303,7 +323,7 @@ export function Entrada({ dados, salvar, irPara }) {
           <EscolherPessoa pessoas={operadores(dados)} marcado={operadorId} aoEscolher={(id) => {
             setOperadorId(id);
             if (tipo === "sobra") ir("ordem");
-            else if (insumoId) ir("quantidade");
+            else if (insumoId || novo) ir("quantidade");
             else ir("produto");
           }} />
         </Tela>
@@ -334,6 +354,12 @@ export function Entrada({ dados, salvar, irPara }) {
           <Pergunta figura="🧴">{tipo === "sobra" ? "Qual produto sobrou?" : "Qual produto?"}</Pergunta>
           {aviso && <div className="campo-aviso erro">{aviso}</div>}
           <div className="campo-grade">
+            {tipo === "compra" && (
+              <Cartao fala="Não está na lista: produto sem cadastro" marcado={novo}
+                aoTocar={() => { setNovo(true); setInsumoId(null); setQtd(""); ir("novo"); }}>
+                <span className="figura">➕</span><span>Não está na lista</span>
+              </Cartao>
+            )}
             {produtos.map((i) => (
               <Cartao key={i.id} fala={i.nome} marcado={insumoId === i.id} aoTocar={() => { falar(i.nome); escolherProduto(i.id); }}>
                 <FotoProduto insumo={i} />
@@ -341,6 +367,49 @@ export function Entrada({ dados, salvar, irPara }) {
               </Cartao>
             ))}
           </div>
+        </Tela>
+      );
+    }
+
+    case "novo":
+      return (
+        <Tela passo={passo} figura="➕" titulo="Produto sem cadastro"
+          fala="Produto novo, sem cadastro. Tire uma foto do produto, escreva o nome se souber e toque na unidade."
+          rodape={<Rodape aoVoltar={() => ir("produto")} aoSeguir={() => ir("quantidade")} podeSeguir={Boolean(foto && unidadeNova)} />}>
+          <Pergunta figura="📷">Tire foto do produto</Pergunta>
+          <FotoComprovante caminho={foto} aoTirar={setFoto} texto="Tirar foto do produto (rótulo de frente)" />
+          <Pergunta figura="✏️">Nome do produto</Pergunta>
+          <input className="campo-texto" value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)}
+            placeholder="Como está escrito na embalagem (se souber)" autoComplete="off" />
+          <Pergunta figura="📏">Vem em quê?</Pergunta>
+          <div className="campo-grade dois">
+            {[["L", "Litro (L)"], ["kg", "Quilo (kg)"], ["saco", "Saco"], ["unidade", "Unidade / caixa"]].map(([v, rotulo]) => (
+              <Cartao key={v} fala={rotulo} marcado={unidadeNova === v} aoTocar={() => { falar(rotulo); setUnidadeNova(v); }}>
+                <span>{rotulo}</span>
+              </Cartao>
+            ))}
+          </div>
+          {!foto && <p className="dica-anterior">A foto é obrigatória: é por ela que o escritório cadastra o produto.</p>}
+        </Tela>
+      );
+
+    case "documentos": {
+      const fala = "Agora a nota fiscal e o boleto. Tire a foto da nota. Se veio boleto, tire a foto e leia o código de barras. Se não veio, toque em próximo.";
+      return (
+        <Tela passo={passo} figura="🧾" titulo={insumo?.nome} fala={fala}
+          rodape={<Rodape aoVoltar={() => ir("quantidade")} aoSeguir={() => ir("conferir")} />}>
+          <Pergunta figura="🧾">Nota fiscal</Pergunta>
+          <FotoComprovante caminho={fotoNota} aoTirar={setFotoNota} lado={1800} texto="Tirar foto da nota fiscal" />
+          <Pergunta figura="💳">Boleto (se veio)</Pergunta>
+          <FotoComprovante caminho={fotoBoleto} aoTirar={setFotoBoleto} lado={1800} texto="Tirar foto do boleto" />
+          <button type="button" className={`campo-foto-btn ${boleto ? "ok" : ""}`} style={{ marginTop: 10 }} onClick={() => setLendoBoleto(true)}>
+            <span className="emoji">{boleto ? "✅" : "▮▯▮"}</span>
+            <span>{boleto ? `Código lido${boleto.valor ? ` · ${brl(boleto.valor)}` : ""}${boleto.vencimento ? ` · vence ${dataBR(boleto.vencimento)}` : ""}` : "Ler o código de barras do boleto"}</span>
+          </button>
+          {lendoBoleto && (
+            <LeitorBoleto aoFechar={() => setLendoBoleto(false)}
+              aoLer={(lido) => { setBoleto(lido); setLendoBoleto(false); vibrar([60, 40, 60]); falar("Código do boleto lido."); }} />
+          )}
         </Tela>
       );
     }
@@ -353,11 +422,16 @@ export function Entrada({ dados, salvar, irPara }) {
       const passou = saiu != null && quantidade > saiu + 1e-9;
       const fala = tipo === "sobra"
         ? `Quanto sobrou de ${insumo?.nome}? Digite em ${insumo?.unidade}. Saíram ${numero(saiu)}.${quantidade ? ` Você digitou ${numero(quantidade)}.` : ""}`
-        : `Quantas embalagens de ${insumo?.nome} chegaram?${quantidade ? ` ${emEmbalagens(insumo, quantidade).fala}.` : ""} Tire uma foto do produto ou da nota.`;
+        : novo
+          ? `Quanto chegou de ${insumo.nome}? Digite em ${insumo.unidade}.`
+          : `Quantas embalagens de ${insumo?.nome} chegaram?${quantidade ? ` ${emEmbalagens(insumo, quantidade).fala}.` : ""} Tire uma foto do produto.`;
       return (
         <Tela passo={passo} figura="📥" titulo={insumo?.nome} fala={fala}
-          rodape={<Rodape aoVoltar={() => ir("produto")} aoSeguir={() => ir("conferir")} podeSeguir={quantidade > 0 && !passou} />}>
-          <div className="produto-grande pequeno"><FotoProduto insumo={insumo} className="foto" /><h2>{insumo?.nome}</h2></div>
+          rodape={<Rodape aoVoltar={() => ir(novo ? "novo" : "produto")} aoSeguir={() => ir(tipo === "compra" ? "documentos" : "conferir")} podeSeguir={quantidade > 0 && !passou} />}>
+          <div className="produto-grande pequeno">
+            {novo ? <Foto caminho={foto} alt={insumo.nome} className="foto" /> : <FotoProduto insumo={insumo} className="foto" />}
+            <h2>{insumo?.nome}</h2>
+          </div>
           {usaContador ? (
             <>
               <Contador insumo={insumo} valor={quantidade} aoMudar={setQtd} />
@@ -371,7 +445,7 @@ export function Entrada({ dados, salvar, irPara }) {
               <Teclado valor={typeof qtd === "string" ? qtd : ""} aoMudar={setQtd} casas={2} />
             </>
           )}
-          {tipo === "compra" && <div style={{ marginTop: 14 }}><FotoComprovante caminho={foto} aoTirar={setFoto} texto="Tirar foto do produto / nota" /></div>}
+          {tipo === "compra" && !novo && <div style={{ marginTop: 14 }}><FotoComprovante caminho={foto} aoTirar={setFoto} texto="Tirar foto do produto" /></div>}
         </Tela>
       );
     }
@@ -379,22 +453,39 @@ export function Entrada({ dados, salvar, irPara }) {
     case "conferir": {
       const operador = dados.funcionarios.find((f) => f.id === operadorId);
       const qtdTexto = emEmbalagens(insumo, quantidade).texto;
-      const fala = `Confira. ${tipo === "compra" ? "Produto novo" : "Sobra da pulverização"}. ${insumo?.nome}: ${qtdTexto}. Quem recebeu: ${operador?.nome}. Se estiver certo, toque em salvar.`;
+      const fala = `Confira. ${tipo === "compra" ? "Produto novo" : "Sobra da pulverização"}. ${insumo?.nome}: ${qtdTexto}. Quem recebeu: ${operador?.nome}. ${tipo === "compra" ? "Se estiver certo, toque em enviar. O escritório vai conferir e aprovar." : "Se estiver certo, toque em salvar."}`;
       return (
         <Tela passo={passo} figura="📥" titulo={titulo} fala={fala}
           rodape={(
             <footer className="campo-rodape">
               <button type="button" className="campo-btn cinza" onClick={() => ir("quantidade")}>◀ Voltar</button>
-              <button type="button" className="campo-btn verde" onClick={gravar} disabled={salvando}>{salvando ? "Salvando…" : "✓ Salvar"}</button>
+              <button type="button" className="campo-btn verde" onClick={gravar} disabled={salvando}>
+                {salvando ? "Salvando…" : tipo === "compra" ? "✓ Enviar para aprovar" : "✓ Salvar"}
+              </button>
             </footer>
           )}>
           <Pergunta figura="👀">Está certo?</Pergunta>
           {aviso && <div className="campo-aviso erro">{aviso}</div>}
           <div className="resumo-linha"><span className="figura">{tipo === "compra" ? "🆕" : "↩️"}</span><span>{tipo === "compra" ? "Produto novo" : "Sobra da pulverização"}</span></div>
-          <div className="resumo-linha" onClick={() => ir("produto")}><FotoProduto insumo={insumo} /><span>{insumo?.nome}</span></div>
+          <div className="resumo-linha" onClick={() => ir(novo ? "novo" : "produto")}>
+            {novo ? <Foto caminho={foto} alt={insumo.nome} className="foto" /> : <FotoProduto insumo={insumo} />}
+            <span>{insumo?.nome}{novo && " (sem cadastro)"}</span>
+          </div>
           <div className="resumo-linha" onClick={() => ir("quantidade")}><span className="figura">🔢</span><span>{qtdTexto}</span></div>
           <div className="resumo-linha" onClick={() => ir("operador")}><FotoOuInicial caminho={operador?.foto} nome={operador?.nome ?? "?"} /><span>{operador?.nome}</span></div>
-          {foto && <div className="resumo-linha"><Foto caminho={foto} alt="Foto tirada" className="foto" ampliar /><span>Foto tirada ✓</span></div>}
+          {foto && !novo && <div className="resumo-linha"><Foto caminho={foto} alt="Foto tirada" className="foto" ampliar /><span>Foto tirada ✓</span></div>}
+          {tipo === "compra" && (
+            <>
+              <div className="resumo-linha" onClick={() => ir("documentos")}>
+                {fotoNota ? <Foto caminho={fotoNota} alt="Nota fiscal" className="foto" /> : <span className="figura">🧾</span>}
+                <span>{fotoNota ? "Nota fiscal ✓" : "Sem foto da nota"}</span>
+              </div>
+              <div className="resumo-linha" onClick={() => ir("documentos")}>
+                {fotoBoleto ? <Foto caminho={fotoBoleto} alt="Boleto" className="foto" /> : <span className="figura">💳</span>}
+                <span>{fotoBoleto || boleto ? `Boleto ✓${boleto?.valor ? ` ${brl(boleto.valor)}` : ""}` : "Sem boleto"}</span>
+              </div>
+            </>
+          )}
         </Tela>
       );
     }
@@ -417,8 +508,9 @@ export function Entrada({ dados, salvar, irPara }) {
 
     default:
       return (
-        <Tela passo={passo} figura="📥" titulo={titulo} fala="Pronto! Guardado no depósito. Obrigado.">
-          <Pronto texto="Guardado no depósito." irPara={irPara} />
+        <Tela passo={passo} figura="📥" titulo={titulo}
+          fala={tipo === "compra" ? "Pronto! Enviado para o escritório aprovar. Obrigado." : "Pronto! Guardado no depósito. Obrigado."}>
+          <Pronto texto={tipo === "compra" ? "Enviado para o escritório aprovar." : "Guardado no depósito."} irPara={irPara} />
         </Tela>
       );
   }
