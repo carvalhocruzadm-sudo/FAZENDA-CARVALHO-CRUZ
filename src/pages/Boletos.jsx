@@ -69,14 +69,14 @@ function EditorBoleto({ inicial, aviso, dados, salvar, remover, aoPagar, aoFecha
   };
 
   const apagar = async () => {
-    if (!window.confirm("Apagar este boleto da programação?")) return;
+    if (!window.confirm("Apagar este pagamento da programação?")) return;
     await remover("boletos", reg.id);
     aoFechar();
   };
 
   return (
     <Modal
-      titulo={reg.id ? "Boleto" : "Novo boleto"}
+      titulo={reg.id ? `Pagamento — ${inicial.forma_pagamento || "Boleto"}` : "Novo pagamento"}
       aoFechar={aoFechar}
       rodape={
         <>
@@ -97,13 +97,14 @@ function EditorBoleto({ inicial, aviso, dados, salvar, remover, aoPagar, aoFecha
   );
 }
 
-// ─── Pagar: marca o boleto e, se quiser, já lança a despesa ─────────────────
+// ─── Pagar: marca como pago e, se quiser, já lança a despesa ───────────────
 
 function PagarBoleto({ boleto, dados, salvar, aoFechar }) {
   const jaLancada = boleto.despesa_id && dados.despesas.some((d) => d.id === boleto.despesa_id);
   const [dia, setDia] = useState(diaLocal());
   const [categoria, setCategoria] = useState(boleto.categoria || "Outros");
   const [lancar, setLancar] = useState(!jaLancada);
+  const forma = boleto.forma_pagamento || "Boleto";
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -116,8 +117,8 @@ function PagarBoleto({ boleto, dados, salvar, aoFechar }) {
         const { reg, erro: e } = prepararRegistro("despesas", {
           ...registroNovo("despesas"),
           data: dia, categoria,
-          descricao: boleto.descricao || `Boleto ${boleto.empresa}`,
-          valor: boleto.valor, forma_pagamento: "Boleto", favorecido: boleto.empresa,
+          descricao: boleto.descricao || `${forma} ${boleto.empresa}`,
+          valor: boleto.valor, forma_pagamento: forma, favorecido: boleto.empresa,
           vencimento: boleto.vencimento, pago: true, nota: boleto.linha_digitavel,
         });
         if (e) throw new Error(e);
@@ -135,7 +136,7 @@ function PagarBoleto({ boleto, dados, salvar, aoFechar }) {
 
   return (
     <Modal
-      titulo="Pagar boleto"
+      titulo={`Pagar (${forma})`}
       aoFechar={aoFechar}
       rodape={
         <>
@@ -165,7 +166,7 @@ function PagarBoleto({ boleto, dados, salvar, aoFechar }) {
         <label className="campo check largo">
           <input type="checkbox" checked={lancar} onChange={(e) => setLancar(e.target.checked)} />
           <span>
-            {jaLancada ? "Lançar de novo em Despesas (já tem uma despesa deste boleto)" : "Lançar também em Despesas (forma de pagamento: Boleto)"}
+            {jaLancada ? "Lançar de novo em Despesas (já tem uma despesa deste pagamento)" : `Lançar também em Despesas (forma de pagamento: ${forma})`}
           </span>
         </label>
       </div>
@@ -220,9 +221,9 @@ function Calendario({ dados, abrir, pagar }) {
     <>
       <div className="grade">
         <Stat rotulo={`A pagar em ${MESES[mes.mes].toLowerCase()}`} valor={brl(soma(aPagar, (b) => b.valor))}
-          sub={`${aPagar.length} ${aPagar.length === 1 ? "boleto" : "boletos"}`} cor="laranja" />
+          sub={`${aPagar.length} ${aPagar.length === 1 ? "pagamento" : "pagamentos"}`} cor="laranja" />
         <Stat rotulo={`Pago em ${MESES[mes.mes].toLowerCase()}`} valor={brl(soma(pagos, (b) => b.valor))}
-          sub={`${pagos.length} ${pagos.length === 1 ? "boleto" : "boletos"}`} />
+          sub={`${pagos.length} ${pagos.length === 1 ? "pagamento" : "pagamentos"}`} />
         <Stat rotulo="Total do mês" valor={brl(soma(doMes, (b) => b.valor))} cor="cinza" />
       </div>
 
@@ -269,17 +270,18 @@ function Calendario({ dados, abrir, pagar }) {
 
       <div className="cartao">
         <div className="barra">
-          <h2 style={{ margin: 0 }}>{diaEscolhido ? `Vencem em ${data(diaEscolhido)}` : `Boletos de ${MESES[mes.mes].toLowerCase()}`}</h2>
+          <h2 style={{ margin: 0 }}>{diaEscolhido ? `Vencem em ${data(diaEscolhido)}` : `Pagamentos de ${MESES[mes.mes].toLowerCase()}`}</h2>
           <span className="espaco" />
           {diaEscolhido && <button className="btn" onClick={() => setDiaEscolhido(null)}>Ver o mês todo</button>}
         </div>
         <TabelaSimples
-          vazio={diaEscolhido ? "Nenhum boleto vence neste dia." : "Nenhum boleto neste mês. Use “Ler boleto” para incluir."}
+          vazio={diaEscolhido ? "Nenhum pagamento vence neste dia." : "Nenhum pagamento neste mês. Use “Ler boleto” ou “Outro pagamento” para incluir."}
           linhas={lista}
           colunas={[
             { rotulo: "Vencimento", valor: (b) => data(b.vencimento) },
             { rotulo: "Empresa", valor: (b) => b.empresa },
             { rotulo: "Descrição", valor: (b) => b.descricao || "—" },
+            { rotulo: "Forma", valor: (b) => b.forma_pagamento || "Boleto" },
             { rotulo: "Valor", num: true, valor: (b) => brl(b.valor) },
             { rotulo: "Situação", valor: (b) => { const [c, t] = situacaoBoleto(b); return <span className={`selo ${c}`}>{t}{b.pago && b.data_pagamento ? ` ${data(b.data_pagamento)}` : ""}</span>; } },
             {
@@ -291,7 +293,7 @@ function Calendario({ dados, abrir, pagar }) {
               ),
             },
           ]}
-          rodape={["Total", "", "", brl(soma(lista, (b) => b.valor)), "", ""]}
+          rodape={["Total", "", "", "", brl(soma(lista, (b) => b.valor)), "", ""]}
         />
       </div>
     </>
@@ -301,7 +303,8 @@ function Calendario({ dados, abrir, pagar }) {
 // ─── Tela ───────────────────────────────────────────────────────────────────
 
 /**
- * Programação de boletos: lê o código (câmera, foto ou digitado), guarda
+ * Programação de pagamentos: boleto (lê o código pela câmera, foto ou
+ * digitado) ou qualquer outra forma (PIX, transferência, cartão…). Guarda
  * empresa, valor e vencimento e mostra tudo num calendário do mês.
  */
 export default function Boletos(props) {
@@ -317,7 +320,7 @@ export default function Boletos(props) {
   const semana = abertos.filter((b) => b.vencimento >= hojeIso && b.vencimento <= em7);
 
   const abrir = (b) => setEditando({ reg: { ...b } });
-  const novo = () => setEditando({ reg: registroNovo("boletos") });
+  const novo = () => setEditando({ reg: { ...registroNovo("boletos"), forma_pagamento: "PIX" } });
 
   const aoLer = (lido) => {
     setLendo(false);
@@ -343,25 +346,25 @@ export default function Boletos(props) {
     <>
       <div className="barra">
         <button className="btn primario" onClick={() => setLendo(true)}><Icone nome="barras" /> Ler boleto</button>
-        <button className="btn" onClick={novo}><Icone nome="mais" /> Lançar sem código</button>
+        <button className="btn" onClick={novo}><Icone nome="mais" /> Outro pagamento (PIX, transferência…)</button>
       </div>
 
       {(vencidos.length > 0 || semana.length > 0) && (
         <div className="grade">
           {vencidos.length > 0 && (
             <Stat rotulo="Vencidos sem pagar" valor={brl(soma(vencidos, (b) => b.valor))}
-              sub={`${vencidos.length} ${vencidos.length === 1 ? "boleto" : "boletos"}`} cor="vermelho" />
+              sub={`${vencidos.length} ${vencidos.length === 1 ? "pagamento" : "pagamentos"}`} cor="vermelho" />
           )}
           {semana.length > 0 && (
             <Stat rotulo="Vencem nos próximos 7 dias" valor={brl(soma(semana, (b) => b.valor))}
-              sub={`${semana.length} ${semana.length === 1 ? "boleto" : "boletos"}`} cor="laranja" />
+              sub={`${semana.length} ${semana.length === 1 ? "pagamento" : "pagamentos"}`} cor="laranja" />
           )}
         </div>
       )}
 
       <Secao props={{ ...props, abrir, pagar: setPagando }} abas={[
         ["calendario", "Calendário", Calendario],
-        ["boletos", "Todos os boletos"],
+        ["boletos", "Todos os pagamentos"],
       ]} />
 
       {lendo && <LeitorBoleto aoLer={aoLer} aoFechar={() => setLendo(false)} />}

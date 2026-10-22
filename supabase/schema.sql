@@ -308,7 +308,7 @@ drop policy if exists "equipe acessa despesas" on public.despesas;
 create policy "equipe acessa despesas" on public.despesas
   for all to authenticated using (true) with check (true);
 
--- Programação de boletos
+-- Programação de pagamentos
 create table if not exists public.boletos (
   id uuid primary key default gen_random_uuid(),
   criado_em timestamptz not null default now(),
@@ -318,9 +318,11 @@ alter table public.boletos add column if not exists empresa text;
 alter table public.boletos add column if not exists descricao text;
 alter table public.boletos add column if not exists valor numeric;
 alter table public.boletos add column if not exists vencimento date;
+alter table public.boletos add column if not exists forma_pagamento text;
 alter table public.boletos add column if not exists categoria text;
 alter table public.boletos add column if not exists linha_digitavel text;
 alter table public.boletos add column if not exists banco text;
+alter table public.boletos add column if not exists chave_pix text;
 alter table public.boletos add column if not exists pago boolean;
 alter table public.boletos add column if not exists data_pagamento date;
 alter table public.boletos add column if not exists fotos jsonb;

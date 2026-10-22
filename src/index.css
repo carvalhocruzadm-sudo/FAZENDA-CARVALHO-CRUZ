@@ -205,7 +205,7 @@ table { border-collapse: collapse; }
 .consulta .barra { width: 100%; }
 .consulta-texto { margin: 0; width: 100%; box-sizing: border-box; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 13px; line-height: 1.5; background: var(--fundo); border: 1px solid #e3e3d8; border-radius: 8px; padding: 12px; max-height: 320px; overflow: auto; }
 
-/* Programação de boletos: calendário do mês */
+/* Programação de pagamentos: calendário do mês */
 .leitor { display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
 .leitor > .btn { align-self: flex-start; cursor: pointer; }
 .leitor-video { position: relative; background: #111; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; }

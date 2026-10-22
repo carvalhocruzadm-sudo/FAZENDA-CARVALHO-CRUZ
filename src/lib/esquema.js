@@ -74,6 +74,9 @@ const refTalhao = { tipo: "ref", colecao: "talhoes", rotulo: "Talhão" };
 const refCultura = { tipo: "ref", colecao: "culturas", rotulo: "Cultura" };
 
 /** Escolher o talhão traz a cultura que está nele. */
+/** Pagamento por boleto (os antigos, sem forma, eram todos boleto). */
+const ehBoleto = (r) => !r.forma_pagamento || r.forma_pagamento === "Boleto";
+
 const culturaDoTalhao = {
   talhao_id: (reg, dados) => {
     const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
@@ -375,19 +378,21 @@ export const ESQUEMA = {
   },
 
   boletos: {
-    titulo: "Programação de boletos", singular: "boleto", icone: "calendario",
-    descricao: "Boletos a pagar, com a empresa, o valor e o vencimento. O código do boleto (linha digitável) já preenche valor, vencimento e banco. Ao pagar, dá para lançar em Despesas na hora.",
+    titulo: "Programação de pagamentos", singular: "pagamento", icone: "calendario",
+    descricao: "Contas a pagar — boleto, PIX, transferência, cartão, cheque… — com a empresa, o valor e o vencimento. No boleto, o código (linha digitável) já preenche valor, vencimento e banco. Ao pagar, dá para lançar em Despesas na hora.",
     campos: {
       empresa: { tipo: "sugestao", rotulo: "Empresa (quem recebe)", obrigatorio: true, sugestoesDe: [["boletos", "empresa"], ["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"], ["despesas", "favorecido"]] },
       descricao: { tipo: "texto", rotulo: "Descrição", dica: "Ex.: Adubo safra 26/27 — parcela 2/3" },
       valor: { tipo: "dinheiro", rotulo: "Valor", obrigatorio: true },
       vencimento: { tipo: "data", rotulo: "Vencimento", obrigatorio: true },
+      forma_pagamento: { tipo: "sugestao", rotulo: "Forma de pagamento", sugestoes: FORMAS_PAGAMENTO, padrao: "Boleto" },
       categoria: { tipo: "sugestao", rotulo: "Categoria", sugestoes: CATEGORIAS_DESPESA, dica: "A mesma das despesas; vai junto quando lançar o pagamento" },
-      linha_digitavel: { tipo: "texto", rotulo: "Código do boleto (linha digitável)", dica: "Cole ou digite os números: o valor, o vencimento e o banco se preenchem sozinhos" },
-      banco: { tipo: "texto", rotulo: "Banco", somenteLeitura: true },
+      linha_digitavel: { tipo: "texto", rotulo: "Código do boleto (linha digitável)", mostrarSe: ehBoleto, dica: "Cole ou digite os números: o valor, o vencimento e o banco se preenchem sozinhos" },
+      banco: { tipo: "texto", rotulo: "Banco", somenteLeitura: true, mostrarSe: ehBoleto },
+      chave_pix: { tipo: "texto", rotulo: "Chave PIX / conta para depósito", mostrarSe: (r) => ["PIX", "Transferência"].includes(r.forma_pagamento) },
       pago: { tipo: "booleano", rotulo: "Pago", padrao: false },
       data_pagamento: { tipo: "data", rotulo: "Pago em", mostrarSe: (r) => r.pago },
-      fotos: { tipo: "fotos", rotulo: "Foto do boleto" },
+      fotos: { tipo: "fotos", rotulo: "Foto do boleto / nota" },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
       despesa_id: { tipo: "texto", rotulo: "Despesa lançada", oculto: true },
     },
@@ -404,7 +409,7 @@ export const ESQUEMA = {
       pago: (reg) => ({ data_pagamento: reg.pago ? reg.data_pagamento || hoje() : null }),
     },
     validar: (r) => (r.linha_digitavel && lerCodigoBoleto(r.linha_digitavel).erro) || null,
-    colunas: ["vencimento", "empresa", "descricao", "categoria", "valor", "pago", "data_pagamento"],
+    colunas: ["vencimento", "empresa", "descricao", "forma_pagamento", "categoria", "valor", "pago", "data_pagamento"],
     ordem: (a, b) => String(a.vencimento ?? "").localeCompare(String(b.vencimento ?? "")),
   },
 

@@ -18,7 +18,7 @@ const MENU = [
   ["lavoura", "Lavoura e talhões", "cultura", Lavoura],
   ["vendas", "Vendas", "venda", Vendas],
   ["financeiro", "Financeiro", "dinheiro", Financeiro],
-  ["boletos", "Programação de boletos", "calendario", Boletos],
+  ["boletos", "Programação de pagamentos", "calendario", Boletos],
   ["maquinas", "Máquinas e horímetro", "trator", Maquinas],
   ["diesel", "Diesel", "combustivel", Diesel],
   ["quimicos", "Químicos e insumos", "frasco", Quimicos],
