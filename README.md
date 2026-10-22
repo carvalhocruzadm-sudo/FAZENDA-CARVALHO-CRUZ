@@ -69,6 +69,17 @@ supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic
 A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
 tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
 
+## 🔔 Aviso de despesa nova no celular (ntfy)
+
+Toda despesa nova mostra **quem lançou**. Além do aviso dentro do app, dá para receber no celular
+mesmo com o app fechado, pelo app gratuito **ntfy**:
+
+1. Abra `supabase/notificacao-ntfy.sql`, troque `COLOQUE-O-TOPICO-AQUI` por um nome difícil de
+   adivinhar (quem souber o nome recebe os avisos) e rode no **SQL Editor** do Supabase.
+2. No celular, instale o **ntfy** (Play Store / App Store), toque em **+** e assine o mesmo nome.
+
+Quem manda o aviso é o próprio banco, assim que a despesa chega na nuvem.
+
 ## 📥 Histórico das planilhas
 
 [`supabase/importacao-historico.sql`](supabase/importacao-historico.sql) traz o histórico das planilhas
