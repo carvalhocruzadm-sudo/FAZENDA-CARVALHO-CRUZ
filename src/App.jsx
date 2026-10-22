@@ -124,7 +124,7 @@ function Portao() {
   }, []);
 
   const virarCampo = () => {
-    if (!window.confirm("Transformar este aparelho em celular de campo?\n\nQuem usar vai só escolher o nome (sem senha) e só vai ver horímetro, abastecimento e fretes. Para voltar ao sistema completo vai precisar da senha.")) return;
+    if (!window.confirm("Transformar este aparelho em celular de campo?\n\nQuem usar vai só escolher o nome (sem senha) e só vai ver horímetro, abastecimento, fretes e o aviso de produto que chegou. Para voltar ao sistema completo vai precisar da senha.")) return;
     ligarModoCampo();
     setCampo(true);
   };

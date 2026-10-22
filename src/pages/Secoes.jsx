@@ -10,6 +10,7 @@ import { ESQUEMA, hoje } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 import { contatosDoBling, textoDoArquivo } from "../lib/importarContatos";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
+import AprovarEntradas from "./AprovarEntradas";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
@@ -203,14 +204,16 @@ function EstoqueQuimicos({ dados }) {
 }
 
 export function Quimicos(props) {
-  return (
-    <Secao props={props} abas={[
-      ["estoque", "Estoque", EstoqueQuimicos],
-      ["aplicacoes", "Aplicações / saídas"],
-      ["insumo_entradas", "Entradas / compras"],
-      ["insumos", "Produtos"],
-    ]} />
-  );
+  // Com produto esperando aprovação, a aba de aprovar vem primeiro.
+  const pendentes = props.dados.solicitacoes_produto.filter((s) => s.situacao === "pendente").length;
+  const aprovar = ["aprovar", pendentes ? `Aprovar entradas (${pendentes})` : "Aprovar entradas", AprovarEntradas];
+  const abas = [
+    ["estoque", "Estoque", EstoqueQuimicos],
+    ["aplicacoes", "Aplicações / saídas"],
+    ["insumo_entradas", "Entradas / compras"],
+    ["insumos", "Produtos"],
+  ];
+  return <Secao props={props} abas={pendentes ? [aprovar, ...abas] : [...abas, aprovar]} />;
 }
 
 // ─── Vendas ─────────────────────────────────────────────────────────────────

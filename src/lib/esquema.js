@@ -8,7 +8,10 @@
  *
  * Tipos de campo:
  *   texto · textoLongo · numero · dinheiro · data · booleano
- *   fotos    → lista de fotos (comprimidas, guardadas no próprio registro)
+ *   fotos    → lista de fotos (comprimidas, guardadas no próprio registro);
+ *              `ladoMaior` muda o tamanho (documento precisa de mais), e
+ *              `lerCodigo: [campo, tamanhos]` lê o código de barras da foto
+ *              e grava os números nesse campo
  *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
  *   sugestao → texto livre com sugestões (dá para criar uma categoria nova);
  *              `sugestoesDe: [coleção, coluna]` puxa o que já foi digitado, ou
@@ -18,7 +21,11 @@
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
  * outro enquanto se digita (escolher o talhão já traz a cultura dele).
+ * Campo com `oculto: true` nunca aparece no formulário (é o código que preenche).
+ * `travado(reg)` deixa o lançamento só para ver, sem salvar nem apagar.
  */
+
+import { fornecedorPeloCnpj, lerBoleto, lerChaveNfe } from "./codigos.js";
 
 export const hoje = () => new Date().toISOString().slice(0, 10);
 
@@ -64,6 +71,26 @@ export const OPERACOES = [
   "Roçagem", "Colheita", "Ensilagem", "Transporte", "Distribuição de ração",
   "Terraplanagem", "Serviço geral",
 ];
+
+/** Ler a chave da nota traz o número dela e o fornecedor (pelo CNPJ); o boleto traz vencimento e valor. */
+const dadosDosCodigos = {
+  chave_nfe: (reg, dados) => {
+    const nfe = lerChaveNfe(reg.chave_nfe);
+    if (!nfe) return {};
+    return { nota: reg.nota || nfe.numero, fornecedor: reg.fornecedor || fornecedorPeloCnpj(dados.contatos, nfe.cnpj) || null };
+  },
+  codigo_boleto: (reg) => {
+    const b = lerBoleto(reg.codigo_boleto);
+    if (!b) return {};
+    // Boleto anexado = conta ainda a pagar (dá para marcar como paga depois).
+    return { vencimento: b.vencimento ?? reg.vencimento, valor: reg.valor || b.valor, pago: false };
+  },
+};
+
+const fotoDaNota = { tipo: "fotos", rotulo: "Foto da nota fiscal", ladoMaior: 1800, lerCodigo: ["chave_nfe", [44]], dica: "Foto reta, com boa luz, pegando o código de barras." };
+const fotoDoBoleto = { tipo: "fotos", rotulo: "Foto do boleto", ladoMaior: 1800, lerCodigo: ["codigo_boleto", [44, 47]], dica: "Pegue o código de barras inteiro." };
+const chaveNfe = { tipo: "texto", rotulo: "Chave da nota (44 números)", dica: "Sai sozinha da foto quando o celular consegue ler o código de barras" };
+const codigoBoleto = { tipo: "texto", rotulo: "Código do boleto", dica: "Linha digitável ou código de barras" };
 
 const refTalhao = { tipo: "ref", colecao: "talhoes", rotulo: "Talhão" };
 const refCultura = { tipo: "ref", colecao: "culturas", rotulo: "Cultura" };
@@ -317,8 +344,45 @@ export const ESQUEMA = {
       fornecedor: { tipo: "sugestao", rotulo: "Fornecedor", sugestoesDe: [["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
       nota: { tipo: "texto", rotulo: "Nota fiscal" },
       lote: { tipo: "texto", rotulo: "Lote / validade" },
+      fotos_nota: fotoDaNota,
+      chave_nfe: chaveNfe,
+      fotos_boleto: fotoDoBoleto,
+      codigo_boleto: codigoBoleto,
+      vencimento: { tipo: "data", rotulo: "Vencimento do boleto" },
+      pago: { tipo: "booleano", rotulo: "Pago", padrao: true },
     },
-    colunas: ["data", "insumo_id", "quantidade", "valor", "cultura_id", "fornecedor"],
+    aoMudar: dadosDosCodigos,
+    colunas: ["data", "insumo_id", "quantidade", "valor", "cultura_id", "fornecedor", "vencimento"],
+  },
+
+  solicitacoes_produto: {
+    titulo: "Entradas de produto para aprovar", singular: "entrada de produto", icone: "caixa", lancamento: true, semRepetir: true,
+    descricao: "Chegou produto na fazenda: escolha o produto (ou escreva o nome, se for novo), a quantidade e tire as fotos do produto, da nota e do boleto. O escritório confere, completa o resto e lança no estoque.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data que chegou", obrigatorio: true, padrao: hoje },
+      operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Quem recebeu", obrigatorio: true },
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto (se já tem na lista)" },
+      produto: { tipo: "texto", rotulo: "Nome do produto", obrigatorio: true, dica: "Se for produto novo, escreva o nome como está na embalagem" },
+      quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2, obrigatorio: true },
+      unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: ["L", "kg", "saco", "t", "unidade", "dose", "caixa", "galão"], obrigatorio: true },
+      fotos_produto: { tipo: "fotos", rotulo: "Fotos do produto", obrigatorio: true, dica: "Embalagem de frente e o rótulo." },
+      fotos_nota: fotoDaNota,
+      chave_nfe: chaveNfe,
+      fotos_boleto: { ...fotoDoBoleto, dica: "Se veio boleto junto. Pegue o código de barras inteiro." },
+      codigo_boleto: codigoBoleto,
+      observacao: { tipo: "textoLongo", rotulo: "Recado para o escritório" },
+      situacao: { tipo: "opcoes", rotulo: "Situação", oculto: true, padrao: "pendente", opcoes: [["pendente", "Esperando aprovação"], ["aprovada", "Aprovada e lançada"], ["recusada", "Recusada"]] },
+      resposta: { tipo: "texto", rotulo: "Resposta do escritório", oculto: true },
+      entrada_id: { tipo: "texto", rotulo: "Entrada lançada", oculto: true },
+    },
+    aoMudar: {
+      insumo_id: (reg, dados) => {
+        const i = dados.insumos.find((x) => x.id === reg.insumo_id);
+        return i ? { produto: i.nome, unidade: i.unidade } : {};
+      },
+    },
+    travado: (r) => r.situacao !== "pendente",
+    colunas: ["data", "situacao", "produto", "quantidade", "unidade", "operador_id", "resposta"],
   },
 
   aplicacoes: {

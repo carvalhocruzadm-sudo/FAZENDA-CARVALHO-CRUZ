@@ -48,6 +48,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   const [rascunho, setRascunho] = useState(null);
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const repete = def.lancamento && !def.semRepetir;
 
   const colunas = colunasProp ?? def.colunas;
   const contexto = useMemo(() => ({ ultimaLeitura: (id) => ultimaLeitura(dados, id) }), [dados]);
@@ -94,6 +95,8 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
     setRascunho(null);
   };
 
+  const travado = Boolean(rascunho?.id && def.travado?.(rascunho));
+
   const totais = colunas.map((c, i) => {
     if (i === 0) return `${linhas.length} ${linhas.length === 1 ? "registro" : "registros"}`;
     if (!SOMAVEIS.has(c)) return "";
@@ -130,7 +133,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
                   const campo = def.campos[c];
                   return <th key={c} className={["numero", "dinheiro"].includes(campo.tipo) ? "num" : ""}>{campo.rotulo}</th>;
                 })}
-                {def.lancamento && <th />}
+                {repete && <th />}
               </tr>
             </thead>
             <tbody>
@@ -144,7 +147,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
                       </td>
                     );
                   })}
-                  {def.lancamento && (
+                  {repete && (
                     <td data-rotulo="">
                       <button className="btn icone" title="Repetir este lançamento" aria-label="Repetir"
                         onClick={(e) => { e.stopPropagation(); repetir(l); }}>
@@ -158,7 +161,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
             <tfoot>
               <tr>
                 {totais.map((t, i) => <td key={i} className={i ? "num" : ""}>{t}</td>)}
-                {def.lancamento && <td />}
+                {repete && <td />}
               </tr>
             </tfoot>
           </table>
@@ -167,9 +170,9 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
 
       {rascunho && (
         <Modal
-          titulo={`${rascunho.id ? "Editar" : "Lançar"} ${def.singular}`}
+          titulo={`${travado ? "Ver" : rascunho.id ? "Editar" : "Lançar"} ${def.singular}`}
           aoFechar={fechar}
-          rodape={
+          rodape={travado ? <><span className="espaco" /><button className="btn" onClick={fechar}>Fechar</button></> : (
             <>
               {rascunho.id && <button className="btn perigo" onClick={apagar}><Icone nome="lixo" /> Apagar</button>}
               <span className="espaco" />
@@ -178,8 +181,14 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
                 <Icone nome="editar" /> {salvando ? "Salvando…" : "Salvar"}
               </button>
             </>
-          }
+          )}
         >
+          {travado && (
+            <div className="aviso info">
+              {exibir(def.campos.situacao ?? { tipo: "texto" }, rascunho.situacao)} pelo escritório — não dá mais para mudar.
+              {rascunho.resposta && <> Resposta: {rascunho.resposta}</>}
+            </div>
+          )}
           {erro && <div className="aviso">{erro}</div>}
           <Formulario colecao={colecao} reg={rascunho} setReg={setRascunho} dados={dados} contexto={contexto} />
         </Modal>
