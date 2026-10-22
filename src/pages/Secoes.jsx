@@ -582,11 +582,22 @@ function BalancoEstoque({ dados, salvar }) {
 }
 
 /** Pergunta à IA (função consultar-produto) só o princípio ativo de um produto. */
-async function principioPelaIA(p) {
+async function principioPelaIA(p, tentativa = 1) {
   const { data, error } = await supabase.functions.invoke("consultar-produto", {
     body: { modo: "principio", nome: p.nome, fabricante: p.fabricante, tipo: p.tipo },
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // A função devolve { erro } mesmo quando falha: mostra essa mensagem, que é a que explica.
+    const status = error.context?.status;
+    const corpo = await error.context?.json?.().catch(() => null);
+    // Limite por minuto do plano gratuito do Gemini: espera um pouco e tenta de novo.
+    if (status === 429 && tentativa < 4) {
+      await new Promise((r) => setTimeout(r, 30000));
+      return principioPelaIA(p, tentativa + 1);
+    }
+    if (status === 404) throw new Error("a função consultar-produto ainda não foi publicada no Supabase");
+    throw new Error(corpo?.erro ?? corpo?.message ?? (status ? `${error.message} (${status})` : error.message));
+  }
   if (data?.erro) throw new Error(data.erro);
   // Função antiga (sem o modo "principio") devolve o texto longo: não serve aqui.
   if (!("principio_ativo" in (data ?? {}))) throw new Error("Atualize a função consultar-produto no Supabase.");
