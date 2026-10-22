@@ -389,7 +389,7 @@ export const ESQUEMA = {
 
   usuarios: {
     titulo: "Usuários", singular: "usuário", icone: "pessoas",
-    descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users). Perfil Tratorista: esse login só abre o Modo Campo (abastecimento e depósito), no celular. O ticket da balança só aparece no celular de quem tiver marcado \"Lança ticket da balança\". Perfil Lançador de ticket: login separado que só abre o ticket da balança.",
+    descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users). Perfil Tratorista: esse login só abre o Modo Campo (abastecimento e depósito), no celular. O ticket da balança só aparece no celular de quem tiver marcado \"Lança ticket da balança\". Perfil Lançador de ticket: login separado que só abre o ticket da balança e a chuva do pluviômetro. A chuva aparece no celular de todos os logins de campo.",
     campos: {
       funcionario_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Funcionário", dica: "Escolha para trazer o nome e o telefone do cadastro de funcionários" },
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
@@ -1017,6 +1017,25 @@ export const ESQUEMA = {
     },
     colunas: ["safra", "fazenda_id", "talhao_id", "fase", "insumo_id", "descricao", "dose_ha", "hectares", "preco_unitario", "total"],
     ordem: (a, b) => (a.safra || "").localeCompare(b.safra || "") || ordemFase(a.fase) - ordemFase(b.fase),
+  },
+
+  // ─── Pluviômetro ──────────────────────────────────────────────────────────
+  // Lançada no celular (Modo Campo) pelos tratoristas e pelo lançador de
+  // ticket: vê todas as leituras (para saber se alguém já leu hoje) e lança.
+  chuvas: {
+    titulo: "Pluviômetro", singular: "leitura de chuva", icone: "chuva", lancamento: true,
+    campo: "grava", ticketTambem: true,
+    descricao: "Quanto choveu, lido no pluviômetro. Quem lê vai até ele, tira a foto mostrando o nível da água, informa os milímetros e esvazia o copo.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      milimetros: { tipo: "numero", rotulo: "Chuva (mm)", casas: 1, obrigatorio: true, dica: "Se não choveu, lance 0" },
+      pluviometro: { tipo: "sugestao", rotulo: "Pluviômetro", sugestoes: ["Sede"], sugestoesDe: ["chuvas", "pluviometro"], padrao: "Sede", obrigatorio: true, dica: "Onde ele fica, se a fazenda tiver mais de um" },
+      responsavel_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Quem leu" },
+      foto: { tipo: "foto", rotulo: "Foto do pluviômetro", lado: 1280, obrigatorio: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação", dica: "Ex.: choveu de madrugada, veio com granizo" },
+    },
+    validar: (r) => (num(r.milimetros) < 0 ? "A chuva não pode ser negativa." : null),
+    colunas: ["data", "pluviometro", "milimetros", "responsavel_id", "foto"],
   },
 
   // ─── Avisos ───────────────────────────────────────────────────────────────

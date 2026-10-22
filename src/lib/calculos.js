@@ -510,4 +510,51 @@ export function totaisLocal(linhas) {
   };
 }
 
+// ─── Chuva ──────────────────────────────────────────────────────────────────
+
+/**
+ * Chuva de cada dia (data → mm). Se no mesmo dia mais de um pluviômetro foi
+ * lido, vale a média entre eles (somar contaria a mesma chuva duas vezes);
+ * duas leituras do mesmo pluviômetro no dia somam.
+ */
+export function chuvaPorDia(dados) {
+  const porDia = new Map();
+  for (const c of dados.chuvas ?? []) {
+    if (!c.data) continue;
+    const local = (c.pluviometro || "").trim().toLowerCase();
+    if (!porDia.has(c.data)) porDia.set(c.data, new Map());
+    const locais = porDia.get(c.data);
+    locais.set(local, (locais.get(local) ?? 0) + n(c.milimetros));
+  }
+  return new Map([...porDia].map(([d, locais]) => [d, soma([...locais.values()], (v) => v) / locais.size]));
+}
+
+/** Totais para a tela do pluviômetro: hoje, 7 dias, mês, ano e mês a mês do ano. */
+export function resumoChuva(dados, ano = new Date().getFullYear()) {
+  const dias = chuvaPorDia(dados);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const agora = new Date();
+  const hoje = iso(agora);
+  const seteDias = iso(new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() - 6));
+  const mes = hoje.slice(0, 7);
+  const entre = (de, ate) => soma([...dias].filter(([d]) => d >= de && d <= ate), ([, mm]) => mm);
+
+  const meses = Array.from({ length: 12 }, (_, i) => {
+    const chave = `${ano}-${String(i + 1).padStart(2, "0")}`;
+    const doMes = [...dias].filter(([d]) => d.startsWith(chave));
+    return { mes: i, chave, mm: soma(doMes, ([, mm]) => mm), diasDeChuva: doMes.filter(([, mm]) => mm > 0).length };
+  });
+  const ultima = [...dias].filter(([, mm]) => mm > 0).sort(([a], [b]) => b.localeCompare(a))[0];
+
+  return {
+    hoje: dias.get(hoje) ?? null,
+    seteDias: entre(seteDias, hoje),
+    mes: entre(`${mes}-01`, `${mes}-31`),
+    ano: entre(`${ano}-01-01`, `${ano}-12-31`),
+    meses,
+    ultimaChuva: ultima ? { data: ultima[0], mm: ultima[1] } : null,
+    anos: [...new Set([...dias.keys()].map((d) => Number(d.slice(0, 4))))].sort((a, b) => b - a),
+  };
+}
+
 export { soma };

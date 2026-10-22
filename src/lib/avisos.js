@@ -19,7 +19,7 @@ export const TELA_DA_COLECAO = {
   abastecimentos: "diesel", diesel_entradas: "diesel",
   aplicacoes: "quimicos", insumo_entradas: "quimicos", pulverizacoes: "quimicos", insumos: "quimicos",
   fretes: "fretes", recebimentos: "vendas", colheitas: "lavoura", talhoes: "lavoura",
-  despesas: "financeiro", entradas: "financeiro", funcionarios: "equipe",
+  despesas: "financeiro", entradas: "financeiro", funcionarios: "equipe", chuvas: "pluviometro",
 };
 
 const VERBO = { novo: "lançou", editado: "alterou", apagado: "apagou" };

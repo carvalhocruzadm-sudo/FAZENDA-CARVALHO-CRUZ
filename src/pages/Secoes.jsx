@@ -9,7 +9,7 @@ import PainelTickets from "../components/PainelTickets";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
   PERIODOS, aReceber, consumoPorMaquina, custos, detalhesAbastecimentos, diesel, entradasDoPeriodo, estoqueInsumos,
-  GRUPOS_PLANEJAMENTO, lancamentosPorLocal, noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma, totaisLocal,
+  GRUPOS_PLANEJAMENTO, lancamentosPorLocal, noPeriodo, resumoChuva, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma, totaisLocal,
 } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
 import { baixarCSV, brl, data, exibir, leitura, nomeRef, numero } from "../lib/formato";
@@ -997,4 +997,58 @@ export function Financeiro(props) {
 
 export function Usuarios(props) {
   return <Crud colecao="usuarios" {...props} />;
+}
+
+// ─── Pluviômetro ────────────────────────────────────────────────────────────
+
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const mm = (v) => `${numero(v, 1)} mm`;
+
+function ChuvaPorMes({ dados }) {
+  const anoAtual = new Date().getFullYear();
+  const [ano, setAno] = useState(anoAtual);
+  const r = resumoChuva(dados, ano);
+  const anos = [...new Set([anoAtual, ...r.anos])].sort((a, b) => b - a);
+  const max = Math.max(...r.meses.map((m) => m.mm), 1);
+  return (
+    <div className="cartao">
+      <p className="descricao">
+        Chuva de cada mês. Se no mesmo dia mais de um pluviômetro foi lido, conta a média entre eles.
+      </p>
+      <div className="barra">
+        <select className="entrada" style={{ width: "auto" }} value={ano} onChange={(e) => setAno(Number(e.target.value))} aria-label="Ano">
+          {anos.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+      <TabelaSimples
+        linhas={r.meses.map((m) => ({ ...m, id: m.chave }))}
+        colunas={[
+          { rotulo: "Mês", valor: (m) => MESES[m.mes] },
+          { rotulo: "Chuva", num: true, valor: (m) => (m.mm ? mm(m.mm) : "—") },
+          { rotulo: "Dias de chuva", num: true, valor: (m) => m.diasDeChuva || "—" },
+          { rotulo: " ", valor: (m) => <div className="barra-h" style={{ minWidth: 120 }}><div style={{ width: `${(m.mm / max) * 100}%`, background: "#4a90c2" }} /></div> },
+        ]}
+        rodape={["Total do ano", mm(r.ano), soma(r.meses, (m) => m.diasDeChuva), ""]}
+      />
+    </div>
+  );
+}
+
+export function Pluviometro(props) {
+  const r = resumoChuva(props.dados);
+  return (
+    <>
+      <div className="grade">
+        <Stat rotulo="Hoje" valor={r.hoje == null ? "Sem leitura" : mm(r.hoje)} cor={r.hoje == null ? "cinza" : ""} />
+        <Stat rotulo="Últimos 7 dias" valor={mm(r.seteDias)} />
+        <Stat rotulo="Este mês" valor={mm(r.mes)} />
+        <Stat rotulo="Este ano" valor={mm(r.ano)} />
+        <Stat rotulo="Última chuva" valor={r.ultimaChuva ? data(r.ultimaChuva.data) : "—"} sub={r.ultimaChuva ? mm(r.ultimaChuva.mm) : undefined} cor="cinza" />
+      </div>
+      <Secao props={props} abas={[
+        ["chuvas", "Leituras"],
+        ["meses", "Chuva por mês", ChuvaPorMes],
+      ]} />
+    </>
+  );
 }

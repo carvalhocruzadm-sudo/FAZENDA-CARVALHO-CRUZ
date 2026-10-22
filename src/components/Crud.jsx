@@ -11,7 +11,7 @@ import { Icone, Modal, SeletorPeriodo } from "./ui";
 /** Colunas que ganham total no rodapé da lista. */
 const SOMAVEIS = new Set([
   "valor", "valor_bruto", "valor_desconto", "total", "litros", "quantidade", "trabalhado",
-  "peso_liquido", "peso_kg", "km", "horas", "custo", "quantidade_total", "area_ha", "pes", "frete", "comissao",
+  "peso_liquido", "peso_kg", "km", "horas", "custo", "quantidade_total", "area_ha", "pes", "frete", "comissao", "milimetros",
 ]);
 
 /** Tipos de coluna que viram filtro de caixinha quando a coleção não define `filtros`. */

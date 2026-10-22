@@ -29,8 +29,8 @@ let sql = `-- ══════════════════════
 -- lança abastecimento, horímetro, as saídas/entradas do depósito de químicos e
 -- o ticket da balança (só quem está marcado em Usuários → "Lança ticket da
 -- balança"; e só vê os tickets que ainda faltam completar, sem preço).
--- Perfil "Lançador de ticket": login só do ticket da balança (não lança
--- abastecimento nem depósito).
+-- Perfil "Lançador de ticket": login só do ticket da balança e da chuva do
+-- pluviômetro (não lança abastecimento nem depósito).
 -- Marca-se pelo sistema, em Usuários → Perfil "Tratorista (Modo Campo)", ou
 -- aqui (troque o e-mail):
 --   update auth.users set raw_app_meta_data = raw_app_meta_data || '{"perfil":"campo"}'
