@@ -56,7 +56,7 @@ function EditorBoleto({ inicial, aviso, dados, salvar, remover, aoPagar, aoFecha
   const [salvando, setSalvando] = useState(false);
 
   const gravar = async () => {
-    const { reg: pronto, erro: e } = prepararRegistro("boletos", reg);
+    const { reg: pronto, erro: e } = prepararRegistro("boletos", reg, dados);
     if (e) { setErro(e); return; }
     setSalvando(true);
     try {
@@ -120,11 +120,11 @@ function PagarBoleto({ boleto, dados, salvar, aoFechar }) {
           descricao: boleto.descricao || `${forma} ${boleto.empresa}`,
           valor: boleto.valor, forma_pagamento: forma, favorecido: boleto.empresa,
           vencimento: boleto.vencimento, pago: true, nota: boleto.linha_digitavel,
-        });
+        }, dados);
         if (e) throw new Error(e);
         despesaId = (await salvar("despesas", reg)).id;
       }
-      const { reg, erro: e } = prepararRegistro("boletos", { ...boleto, pago: true, data_pagamento: dia, categoria, despesa_id: despesaId });
+      const { reg, erro: e } = prepararRegistro("boletos", { ...boleto, pago: true, data_pagamento: dia, categoria, despesa_id: despesaId }, dados);
       if (e) throw new Error(e);
       await salvar("boletos", reg);
       aoFechar();
