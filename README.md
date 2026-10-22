@@ -251,6 +251,12 @@ nota no Bling). **Cancelar** ou **carta de correção**: pelo próprio Bling.
 As chaves do Bling ficam só no Supabase (tabela `bling_conexao`, trancada) e se renovam sozinhas. Se ficar mais
 de 30 dias sem emitir, o Bling pede para conectar de novo.
 
+## 🔔 Aviso de despesa nova
+
+Toda despesa nova guarda **quem lançou** (o login), que aparece na lista e no formulário. Ela também
+vira um aviso no **sininho** de quem está no escritório e uma notificação no **ntfy**, igual aos
+lançamentos do campo (veja "Notificação no celular" abaixo).
+
 ## 📥 Histórico das planilhas
 
 [`supabase/importacao-historico.sql`](supabase/importacao-historico.sql) traz o histórico das planilhas

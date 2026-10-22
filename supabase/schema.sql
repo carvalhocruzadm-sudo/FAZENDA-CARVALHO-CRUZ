@@ -644,6 +644,7 @@ alter table public.despesas add column if not exists vencimento date;
 alter table public.despesas add column if not exists pago boolean;
 alter table public.despesas add column if not exists nota text;
 alter table public.despesas add column if not exists comprovante text;
+alter table public.despesas add column if not exists lancado_por text;
 create index if not exists despesas_data_idx on public.despesas (data);
 alter table public.despesas enable row level security;
 drop policy if exists "equipe acessa despesas" on public.despesas;

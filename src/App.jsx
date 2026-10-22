@@ -7,7 +7,7 @@ import { CulturaAtiva } from "./hooks/useCulturaAtiva";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { daCaixa, lerCompartilhado, listarCaixa } from "./lib/arquivos";
-import { textoDoAviso } from "./lib/avisos";
+import { salvarComAviso, textoDoAviso } from "./lib/avisos";
 import { iniciarNtfy } from "./lib/ntfy";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Boletos from "./pages/Boletos";
@@ -224,7 +224,14 @@ function TrocarSenha({ email, aoFechar }) {
 }
 
 function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
-  const { dados, pronto, erro, salvar, salvarVarios, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
+  const { dados, pronto, erro, salvar: salvarSemAviso, salvarVarios, remover, sincronizarAgora, recarregarDaNuvem } = useDados(email);
+  // Despesa nova lançada no escritório também vira aviso (sininho e ntfy), com quem lançou.
+  const salvar = useCallback(
+    (colecao, reg) => (colecao === "despesas" && !reg.id
+      ? salvarComAviso(salvarSemAviso, { dados, email })(colecao, reg)
+      : salvarSemAviso(colecao, reg)),
+    [salvarSemAviso, dados, email],
+  );
 
   // Login marcado como Tratorista em Usuários: sai daqui e fica só no Modo Campo.
   const ehCampo = pronto && emailEhCampo(dados.usuarios, email);

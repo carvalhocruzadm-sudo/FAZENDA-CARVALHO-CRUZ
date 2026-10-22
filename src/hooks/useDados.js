@@ -36,9 +36,10 @@ async function comFilaPorCima(dados) {
 /**
  * Fonte única dos dados: lê do IndexedDB na abertura (funciona sem internet),
  * grava cada alteração no aparelho, enfileira o envio e sincroniza em segundo
- * plano quando há conexão.
+ * plano quando há conexão. `usuario` (o e-mail do login) vai em `lancado_por`
+ * dos registros novos das coleções marcadas com `quemLancou` no esquema.
  */
-export function useDados() {
+export function useDados(usuario) {
   const [dados, setDados] = useState(vazio);
   const [pronto, setPronto] = useState(false);
   const [erro, setErro] = useState(null);
@@ -81,6 +82,7 @@ export function useDados() {
 
   const salvar = useCallback(async (colecao, registro) => {
     const item = { ...registro, id: registro.id || novoId(), atualizado_em: new Date().toISOString() };
+    if (!registro.id && ESQUEMA[colecao]?.quemLancou) item.lancado_por = usuario || null;
     // Comprovante novo: guarda no aparelho e enfileira o envio antes do
     // registro, para o arquivo já estar na nuvem quando o lançamento chegar.
     for (const [chave, campo] of Object.entries(ESQUEMA[colecao].campos)) {
@@ -97,7 +99,7 @@ export function useDados() {
     pedirEnvioEmSegundoPlano();
     sincronizarAgora();
     return item;
-  }, [sincronizarAgora]);
+  }, [sincronizarAgora, usuario]);
 
   /** Grava vários de uma vez (importação) e sincroniza uma vez só no fim. */
   const salvarVarios = useCallback(async (colecao, registros) => {

@@ -33,6 +33,9 @@
  * (campos com o mesmo nome abrem juntos). Abre sozinho se já tiver valor;
  * fechar o botão apaga o que foi digitado nele.
  *
+ * `quemLancou: true` grava em `lancado_por` quem estava logado ao criar o
+ * registro (o e-mail do login); editar depois não muda.
+ *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
  * outro enquanto se digita (escolher o talhão já traz a cultura dele).
@@ -738,7 +741,7 @@ export const ESQUEMA = {
   },
 
   despesas: {
-    titulo: "Despesas", singular: "despesa", icone: "dinheiro", lancamento: true,
+    titulo: "Despesas", singular: "despesa", icone: "dinheiro", lancamento: true, quemLancou: true,
     descricao: "Como na planilha FINANCEIRO: categoria, tipo, forma de pagamento e favorecido. Toda despesa vai para um centro de custo: geral, uma cultura ou um talhão. Compra de diesel para o tanque e de químicos para o estoque se lança nas telas deles, não aqui.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
@@ -759,6 +762,7 @@ export const ESQUEMA = {
       pago: { tipo: "booleano", rotulo: "Pago", padrao: true },
       nota: { tipo: "texto", rotulo: "Nota / documento" },
       comprovante: { tipo: "arquivo", rotulo: "Comprovante", dica: "Foto ou PDF do comprovante do banco" },
+      lancado_por: { tipo: "texto", rotulo: "Lançado por", somenteLeitura: true, mostrarSe: (r) => Boolean(r.lancado_por) },
     },
     aoMudar: {
       ...culturaDoTalhao,
@@ -768,7 +772,7 @@ export const ESQUEMA = {
       descricao: caminhaoPelo1620,
     },
     porTalhao: { dividir: ["valor", "litros"] },
-    colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago", "comprovante"],
+    colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago", "comprovante", "lancado_por"],
   },
 
   boletos: {
