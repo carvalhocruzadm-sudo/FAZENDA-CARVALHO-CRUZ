@@ -51,8 +51,7 @@ Pesquise na internet (de preferência bula, ficha técnica do fabricante, AGROFI
 6. CUIDADOS — classe toxicológica, EPI, carência e o que não misturar, se houver.
 Se não tiver certeza de algum dado, diga que não encontrou em vez de inventar. Termine com os links das fontes. Lembre que vale o rótulo/bula e a receita do engenheiro agrônomo.`;
 
-  const modelo = Deno.env.get("MODELO_CONSULTA") ?? "gemini-flash-latest";
-  const perguntar = (comPesquisa: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+  const perguntar = (modelo: string, comPesquisa: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": chave, "content-type": "application/json" },
     body: JSON.stringify({
@@ -62,12 +61,22 @@ Se não tiver certeza de algum dado, diga que não encontrou em vez de inventar.
     }),
   });
 
-  // A pesquisa no Google tem limite próprio (bem menor no plano gratuito):
-  // se ele acabar, pergunta de novo sem pesquisar, só com o que a IA já sabe.
-  let resposta = await perguntar(true);
-  if (resposta.status === 429) resposta = await perguntar(false);
+  // Tenta com a pesquisa no Google e, se o limite dela acabou (429) ou o modelo
+  // está sobrecarregado (503), sem pesquisa e depois com outros modelos.
+  const modelos = [Deno.env.get("MODELO_CONSULTA") ?? "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash"];
+  const tentativas = modelos.flatMap((m, i) => (i === 0 ? [[m, true], [m, false]] : [[m, false]]) as [string, boolean][]);
+  let resposta: Response | undefined;
+  for (const [modelo, comPesquisa] of tentativas) {
+    await resposta?.body?.cancel();
+    resposta = await perguntar(modelo, comPesquisa);
+    if (![429, 500, 503].includes(resposta.status)) break;
+  }
 
+  if (!resposta) return json({ erro: "A consulta falhou." }, 502);
   const dados = await resposta.json().catch(() => ({}));
+  if (resposta.status === 503 || resposta.status === 500) {
+    return json({ erro: "A IA do Google está sobrecarregada agora. Tente de novo daqui a alguns minutos." }, 503);
+  }
   if (resposta.status === 429) {
     return json({ erro: `O limite gratuito da IA do Google acabou. Tente de novo mais tarde. (Google: ${dados?.error?.message ?? "sem detalhe"})` }, 429);
   }

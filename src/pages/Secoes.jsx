@@ -590,8 +590,8 @@ async function principioPelaIA(p, tentativa = 1) {
     // A função devolve { erro } mesmo quando falha: mostra essa mensagem, que é a que explica.
     const status = error.context?.status;
     const corpo = await error.context?.json?.().catch(() => null);
-    // Limite por minuto do plano gratuito do Gemini: espera um pouco e tenta de novo.
-    if (status === 429 && tentativa < 4) {
+    // Limite por minuto do Gemini gratuito ou IA sobrecarregada: espera um pouco e tenta de novo.
+    if ((status === 429 || status === 503) && tentativa < 4) {
       await new Promise((r) => setTimeout(r, 30000));
       return principioPelaIA(p, tentativa + 1);
     }
