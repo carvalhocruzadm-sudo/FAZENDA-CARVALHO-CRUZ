@@ -6,6 +6,7 @@ import { ImagemAmpliavel } from "../components/VerFoto";
 import { ESQUEMA, hoje } from "../lib/esquema";
 import { data as dataBR, numero } from "../lib/formato";
 import { gerarPdfAplicacao } from "../lib/pdfAplicacao";
+import { agruparRecomendacoes, porPipa } from "../lib/recomendacoes";
 import { chaveCultura, culturasComTalhao } from "../lib/talhoes";
 import { supabase, supabaseConfigurado } from "../lib/supabase";
 
@@ -34,6 +35,7 @@ const AGRUPAR = {
 };
 
 const CACHE = "fcc-agronomo-cache";
+const novoGrupo = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const diasAte = (iso) => {
   if (!iso) return null;
@@ -95,7 +97,8 @@ function Rotulos({ token, produto, aoFechar }) {
 function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviada }) {
   const lembrado = (() => { try { return localStorage.getItem("fcc-agronomo-nome"); } catch { return null; } })();
   const [f, setF] = useState({
-    agronomo: lembrado || base.agronomo || "", data: hoje(), alvo: "", calda_l_ha: "", observacao: "",
+    nome: "", agronomo: lembrado || base.agronomo || "", data: hoje(), alvo: "", calda_l_ha: "",
+    dose_por: "", ha_por_pipa: "", observacao: "",
   });
   // Guarda a lista na abertura: depois de enviar, a seleção da tela é limpa e o PDF ainda precisa dos produtos.
   const [ids] = useState(() => [...selecionados]);
@@ -103,6 +106,8 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
   const [estado, setEstado] = useState({ enviando: false, erro: null, enviada: false });
   // Talhões que já chegaram na fazenda: se der erro no meio, o "Enviar" de novo manda só o resto.
   const enviados = useRef(new Set());
+  // Todos os talhões desta aplicação levam o mesmo grupo: na fazenda aparecem como uma aplicação só.
+  const [grupo] = useState(novoGrupo);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
 
   // Cultura primeiro (citros não mostra área de grão), depois marca as fazendas e os talhões (um, vários ou todos).
@@ -119,20 +124,29 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
   const area = marcados.reduce((s, t) => s + areaDe(t), 0);
   const cultura = base.culturas.find((c) => c.id === culturaSel);
 
+  // Dose por pipa: dose por ha = dose da pipa ÷ ha que uma pipa faz (o total dá dose da pipa × nº de pipas).
+  const pipa = porPipa(f);
+  const haPorPipa = Number(f.ha_por_pipa) || 0;
   const itensCom = (ha) => ids.map((id) => {
     const p = produtos.find((x) => x.id === id);
     const dose = Number(doses[id]) || 0;
+    const doseHa = pipa ? (haPorPipa > 0 ? dose / haPorPipa : 0) : dose;
     return {
       insumo_id: id, nome: p.nome, fabricante: p.fabricante, principio_ativo: p.principio_ativo,
-      unidade: p.unidade, dose_ha: dose, total: +(dose * ha).toFixed(3), saldo: p.saldo,
+      unidade: p.unidade, dose_ha: +doseHa.toFixed(3), ...(pipa ? { dose_pipa: dose } : {}),
+      total: +(doseHa * ha).toFixed(3), saldo: p.saldo,
     };
   });
   const itens = itensCom(area);
   const semSaldo = (lista) => lista.map((i) => ({ ...i, saldo: undefined }));
 
   // Uma aplicação por talhão: na fazenda cada uma dá baixa no talhão certo.
+  const comuns = () => ({
+    ...f, grupo_id: grupo, nome: f.nome.trim(), dose_por: pipa ? "pipa" : "ha",
+    ha_por_pipa: pipa ? haPorPipa : null,
+  });
   const montarTalhao = (t) => ({
-    ...f, talhao_id: t.id, talhao: t.nome, fazenda: t.fazenda, cultura: cultura?.nome, cultura_id: cultura?.id ?? null,
+    ...comuns(), talhao_id: t.id, talhao: t.nome, fazenda: t.fazenda, cultura: cultura?.nome, cultura_id: cultura?.id ?? null,
     area_ha: areaDe(t), calda_l_ha: f.calda_l_ha === "" ? null : Number(f.calda_l_ha),
     itens: semSaldo(itensCom(areaDe(t))),
   });
@@ -146,7 +160,7 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
       .map(([n, ts]) => `${n}: ${ts.map((t) => t.nome).join(", ")}`)
       .join("; ");
     return {
-      ...f, talhao: locais, cultura: cultura?.nome, area_ha: area,
+      ...comuns(), talhao: locais, cultura: cultura?.nome, area_ha: area,
       calda_l_ha: f.calda_l_ha === "" ? null : Number(f.calda_l_ha),
       talhoes: marcados.map((t) => ({ fazenda: nomeFazenda(t), talhao: t.nome, area_ha: areaDe(t) })),
       itens: semSaldo(itens),
@@ -154,11 +168,14 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
   };
 
   const validar = () => {
+    if (!f.nome.trim()) return "Dê um nome para a aplicação (ex.: Dessecação do milho).";
+    if (!f.dose_por) return "Escolha se a dose é por hectare ou por pipa.";
+    if (pipa && !(haPorPipa > 0)) return "Informe quantos ha uma pipa faz.";
     if (!culturaSel) return "Escolha a cultura.";
     if (!marcados.length) return "Marque pelo menos um talhão.";
     const semArea = marcados.find((t) => areaDe(t) <= 0);
     if (semArea) return `Informe a área a aplicar no talhão ${semArea.nome} (ha).`;
-    if (itens.some((i) => i.dose_ha <= 0)) return "Informe a dose por hectare de todos os produtos.";
+    if (ids.some((id) => !(Number(doses[id]) > 0))) return `Informe a dose por ${pipa ? "pipa" : "hectare"} de todos os produtos.`;
     return null;
   };
 
@@ -215,6 +232,7 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
       {estado.enviada && <div className="aviso ok">Aplicação enviada! Ela já aparece no sistema da fazenda. Baixe o PDF se quiser guardar uma cópia.</div>}
       {estado.erro && <div className="aviso">{estado.erro}</div>}
       <div className="form">
+        <div className="campo largo"><span><label>Nome da aplicação</label></span><input value={f.nome} placeholder="Ex.: Dessecação do milho" onChange={(e) => set("nome", e.target.value)} /></div>
         <div className="campo"><span><label>Agrônomo</label></span><input value={f.agronomo} onChange={(e) => set("agronomo", e.target.value)} /></div>
         <div className="campo"><span><label>Data</label></span><input type="date" value={f.data} onChange={(e) => set("data", e.target.value)} /></div>
         <EscolhaTalhoes culturas={base.culturas} talhoes={base.talhoes} nomeFazenda={nomeFazenda}
@@ -223,6 +241,21 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
         <div className="campo largo"><span><label>Alvo (praga, doença, planta daninha)</label></span><input value={f.alvo} onChange={(e) => set("alvo", e.target.value)} /></div>
 
         <div className="campo largo">
+          <span><label>A dose vai ser por hectare ou por pipa?</label></span>
+          <div className="barra" style={{ marginBottom: 0 }}>
+            <label className="marcar"><input type="radio" name="dose_por" checked={f.dose_por === "ha"} onChange={() => set("dose_por", "ha")} /> Por hectare (ha)</label>
+            <label className="marcar"><input type="radio" name="dose_por" checked={f.dose_por === "pipa"} onChange={() => set("dose_por", "pipa")} /> Por pipa (tanque cheio)</label>
+          </div>
+        </div>
+        {pipa && (
+          <div className="campo">
+            <span><label>Quantos ha uma pipa faz</label></span>
+            <input type="number" inputMode="decimal" step="any" value={f.ha_por_pipa} onChange={(e) => set("ha_por_pipa", e.target.value)} />
+            {haPorPipa > 0 && area > 0 && <small>{numero(area / haPorPipa, 1)} pipas para {numero(area)} ha</small>}
+          </div>
+        )}
+
+        {f.dose_por && <div className="campo largo">
           <span><label>Produtos e doses</label></span>
           {itens.map((i) => (
             <div key={i.insumo_id} className="item-dose">
@@ -231,12 +264,13 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
                 <small>{i.fabricante || "sem fabricante"} · saldo {numero(i.saldo)} {i.unidade}</small>
               </div>
               <label>
-                Dose por ha
+                Dose por {pipa ? "pipa" : "ha"}
                 <span className="com-unidade">
                   <input type="number" inputMode="decimal" step="any" value={doses[i.insumo_id]}
                     onChange={(e) => setDoses((d) => ({ ...d, [i.insumo_id]: e.target.value }))} />
                   <i>{i.unidade}</i>
                 </span>
+                {pipa && i.dose_ha > 0 && <small>= {numero(i.dose_ha, 3)} {i.unidade}/ha</small>}
               </label>
               <div className="total-item">
                 Total<b>{numero(i.total, 2)} {i.unidade}</b>
@@ -244,7 +278,7 @@ function FormAplicacao({ token, base, produtos, selecionados, aoFechar, aoEnviad
               </div>
             </div>
           ))}
-        </div>
+        </div>}
         <div className="campo largo"><span><label>Observações</label></span><textarea rows={2} value={f.observacao} onChange={(e) => set("observacao", e.target.value)} /></div>
       </div>
     </Modal>
@@ -365,12 +399,19 @@ function Estoque({ token, base, produtos, selecionados, alternar, aoLimpar, aoCr
 }
 
 function MinhasAplicacoes({ base }) {
-  const nomes = { nova: ["neutro", "Enviada"], aprovada: ["ok", "Aprovada"], aplicada: ["ok", "Aplicada"], cancelada: ["ruim", "Cancelada"] };
-  const lista = (base.minhas ?? []).map((m) => {
-    const t = base.talhoes.find((x) => x.id === m.talhao_id);
+  const nomes = { nova: ["neutro", "Enviada"], aprovada: ["ok", "Aprovada"], aplicada: ["ok", "Aplicada"], parcial: ["atencao", "Parte aplicada"], cancelada: ["ruim", "Cancelada"] };
+  // Uma linha por aplicação (mesmo que ela tenha ido para vários talhões).
+  const lista = agruparRecomendacoes(base.minhas ?? []).map((g) => {
+    const talhoes = g.recs.map((m) => {
+      const t = base.talhoes.find((x) => x.id === m.talhao_id);
+      return { fazenda: t?.fazenda || "Sem fazenda", talhao: t?.nome ?? "—", area_ha: Number(m.area_ha) || 0 };
+    });
+    const um = talhoes.length === 1;
     return {
-      ...m, talhao: t?.nome, fazenda: t?.fazenda, cultura: base.culturas.find((c) => c.id === m.cultura_id)?.nome,
-      itens: (m.itens ?? []).map((i) => ({ ...i })),
+      ...g, id: g.chave, talhoes,
+      talhao: um ? talhoes[0].talhao : talhoes.map((t) => `${t.fazenda}: ${t.talhao}`).join("; "),
+      fazenda: um ? talhoes[0].fazenda : null,
+      cultura: base.culturas.find((c) => c.id === g.cultura_id)?.nome,
     };
   });
   return (
@@ -380,7 +421,8 @@ function MinhasAplicacoes({ base }) {
         linhas={lista}
         colunas={[
           { rotulo: "Data", valor: (m) => dataBR(m.data) },
-          { rotulo: "Talhão", valor: (m) => [m.fazenda, m.talhao].filter(Boolean).join(" · ") || "—" },
+          { rotulo: "Aplicação", valor: (m) => <b>{m.nome || "Sem nome"}</b> },
+          { rotulo: "Talhões", valor: (m) => (m.talhoes.length === 1 ? [m.fazenda, m.talhao].filter(Boolean).join(" · ") : `${m.talhoes.length} talhões · ${numero(m.area_ha)} ha`) },
           { rotulo: "Produtos", valor: (m) => m.itens.map((i) => i.nome).join(", ") },
           { rotulo: "Alvo", valor: (m) => m.alvo || "—" },
           { rotulo: "Situação", valor: (m) => <span className={`selo ${nomes[m.situacao]?.[0] ?? "neutro"}`}>{nomes[m.situacao]?.[1] ?? m.situacao}</span> },

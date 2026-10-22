@@ -510,13 +510,20 @@ export const ESQUEMA = {
     titulo: "Aplicações do agrônomo", singular: "aplicação do agrônomo", icone: "spray",
     descricao: "Receitas montadas pelo agrônomo. Só viram saída de estoque quando você der baixa.",
     campos: {
+      nome: { tipo: "texto", rotulo: "Nome da aplicação", dica: "Ex.: Dessecação do milho" },
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       agronomo: { tipo: "texto", rotulo: "Agrônomo" },
+      // Uma aplicação para vários talhões vira um registro por talhão; todos levam o mesmo grupo.
+      grupo_id: { tipo: "texto", rotulo: "Grupo da aplicação", somenteLeitura: true },
       cultura_id: refCultura,
       talhao_id: { ...refTalhao, obrigatorio: true },
       area_ha: { tipo: "numero", rotulo: "Área a aplicar (ha)", casas: 2 },
       alvo: { tipo: "texto", rotulo: "Alvo (praga, doença, planta daninha)" },
       calda_l_ha: { tipo: "numero", rotulo: "Calda (L/ha)", casas: 1 },
+      // Como o agrônomo passou a dose: por hectare ou por pipa (tanque cheio do pulverizador).
+      dose_por: { tipo: "opcoes", rotulo: "Dose por", padrao: "ha", opcoes: [["ha", "Hectare (ha)"], ["pipa", "Pipa (tanque)"]] },
+      ha_por_pipa: { tipo: "numero", rotulo: "Quantos ha uma pipa faz", casas: 2 },
+      // [{ insumo_id, nome, fabricante, principio_ativo, unidade, dose_ha, dose_pipa?, total }]
       itens: { tipo: "itens", rotulo: "Produtos" },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
       situacao: {
@@ -525,7 +532,7 @@ export const ESQUEMA = {
       },
       link_id: { tipo: "ref", colecao: "links_agronomo", rotulo: "Link usado" },
     },
-    colunas: ["data", "agronomo", "talhao_id", "alvo", "situacao"],
+    colunas: ["nome", "data", "agronomo", "talhao_id", "alvo", "situacao"],
   },
 
   // ─── Lançamentos ──────────────────────────────────────────────────────────

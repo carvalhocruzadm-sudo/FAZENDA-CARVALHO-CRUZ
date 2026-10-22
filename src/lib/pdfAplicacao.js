@@ -6,11 +6,11 @@
 
 import { data as dataBR, numero } from "./formato";
 
-const SITUACOES = { nova: "Nova", aprovada: "Aprovada", aplicada: "Aplicada", cancelada: "Cancelada" };
+const SITUACOES = { nova: "Nova", aprovada: "Aprovada", aplicada: "Aplicada", parcial: "Parte aplicada", cancelada: "Cancelada" };
 
 /**
- * @param {object} a  { data, agronomo, talhao, fazenda, cultura, area_ha, alvo, calda_l_ha, observacao, situacao,
- *                      itens: [{ nome, fabricante, principio_ativo, unidade, dose_ha, total }],
+ * @param {object} a  { nome, data, agronomo, talhao, fazenda, cultura, area_ha, alvo, calda_l_ha, dose_por, ha_por_pipa, observacao, situacao,
+ *                      itens: [{ nome, fabricante, principio_ativo, unidade, dose_ha, dose_pipa?, total }],
  *                      talhoes?: [{ fazenda, talhao, area_ha }] (quando a aplicação vale para vários talhões) }
  */
 export async function gerarPdfAplicacao(a, nomeArquivo) {
@@ -29,7 +29,9 @@ export async function gerarPdfAplicacao(a, nomeArquivo) {
   if (a.situacao) doc.text(SITUACOES[a.situacao] ?? a.situacao, largura - 14, 18, { align: "right" });
 
   doc.setTextColor(40, 40, 35);
+  const pipa = a.dose_por === "pipa";
   const linhas = [
+    ...(a.nome ? [["Aplicação", a.nome]] : []),
     ["Data", dataBR(a.data)],
     ["Agrônomo", a.agronomo || "-"],
     ["Fazenda / talhão", [a.fazenda, a.talhao].filter(Boolean).join(" / ") || "-"],
@@ -37,6 +39,9 @@ export async function gerarPdfAplicacao(a, nomeArquivo) {
     ["Área a aplicar", a.area_ha ? `${numero(a.area_ha)} ha${a.talhoes?.length > 1 ? ` (${a.talhoes.length} talhões)` : ""}` : "-"],
     ["Alvo", a.alvo || "-"],
     ["Calda", a.calda_l_ha ? `${numero(a.calda_l_ha, 1)} L/ha` : "-"],
+    ["Dose por", pipa
+      ? `Pipa (tanque cheio) · ${numero(a.ha_por_pipa, 2)} ha por pipa${a.area_ha && a.ha_por_pipa ? ` · ${numero(a.area_ha / a.ha_por_pipa, 1)} pipas` : ""}`
+      : "Hectare (ha)"],
   ];
   autoTable(doc, {
     startY: 30,
@@ -61,17 +66,20 @@ export async function gerarPdfAplicacao(a, nomeArquivo) {
 
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 6,
-    head: [["Produto", "Fabricante", "Princípio ativo", "Dose/ha", "Total"]],
+    head: [["Produto", "Fabricante", "Princípio ativo", ...(pipa ? ["Dose/pipa"] : []), "Dose/ha", "Total"]],
     body: a.itens.map((i) => [
       i.nome,
       i.fabricante || "-",
       i.principio_ativo || "-",
+      ...(pipa ? [i.dose_pipa != null ? `${numero(i.dose_pipa, 3)} ${i.unidade}` : "-"] : []),
       `${numero(i.dose_ha, 3)} ${i.unidade}`,
       `${numero(i.total, 2)} ${i.unidade}`,
     ]),
     headStyles: { fillColor: verde },
     styles: { fontSize: 9.5, cellPadding: 2 },
-    columnStyles: { 3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" } },
+    columnStyles: pipa
+      ? { 3: { halign: "right", fontStyle: "bold" }, 4: { halign: "right" }, 5: { halign: "right", fontStyle: "bold" } }
+      : { 3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" } },
   });
 
   let y = doc.lastAutoTable.finalY + 8;

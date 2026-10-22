@@ -16,6 +16,7 @@ import { baixarCSV, brl, data, exibir, leitura, nomeRef, numero } from "../lib/f
 import { compradoresDoBling, textoDoArquivo } from "../lib/importarCompradores";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 import { principioDe } from "../lib/principiosAtivos";
+import { contarNovas } from "../lib/recomendacoes";
 import { supabase } from "../lib/supabase";
 import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
 import TurmasSemana from "./TurmasSemana";
@@ -654,7 +655,7 @@ function ProdutosQuimicos(props) {
 }
 
 export function Quimicos(props) {
-  const novas = props.dados.recomendacoes.filter((r) => r.situacao === "nova").length;
+  const novas = contarNovas(props.dados.recomendacoes);
   return (
     <Secao props={props} abas={[
       ["estoque", "Estoque", EstoqueQuimicos],
