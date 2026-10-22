@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
 
+import { lerCodigoDaFoto } from "../lib/codigos";
 import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
 import ConsultaProduto from "./ConsultaProduto";
 import { Icone } from "./ui";
@@ -16,12 +17,12 @@ function sugestoesDoCampo(campo, dados) {
 }
 
 /** Reduz a foto (lado maior 1000 px, JPEG) para caber no registro e sincronizar rápido. */
-function reduzirFoto(arquivo) {
+function reduzirFoto(arquivo, ladoMaior = 1000) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(arquivo);
     const img = new Image();
     img.onload = () => {
-      const escala = Math.min(1, 1000 / Math.max(img.width, img.height));
+      const escala = Math.min(1, ladoMaior / Math.max(img.width, img.height));
       const tela = document.createElement("canvas");
       tela.width = Math.round(img.width * escala);
       tela.height = Math.round(img.height * escala);
@@ -36,19 +37,30 @@ function reduzirFoto(arquivo) {
 
 const MAX_FOTOS = 6;
 
-function Fotos({ valor, aoMudar }) {
+/** `aoLerCodigo` recebe os números do código de barras achado numa foto nova (nota, boleto). */
+function Fotos({ valor, aoMudar, ladoMaior, tamanhosCodigo, aoLerCodigo }) {
   const fotos = valor ?? [];
   const [erro, setErro] = useState(null);
+  const [lendo, setLendo] = useState(false);
 
   const adicionar = async (e) => {
     const arquivos = [...e.target.files].slice(0, MAX_FOTOS - fotos.length);
     e.target.value = "";
     try {
-      const novas = await Promise.all(arquivos.map(reduzirFoto));
+      const novas = await Promise.all(arquivos.map((a) => reduzirFoto(a, ladoMaior)));
       setErro(null);
       aoMudar([...fotos, ...novas]);
+      if (aoLerCodigo) {
+        setLendo(true);
+        for (const f of novas) {
+          const codigo = await lerCodigoDaFoto(f, tamanhosCodigo);
+          if (codigo) { aoLerCodigo(codigo); break; }
+        }
+        setLendo(false);
+      }
     } catch (err) {
       setErro(err.message);
+      setLendo(false);
     }
   };
 
@@ -56,7 +68,7 @@ function Fotos({ valor, aoMudar }) {
     <div className="fotos">
       {fotos.map((f, i) => (
         <div key={i} className="foto">
-          <a href={f} target="_blank" rel="noreferrer"><img src={f} alt={`Foto ${i + 1} do rótulo`} /></a>
+          <a href={f} target="_blank" rel="noreferrer"><img src={f} alt={`Foto ${i + 1}`} /></a>
           <button type="button" className="btn icone perigo" aria-label="Remover foto" onClick={() => aoMudar(fotos.filter((_, j) => j !== i))}>
             <Icone nome="lixo" tamanho={14} />
           </button>
@@ -68,6 +80,7 @@ function Fotos({ valor, aoMudar }) {
           <input type="file" accept="image/*" multiple hidden onChange={adicionar} />
         </label>
       )}
+      {lendo && <small>Procurando o código de barras…</small>}
       {erro && <small className="negativo">{erro}</small>}
     </div>
   );
@@ -94,9 +107,14 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
     case "textoLongo":
       controle = <textarea id={id} rows={2} value={valor ?? ""} onChange={(e) => set(e.target.value)} />;
       break;
-    case "fotos":
-      controle = <Fotos valor={valor} aoMudar={set} />;
+    case "fotos": {
+      const [alvo, tamanhos] = campo.lerCodigo ?? [];
+      controle = (
+        <Fotos valor={valor} aoMudar={set} ladoMaior={campo.ladoMaior} tamanhosCodigo={tamanhos}
+          aoLerCodigo={alvo && !reg[alvo] ? (codigo) => aoMudar(alvo, codigo) : undefined} />
+      );
       break;
+    }
     case "numero":
     case "dinheiro":
       controle = (
@@ -154,9 +172,10 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
 /**
  * Formulário gerado do esquema. `reg` é o rascunho; cada mudança passa pelos
  * `aoMudar` do esquema (que completam outros campos) e os campos calculados
- * são refeitos para aparecer já preenchidos.
+ * são refeitos para aparecer já preenchidos. `ocultar` esconde campos que a
+ * tela que usa o formulário preenche sozinha.
  */
-export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
+export default function Formulario({ colecao, reg, setReg, dados, contexto, ocultar }) {
   const def = ESQUEMA[colecao];
 
   const aoMudar = (chave, v) => {
@@ -168,7 +187,7 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto }) {
     });
   };
 
-  const campos = useMemo(() => Object.entries(def.campos), [def]);
+  const campos = useMemo(() => Object.entries(def.campos).filter(([k, c]) => !c.oculto && !ocultar?.includes(k)), [def, ocultar]);
 
   return (
     <div className="form">

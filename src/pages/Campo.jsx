@@ -9,7 +9,8 @@ import { gravarPessoaCampo, lerPessoaCampo } from "../lib/aparelho";
  * Celular de campo: o aparelho do motorista ou do tratorista. Não tem login —
  * o administrador entra uma vez, liga o "modo campo" e daí em diante quem pega
  * o celular só toca no próprio nome. Tudo o que for lançado já sai com o nome
- * dele (operador / motorista).
+ * dele (operador / motorista). Também é por aqui que se avisa que chegou
+ * produto, com as fotos da nota e do boleto, para o escritório aprovar.
  */
 
 const DO_CAMPO = /tratorista|motorista|operador/i;
@@ -81,6 +82,10 @@ export default function Campo({ indicador, sair }) {
     if (ehMotorista(pessoa)) {
       lista.push(["fretes", "Fretes", { colecao: "fretes", filtro: (r) => r.motorista_id === pessoa.id, padrao: { motorista_id: pessoa.id } }]);
     }
+    // Chegou produto: o operador fotografa e o escritório aprova e lança no estoque.
+    lista.push(["produtos", "Chegou produto", {
+      colecao: "solicitacoes_produto", filtro: doOperador, padrao: { operador_id: pessoa.id }, periodoInicial: "tudo",
+    }]);
     return lista;
   }, [pessoa]);
 

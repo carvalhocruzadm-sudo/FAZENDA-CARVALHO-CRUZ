@@ -52,6 +52,13 @@ export default function Painel({ dados, irPara }) {
       else if (x.baixo) alertas.push({ tipo: "atencao", texto: `${x.insumo.nome}: estoque baixo (${numero(x.saldo)} ${x.insumo.unidade})`, ir: "quimicos" });
     }
     if (tanque.litrosEntrada && tanque.saldo < 0) alertas.push({ tipo: "ruim", texto: `Tanque de diesel negativo (${numero(tanque.saldo, 0)} L) — falta lançar compra`, ir: "diesel" });
+    const pendentes = dados.solicitacoes_produto.filter((x) => x.situacao === "pendente").length;
+    if (pendentes) alertas.unshift({ tipo: "atencao", texto: `${pendentes} ${pendentes === 1 ? "entrada de produto esperando" : "entradas de produto esperando"} sua aprovação`, ir: "quimicos" });
+    for (const e of dados.insumo_entradas.filter((x) => x.pago === false && x.vencimento)) {
+      const texto = `boleto de ${nomeRef(dados, "insumos", e.insumo_id)}${e.fornecedor ? ` (${e.fornecedor})` : ""} — ${brl(e.valor)}`;
+      if (e.vencimento < hojeIso) alertas.push({ tipo: "ruim", texto: `Vencido ${data(e.vencimento)}: ${texto}`, ir: "quimicos" });
+      else if (e.vencimento <= em7) alertas.push({ tipo: "atencao", texto: `Vence ${data(e.vencimento)}: ${texto}`, ir: "quimicos" });
+    }
     for (const d of dados.despesas.filter((x) => !x.pago && x.vencimento)) {
       if (d.vencimento < hojeIso) alertas.push({ tipo: "ruim", texto: `Conta vencida ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
       else if (d.vencimento <= em7) alertas.push({ tipo: "atencao", texto: `Vence ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });

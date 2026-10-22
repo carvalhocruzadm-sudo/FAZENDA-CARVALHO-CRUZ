@@ -251,10 +251,43 @@ alter table public.insumo_entradas add column if not exists cultura_id uuid;
 alter table public.insumo_entradas add column if not exists fornecedor text;
 alter table public.insumo_entradas add column if not exists nota text;
 alter table public.insumo_entradas add column if not exists lote text;
+alter table public.insumo_entradas add column if not exists fotos_nota jsonb;
+alter table public.insumo_entradas add column if not exists chave_nfe text;
+alter table public.insumo_entradas add column if not exists fotos_boleto jsonb;
+alter table public.insumo_entradas add column if not exists codigo_boleto text;
+alter table public.insumo_entradas add column if not exists vencimento date;
+alter table public.insumo_entradas add column if not exists pago boolean;
 create index if not exists insumo_entradas_data_idx on public.insumo_entradas (data);
 alter table public.insumo_entradas enable row level security;
 drop policy if exists "equipe acessa insumo_entradas" on public.insumo_entradas;
 create policy "equipe acessa insumo_entradas" on public.insumo_entradas
+  for all to authenticated using (true) with check (true);
+
+-- Entradas de produto para aprovar
+create table if not exists public.solicitacoes_produto (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.solicitacoes_produto add column if not exists data date;
+alter table public.solicitacoes_produto add column if not exists operador_id uuid;
+alter table public.solicitacoes_produto add column if not exists insumo_id uuid;
+alter table public.solicitacoes_produto add column if not exists produto text;
+alter table public.solicitacoes_produto add column if not exists quantidade numeric;
+alter table public.solicitacoes_produto add column if not exists unidade text;
+alter table public.solicitacoes_produto add column if not exists fotos_produto jsonb;
+alter table public.solicitacoes_produto add column if not exists fotos_nota jsonb;
+alter table public.solicitacoes_produto add column if not exists chave_nfe text;
+alter table public.solicitacoes_produto add column if not exists fotos_boleto jsonb;
+alter table public.solicitacoes_produto add column if not exists codigo_boleto text;
+alter table public.solicitacoes_produto add column if not exists observacao text;
+alter table public.solicitacoes_produto add column if not exists situacao text;
+alter table public.solicitacoes_produto add column if not exists resposta text;
+alter table public.solicitacoes_produto add column if not exists entrada_id text;
+create index if not exists solicitacoes_produto_data_idx on public.solicitacoes_produto (data);
+alter table public.solicitacoes_produto enable row level security;
+drop policy if exists "equipe acessa solicitacoes_produto" on public.solicitacoes_produto;
+create policy "equipe acessa solicitacoes_produto" on public.solicitacoes_produto
   for all to authenticated using (true) with check (true);
 
 -- Aplicações / saídas
