@@ -8,7 +8,7 @@ import OrdensPulverizacao from "../components/OrdensPulverizacao";
 import PainelTickets from "../components/PainelTickets";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
-  PERIODOS, aReceber, consumoPorMaquina, custos, detalhesAbastecimentos, diesel, entradasDoPeriodo, estoqueInsumos,
+  PERIODOS, aPagarProprietarios, aReceber, consumoPorMaquina, custos, detalhesAbastecimentos, diesel, entradasDoPeriodo, estoqueInsumos,
   GRUPOS_PLANEJAMENTO, lancamentosPorLocal, noPeriodo, resumoChuva, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma, totaisLocal,
 } from "../lib/calculos";
 import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
@@ -700,6 +700,36 @@ function AReceber({ dados }) {
   );
 }
 
+function APagarProprietarios({ dados }) {
+  const lista = aPagarProprietarios(dados);
+  const semPreco = soma(lista, (x) => x.semPreco);
+  return (
+    <div className="cartao">
+      <p className="descricao">
+        Laranja de terceiros, por proprietário: o valor da compra das cargas (peso × valor pago por tonelada) menos
+        o que já foi pago em Despesas → Compra de laranja. A carga não entra nas despesas; só o pagamento entra.
+        Para o pagamento abater aqui, o Favorecido tem que ter o mesmo nome do proprietário da carga.
+      </p>
+      {semPreco > 0 && (
+        <div className="aviso info">{semPreco} carga(s) sem o valor pago por tonelada: abra em Cargas vendidas e preencha para entrar na conta.</div>
+      )}
+      <TabelaSimples
+        vazio="Nenhuma carga de laranja de terceiros lançada."
+        linhas={lista.map((x) => ({ ...x, id: x.proprietario }))}
+        colunas={[
+          { rotulo: "Proprietário", valor: (x) => x.proprietario || "— (sem proprietário na carga)" },
+          { rotulo: "Cargas", num: true, valor: (x) => x.cargas },
+          { rotulo: "Peso (t)", num: true, valor: (x) => numero(x.peso / 1000, 2) },
+          { rotulo: "Comprado", num: true, valor: (x) => brl(x.comprado) },
+          { rotulo: "Pago", num: true, valor: (x) => brl(x.pago) },
+          { rotulo: "Falta pagar", num: true, valor: (x) => <b className={x.saldo > 0.009 ? "negativo" : "positivo"}>{brl(x.saldo)}</b> },
+        ]}
+        rodape={["Total", soma(lista, (x) => x.cargas), numero(soma(lista, (x) => x.peso) / 1000, 2), brl(soma(lista, (x) => x.comprado)), brl(soma(lista, (x) => x.pago)), brl(soma(lista, (x) => x.saldo))]}
+      />
+    </div>
+  );
+}
+
 function VendasPorCultura({ dados }) {
   const [periodo, setPeriodo] = useState("ano");
   const vendas = noPeriodo(dados.vendas, periodo);
@@ -782,6 +812,7 @@ export function Vendas(props) {
       ["tickets", "Tickets por dia", TicketsPorDia],
       ["recebimentos", "Recebimentos"],
       ["areceber", "A receber", AReceber],
+      ["apagar", "A pagar (laranja de terceiros)", APagarProprietarios],
       ["resumo", "Resumo por cultura", VendasPorCultura],
       ["notas", "Notas fiscais (Bling)", NotasFiscais],
       ["compradores", "Compradores", Compradores],

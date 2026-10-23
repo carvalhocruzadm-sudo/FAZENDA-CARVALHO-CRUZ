@@ -3,7 +3,7 @@
  * Assim um lançamento corrigido corrige na hora o saldo, o custo e o alerta.
  */
 
-import { kgPorUnidade } from "./esquema";
+import { LARANJA_TERCEIROS, kgPorUnidade } from "./esquema";
 
 const n = (v) => Number(v) || 0;
 const soma = (lista, f) => lista.reduce((t, x) => t + n(f(x)), 0);
@@ -335,6 +335,29 @@ export function aReceber(dados) {
   for (const v of dados.vendas) { const x = obter(v.comprador); x.vendido += n(v.valor); x.cargas++; }
   for (const r of dados.recebimentos) obter(r.comprador).recebido += n(r.valor);
   return [...mapa.values()].map((x) => ({ ...x, saldo: x.vendido - x.recebido })).sort((a, b) => b.saldo - a.saldo);
+}
+
+/**
+ * Quanto se deve a cada proprietário de laranja de terceiros: o valor da
+ * compra das cargas (peso × valor pago por tonelada, só informativo na venda)
+ * menos os pagamentos lançados em Despesas → Compra de laranja com ele no
+ * Favorecido. O custo entra no caixa uma vez só, pelo pagamento.
+ */
+export function aPagarProprietarios(dados) {
+  const mapa = new Map();
+  const chave = (nome) => String(nome || "").trim().toUpperCase();
+  const obter = (nome) => {
+    const k = chave(nome);
+    if (!mapa.has(k)) mapa.set(k, { proprietario: String(nome || "").trim(), comprado: 0, pago: 0, cargas: 0, peso: 0, semPreco: 0 });
+    return mapa.get(k);
+  };
+  for (const v of dados.vendas.filter((x) => x.cultura_id === LARANJA_TERCEIROS)) {
+    const x = obter(v.proprietario);
+    x.comprado += n(v.valor_compra); x.peso += n(v.peso_liquido); x.cargas++;
+    if (v.valor_compra == null) x.semPreco++;
+  }
+  for (const d of dados.despesas.filter((x) => x.categoria === "Compra de laranja" && x.pago !== false)) obter(d.favorecido).pago += n(d.valor);
+  return [...mapa.values()].map((x) => ({ ...x, saldo: x.comprado - x.pago })).sort((a, b) => b.saldo - a.saldo);
 }
 
 /** Fretes do caminhão: faturamento, diesel e custos por caminhão. */
