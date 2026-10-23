@@ -407,7 +407,8 @@ export function Entrada({ dados, salvar, irPara }) {
             <span>{boleto ? `Código lido${boleto.valor ? ` · ${brl(boleto.valor)}` : ""}${boleto.vencimento ? ` · vence ${dataBR(boleto.vencimento)}` : ""}` : "Ler o código de barras do boleto"}</span>
           </button>
           {lendoBoleto && (
-            <LeitorBoleto aoFechar={() => setLendoBoleto(false)}
+            <LeitorBoleto dados={dados} aoFechar={() => setLendoBoleto(false)}
+              aoRepetido={() => falar("Atenção! Este boleto já foi lançado. Confira para não pagar duas vezes.")}
               aoLer={(lido) => { setBoleto(lido); setLendoBoleto(false); vibrar([60, 40, 60]); falar("Código do boleto lido."); }} />
           )}
         </Tela>

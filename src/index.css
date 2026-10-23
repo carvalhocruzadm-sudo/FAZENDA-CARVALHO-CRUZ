@@ -598,3 +598,7 @@ img.ampliavel { cursor: zoom-in; }
   .cal-dia.ruim { background: var(--vermelho-pale); color: var(--vermelho); }
   .cal-dia.ok { background: var(--verde-pale); color: var(--verde); }
 }
+.leitor-zoom { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; font-weight: 600; color: var(--texto-2); }
+.leitor-zoom input { flex: 1; accent-color: var(--verde); }
+.aviso.repetido { display: flex; flex-direction: column; gap: 4px; margin: 0; border: 2px solid var(--vermelho); font-size: 14px; }
+.aviso.repetido b { font-size: 16px; }

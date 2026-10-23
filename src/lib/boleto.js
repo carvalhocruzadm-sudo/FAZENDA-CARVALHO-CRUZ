@@ -159,3 +159,27 @@ export function formatarLinha(linha) {
   if (d.length === 48) return [0, 1, 2, 3].map((b) => `${d.slice(b * 12, b * 12 + 11)}-${d[b * 12 + 11]}`).join(" ");
   return linha;
 }
+
+const moedaBR = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const dataBR = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "sem data");
+
+/**
+ * O mesmo boleto já foi lançado? Procura o código na programação de
+ * pagamentos e nas entradas do depósito que ainda esperam aprovação.
+ * Devolve uma frase dizendo onde está (ou null). `ignorar`: o próprio
+ * registro que está sendo editado ({ boleto, entrada }); `soBoletos` olha só
+ * a programação (a entrada do depósito vira boleto justamente ao aprovar).
+ */
+export function boletoJaLancado(dados, linha, ignorar = {}, soBoletos = false) {
+  const d = soDigitos(linha);
+  if (!d || !dados) return null;
+  const b = (dados.boletos ?? []).find((x) => x.id !== ignorar.boleto && soDigitos(x.linha_digitavel) === d);
+  if (b) {
+    const situacao = b.pago ? `já PAGO${b.data_pagamento ? ` em ${dataBR(b.data_pagamento)}` : ""}` : "ainda a pagar";
+    return `já está na Programação de pagamentos: ${b.empresa || "sem empresa"}, ${moedaBR.format(Number(b.valor) || 0)}, vence ${dataBR(b.vencimento)} — ${situacao}.`;
+  }
+  if (soBoletos) return null;
+  const e = (dados.insumo_entradas ?? []).find((x) => x.id !== ignorar.entrada && !x.boleto_id && soDigitos(x.linha_digitavel) === d);
+  if (e) return `já foi lançado no depósito em ${dataBR(e.data)}${e.a_conferir ? ", esperando aprovação no escritório" : ""}.`;
+  return null;
+}
