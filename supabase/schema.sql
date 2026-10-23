@@ -672,7 +672,9 @@ alter table public.boletos add column if not exists chave_pix text;
 alter table public.boletos add column if not exists pago boolean;
 alter table public.boletos add column if not exists data_pagamento date;
 alter table public.boletos add column if not exists fotos jsonb;
+alter table public.boletos add column if not exists foto text;
 alter table public.boletos add column if not exists observacao text;
+alter table public.boletos add column if not exists a_conferir boolean;
 alter table public.boletos add column if not exists despesa_id text;
 alter table public.boletos enable row level security;
 drop policy if exists "equipe acessa boletos" on public.boletos;
@@ -681,6 +683,12 @@ create policy "equipe acessa boletos" on public.boletos
 drop policy if exists "campo le boletos" on public.boletos;
 drop policy if exists "campo lanca boletos" on public.boletos;
 drop policy if exists "campo corrige boletos" on public.boletos;
+create policy "campo le boletos" on public.boletos
+  for select to authenticated using ((select public.eh_campo()) and a_conferir = true);
+create policy "campo lanca boletos" on public.boletos
+  for insert to authenticated with check ((select public.eh_campo()) and a_conferir = true and (select public.acesso_campo()) is distinct from 'ticket');
+create policy "campo corrige boletos" on public.boletos
+  for update to authenticated using ((select public.eh_campo()) and a_conferir = true and (select public.acesso_campo()) is distinct from 'ticket') with check ((select public.eh_campo()) and a_conferir = true and (select public.acesso_campo()) is distinct from 'ticket');
 
 -- Outras entradas
 create table if not exists public.entradas (

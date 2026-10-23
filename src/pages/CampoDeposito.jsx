@@ -11,6 +11,7 @@ import {
 } from "../lib/deposito";
 import { hoje, prepararRegistro } from "../lib/esquema";
 import { nomesTalhoesDaOrdem, talhoesDaOrdem } from "../lib/talhoes";
+import { formatarLinha } from "../lib/boleto";
 import { brl, data as dataBR, nomeRef, numero } from "../lib/formato";
 
 /**
@@ -262,6 +263,7 @@ export function Entrada({ dados, salvar, irPara }) {
   const [fotoBoleto, setFotoBoleto] = useState(null);
   const [boleto, setBoleto] = useState(null);
   const [lendoBoleto, setLendoBoleto] = useState(false);
+  const [empresaBoleto, setEmpresaBoleto] = useState("");
 
   // O produto novo vira um "produto" de mentira só para as telas (nome, unidade, sem embalagem).
   const insumo = novo
@@ -271,6 +273,28 @@ export function Entrada({ dados, salvar, irPara }) {
   const quantidade = typeof qtd === "number" ? qtd : paraNumero(qtd);
   const ir = (p) => { setAviso(null); setPasso(p); window.scrollTo(0, 0); };
   const escolherProduto = (id) => { setNovo(false); setInsumoId(id); setQtd(""); ir("quantidade"); };
+
+  /**
+   * Boleto lido no depósito: já entra na Programação de pagamentos (marcado
+   * "falta conferir"), para o vencimento aparecer no escritório na hora. Sem
+   * vencimento no código (conta de consumo) fica só na entrada, para o escritório.
+   */
+  const lancarBoleto = async () => {
+    if (!boleto?.vencimento) return null;
+    const digitos = (t) => String(t ?? "").replace(/\D/g, "");
+    const repetido = dados.boletos.find((b) => digitos(b.linha_digitavel) === digitos(boleto.linha_digitavel));
+    if (repetido) return repetido.id;
+    const operador = dados.funcionarios.find((f) => f.id === operadorId);
+    const { reg, erro } = prepararRegistro("boletos", {
+      empresa: empresaBoleto.trim() || "A conferir (lido no depósito)",
+      descricao: `Compra de ${insumo.nome} — chegou no depósito`,
+      valor: boleto.valor, vencimento: boleto.vencimento, forma_pagamento: "Boleto", categoria: "Produtos químicos",
+      linha_digitavel: formatarLinha(boleto.linha_digitavel), banco: boleto.banco, pago: false, a_conferir: true, foto: fotoBoleto,
+      observacao: `Lido no depósito por ${operador?.nome ?? "operador"} em ${dataBR(hoje())}. A compra entra no estoque pela aprovação: ao pagar, não precisa lançar de novo em Despesas.`,
+    }, dados);
+    if (erro) throw new Error(`Boleto: ${erro}`);
+    return (await salvar("boletos", reg)).id;
+  };
 
   const gravar = async () => {
     setSalvando(true);
@@ -287,6 +311,8 @@ export function Entrada({ dados, salvar, irPara }) {
       const regs = brutos.map((b) => prepararRegistro(colecao, b));
       const erro = regs.find((x) => x.erro)?.erro;
       if (erro) throw new Error(erro);
+      // A entrada já conferida; agora o boleto, para ela guardar qual pagamento é o dela.
+      if (tipo === "compra") regs[0].reg.boleto_id = await lancarBoleto();
       for (const { reg } of regs) await salvar(colecao, reg);
       vibrar([60, 60, 120]);
       ir(tipo === "compra" ? "pronto" : "mais");
@@ -409,7 +435,19 @@ export function Entrada({ dados, salvar, irPara }) {
           {lendoBoleto && (
             <LeitorBoleto dados={dados} aoFechar={() => setLendoBoleto(false)}
               aoRepetido={() => falar("Atenção! Este boleto já foi lançado. Confira para não pagar duas vezes.")}
-              aoLer={(lido) => { setBoleto(lido); setLendoBoleto(false); vibrar([60, 40, 60]); falar("Código do boleto lido."); }} />
+              aoLer={(lido) => { setBoleto(lido); setLendoBoleto(false); vibrar([60, 40, 60]); falar("Código do boleto lido. Ele vai direto para a programação de pagamentos."); }} />
+          )}
+          {boleto && (
+            <>
+              <Pergunta figura="🏢">De quem é o boleto?</Pergunta>
+              <input className="campo-texto" value={empresaBoleto} onChange={(e) => setEmpresaBoleto(e.target.value)}
+                placeholder="Nome da loja / empresa (se souber)" autoComplete="off" />
+              <p className="dica-anterior">
+                {boleto.vencimento
+                  ? "Ao enviar, o boleto já entra na Programação de pagamentos do escritório."
+                  : "Este código não tem vencimento: o escritório lança o pagamento."}
+              </p>
+            </>
           )}
         </Tela>
       );
