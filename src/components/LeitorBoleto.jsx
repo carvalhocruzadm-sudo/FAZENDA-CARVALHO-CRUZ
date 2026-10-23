@@ -98,6 +98,18 @@ async function criarDecodificador() {
   };
 }
 
+/** O quadro da câmera na hora da leitura, em JPEG (serve para a IA ler o nome do beneficiário). */
+function fotoDoVideo(video) {
+  return new Promise((resolve) => {
+    const tela = document.createElement("canvas");
+    tela.width = video.videoWidth;
+    tela.height = video.videoHeight;
+    if (!tela.width) { resolve(null); return; }
+    tela.getContext("2d").drawImage(video, 0, 0);
+    tela.toBlob(resolve, "image/jpeg", 0.85);
+  });
+}
+
 /** Primeiro código lido que é um boleto válido (os dígitos verificadores barram leitura errada). */
 function boletoValido(codigos) {
   for (const c of codigos) {
@@ -118,7 +130,9 @@ function abrirImagem(arquivo) {
 
 /**
  * Janela de leitura do boleto: câmera ao vivo, foto do código de barras ou
- * linha digitável digitada/colada. Chama `aoLer` com o que entendeu do código.
+ * linha digitável digitada/colada. Chama `aoLer(lido, { foto })` com o que
+ * entendeu do código e, quando leu por imagem, a foto (para ler o nome do
+ * beneficiário, que o código não traz).
  * Com `dados`, avisa (e para de ler) quando o boleto já foi lançado;
  * `aoRepetido` é chamado nessa hora (o Modo Campo fala o aviso em voz alta).
  */
@@ -148,13 +162,13 @@ export default function LeitorBoleto({ aoLer, aoFechar, dados, ignorar, aoRepeti
   const pausado = useRef(false);
 
   // Todo código lido passa por aqui: repetido mostra o aviso, novo segue.
-  const receber = (lido) => {
+  const receber = (lido, foto = null) => {
     const onde = boletoJaLancado(dados, lido.linha_digitavel, ignorar);
-    if (!onde) { aoLer(lido); return; }
+    if (!onde) { aoLer(lido, { foto }); return; }
     pausado.current = true;
     navigator.vibrate?.([300, 120, 300, 120, 300]);
     aoRepetido?.(onde);
-    setRepetido({ lido, onde });
+    setRepetido({ lido, onde, foto });
   };
   const lerOutro = () => { setRepetido(null); setDigitado(""); pausado.current = false; };
   const receberRef = useRef(receber);
@@ -208,7 +222,7 @@ export default function LeitorBoleto({ aoLer, aoFechar, dados, ignorar, aoRepeti
           const lido = boletoValido(await ler(video.current, [FAIXAS_CAMERA[vez++ % FAIXAS_CAMERA.length]]));
           if (lido && ativo) {
             navigator.vibrate?.(80);
-            receberRef.current(lido);
+            receberRef.current(lido, await fotoDoVideo(video.current).catch(() => null));
             espera = setTimeout(tentar, 300);
             return;
           }
@@ -236,7 +250,7 @@ export default function LeitorBoleto({ aoLer, aoFechar, dados, ignorar, aoRepeti
       const ler = await obterDecodificador();
       const lido = boletoValido(await ler(img, FAIXAS_FOTO));
       URL.revokeObjectURL(img.src);
-      if (lido) receber(lido);
+      if (lido) receber(lido, arquivo);
       else setErro("Não achei o código de barras nessa foto. Tire de perto, com o boleto deitado e as barras bem nítidas — ou digite os números.");
     } catch (err) {
       setErro(err.message);
@@ -260,7 +274,7 @@ export default function LeitorBoleto({ aoLer, aoFechar, dados, ignorar, aoRepeti
             <span>Este boleto {repetido.onde} Confira para não pagar duas vezes.</span>
             <div className="barra" style={{ margin: "6px 0 0" }}>
               <button type="button" className="btn primario" onClick={lerOutro}>Ler outro boleto</button>
-              <button type="button" className="btn" onClick={() => aoLer(repetido.lido)}>Abrir mesmo assim</button>
+              <button type="button" className="btn" onClick={() => aoLer(repetido.lido, { foto: repetido.foto })}>Abrir mesmo assim</button>
             </div>
           </div>
         )}
