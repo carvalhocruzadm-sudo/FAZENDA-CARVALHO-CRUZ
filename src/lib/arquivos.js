@@ -197,6 +197,27 @@ async function lerComIA(origem) {
 }
 
 /**
+ * Quem recebe o boleto (beneficiário), lido da foto pela IA do Google — o
+ * código de barras não traz o nome. Usa a mesma função ler-comprovante.
+ * Devolve { nome, documento }; dá erro sem internet ou se a IA falhar.
+ */
+export async function lerBeneficiarioDoBoleto(blob) {
+  if (!supabaseConfigurado) throw new Error("precisa do Supabase configurado");
+  if (!navigator.onLine) throw new Error("sem internet agora");
+  const pronto = await reduzirParaLeitura(blob);
+  const { data, error } = await supabase.functions.invoke("ler-comprovante", {
+    body: { arquivo: await paraBase64(pronto), tipo: pronto.type || "image/jpeg", pedido: "boleto" },
+  });
+  if (error) {
+    const corpo = await error.context?.json?.().catch(() => null);
+    throw new Error(corpo?.erro ?? error.message);
+  }
+  if (data?.erro) throw new Error(data.erro);
+  const c = data?.comprovante ?? {};
+  return { nome: String(c.favorecido ?? "").trim() || null, documento: String(c.documento ?? "").replace(/\D/g, "") || null };
+}
+
+/**
  * Lê valor, data e favorecido do comprovante (Blob/File). O PDF com texto é
  * lido no próprio aparelho; foto, print, PDF escaneado — ou o que faltou —
  * vão para a IA do Google. Nunca dá erro: o que não leu volta `null`, e

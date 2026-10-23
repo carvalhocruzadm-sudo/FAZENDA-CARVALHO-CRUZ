@@ -3,6 +3,9 @@
 // a IA do Google (Gemini), a mesma chave da função ler-ticket. Só quem está
 // logado no app consegue chamar.
 //
+// Com { pedido: "boleto" } lê a foto de um boleto (ainda não pago) e devolve
+// quem vai receber (o beneficiário) e o documento dele, nas mesmas chaves.
+//
 // Recebe { caminho } (o arquivo já está no bucket "comprovantes": a função
 // baixa direto, sem passar pelo celular — mais rápido no 4G) ou { arquivo, tipo }
 // (base64, para o que ainda está só no aparelho).
@@ -30,6 +33,17 @@ Responda SOMENTE com um JSON, sem texto antes ou depois, com estas chaves:
   "favorecido": nome de QUEM RECEBEU o dinheiro (o destinatário / "Para" / beneficiário / recebedor), nunca quem pagou,
   "documento": CPF ou CNPJ de quem recebeu, se aparecer,
   "tipo": "PIX", "Boleto", "Transferência" ou "Cartão"
+}
+O que não conseguir ler com segurança, deixe null. Não invente.`;
+
+const PEDIDO_BOLETO = `Esta é a foto (ou parte da foto) de um boleto bancário brasileiro, ou de uma conta de luz, água, telefone ou imposto, que a fazenda vai pagar.
+Responda SOMENTE com um JSON, sem texto antes ou depois, com estas chaves:
+{
+  "favorecido": nome de QUEM VAI RECEBER o dinheiro — o campo "Beneficiário" (ou "Cedente") do boleto, ou a empresa da conta. Nunca o "Pagador"/"Sacado" (que é a fazenda) e nunca o nome do banco, a não ser que o próprio banco seja o beneficiário,
+  "documento": CNPJ ou CPF do beneficiário, se aparecer,
+  "valor": valor do documento em reais, como número (R$ 1.234,56 vira 1234.56),
+  "data": "AAAA-MM-DD" (vencimento),
+  "tipo": "Boleto"
 }
 O que não conseguir ler com segurança, deixe null. Não invente.`;
 
@@ -81,7 +95,7 @@ Deno.serve(async (req) => {
       contents: [{
         parts: [
           { inline_data: { mime_type: TIPOS.has(tipo) ? tipo : "image/jpeg", data: arquivo } },
-          { text: PEDIDO },
+          { text: corpo.pedido === "boleto" ? PEDIDO_BOLETO : PEDIDO },
         ],
       }],
       generationConfig: { responseMimeType: "application/json", temperature: 0 },

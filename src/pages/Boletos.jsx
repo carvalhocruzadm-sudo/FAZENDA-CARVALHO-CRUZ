@@ -1,12 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Formulario from "../components/Formulario";
 import LeitorBoleto from "../components/LeitorBoleto";
 import { Icone, Modal, Stat, TabelaSimples } from "../components/ui";
 import { formatarLinha, lerCodigoBoleto } from "../lib/boleto";
+import { lerBeneficiarioDoBoleto } from "../lib/arquivos";
 import { soma } from "../lib/calculos";
 import { CATEGORIAS_DESPESA, prepararRegistro, registroNovo } from "../lib/esquema";
 import { brl, data } from "../lib/formato";
+import { comprimir } from "../lib/fotos";
 import { Secao } from "./Secoes";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -48,12 +50,65 @@ function empresaJaConhecida(boletos, lido) {
   return igual ? { empresa: igual.empresa, categoria: igual.categoria, descricao: igual.descricao } : {};
 }
 
+/** Nome da empresa: o do cadastro de fornecedores quando o CNPJ bate, senão o que a IA leu. */
+function empresaDoBeneficiario(dados, { nome, documento }) {
+  const contato = documento && (dados.contatos ?? []).find((c) => String(c.documento ?? "").replace(/\D/g, "") === documento);
+  return contato ? contato.fantasia || contato.nome : nome;
+}
+
+const paraDataUrl = (blob) => new Promise((resolve) => {
+  const leitor = new FileReader();
+  leitor.onload = () => resolve(leitor.result);
+  leitor.onerror = () => resolve(null);
+  leitor.readAsDataURL(blob);
+});
+
 // ─── Janela de um boleto (incluir, editar, apagar) ──────────────────────────
 
-function EditorBoleto({ inicial, aviso, dados, salvar, remover, aoPagar, aoFechar }) {
+function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoPagar, aoFechar }) {
   const [reg, setReg] = useState(inicial);
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  // Nome do beneficiário lido da foto pela IA (o código de barras não traz).
+  const lerSozinho = Boolean(fotoParaLer && !inicial.empresa);
+  const [lendoNome, setLendoNome] = useState(lerSozinho);
+  const [notaNome, setNotaNome] = useState(null);
+
+  /** Manda a foto para a IA e prepara a foto reduzida para guardar no boleto. */
+  const lerFoto = (blob) => Promise.all([
+    lerBeneficiarioDoBoleto(blob),
+    comprimir(blob, 1000, 0.7).then(paraDataUrl).catch(() => null),
+  ]);
+
+  /** `trocar`: a pessoa pediu (troca o que estiver escrito); sozinho só preenche se estiver vazio. */
+  const aplicar = (trocar) => ([lido, foto]) => {
+    const empresa = lido.nome && empresaDoBeneficiario(dados, lido);
+    setReg((atual) => ({
+      ...atual,
+      ...(empresa && (trocar || !atual.empresa) ? { empresa } : {}),
+      // Guarda a foto no boleto, se ele ainda não tem nenhuma.
+      ...(foto && !atual.fotos?.length ? { fotos: [foto] } : {}),
+    }));
+    setNotaNome(empresa
+      ? ["ok", `Beneficiário lido da foto: ${empresa}${lido.documento ? ` (${lido.documento})` : ""}. Confira.`]
+      : ["info", "Não achei o nome do beneficiário nesta imagem. Tire uma foto do boleto inteiro (botão acima) ou digite a empresa."]);
+  };
+  const falhou = (e) => setNotaNome(["info", `Não consegui ler o nome do beneficiário (${e.message}). Digite a empresa.`]);
+
+  useEffect(() => {
+    // Só na abertura: a foto que veio junto da leitura do código.
+    if (lerSozinho) lerFoto(fotoParaLer).then(aplicar(false), falhou).finally(() => setLendoNome(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fotoEscolhida = (e) => {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!arquivo) return;
+    setLendoNome(true);
+    setNotaNome(null);
+    lerFoto(arquivo).then(aplicar(true), falhou).finally(() => setLendoNome(false));
+  };
 
   const gravar = async () => {
     const { reg: pronto, erro: e } = prepararRegistro("boletos", reg, dados);
@@ -97,6 +152,16 @@ function EditorBoleto({ inicial, aviso, dados, salvar, remover, aoPagar, aoFecha
     >
       {aviso && <div className={`aviso ${aviso[0]}`}>{aviso[1]}</div>}
       {erro && <div className="aviso">{erro}</div>}
+      {(reg.forma_pagamento || "Boleto") === "Boleto" && (
+        <div className="barra">
+          <label className="btn" title="A IA lê o nome de quem recebe (o beneficiário) na foto do boleto">
+            <Icone nome="camera" /> {lendoNome ? "Lendo o beneficiário…" : "Ler o beneficiário pela foto"}
+            <input type="file" accept="image/*,application/pdf" capture="environment" hidden onChange={fotoEscolhida} disabled={lendoNome} />
+          </label>
+          {lendoNome && <small className="descricao" style={{ margin: 0 }}>Lendo o nome do beneficiário na foto…</small>}
+        </div>
+      )}
+      {notaNome && <div className={`aviso ${notaNome[0]}`}>{notaNome[1]}</div>}
       <Formulario colecao="boletos" reg={reg} setReg={setReg} dados={dados} />
     </Modal>
   );
@@ -327,7 +392,7 @@ export default function Boletos(props) {
   const abrir = (b) => setEditando({ reg: { ...b } });
   const novo = () => setEditando({ reg: { ...registroNovo("boletos"), forma_pagamento: "PIX" } });
 
-  const aoLer = (lido) => {
+  const aoLer = (lido, { foto } = {}) => {
     setLendo(false);
     const digitos = soDigitos(lido.linha_digitavel);
     const repetido = dados.boletos.find((b) => soDigitos(b.linha_digitavel) === digitos);
@@ -337,13 +402,14 @@ export default function Boletos(props) {
     }
     const conhecida = empresaJaConhecida(dados.boletos, lido);
     setEditando({
+      fotoParaLer: foto,
       reg: {
         ...registroNovo("boletos"), ...conhecida,
         linha_digitavel: formatarLinha(lido.linha_digitavel), banco: lido.banco,
         valor: lido.valor, vencimento: lido.vencimento,
       },
       aviso: ["ok", `Boleto lido: ${lido.valor ? brl(lido.valor) : "sem valor no código"}${lido.vencimento ? `, vence ${data(lido.vencimento)}` : " — digite o vencimento"}. `
-        + (conhecida.empresa ? "Empresa repetida do último boleto igual; confira." : "Agora preencha a empresa.")],
+        + (conhecida.empresa ? "Empresa repetida do último boleto igual; confira." : foto ? "" : "Agora preencha a empresa (ou leia o beneficiário pela foto).")],
     });
   };
 
@@ -374,7 +440,7 @@ export default function Boletos(props) {
 
       {lendo && <LeitorBoleto dados={dados} aoLer={aoLer} aoFechar={() => setLendo(false)} />}
       {editando && (
-        <EditorBoleto key={editando.reg.id ?? "novo"} inicial={editando.reg} aviso={editando.aviso} dados={dados}
+        <EditorBoleto key={editando.reg.id ?? "novo"} inicial={editando.reg} aviso={editando.aviso} fotoParaLer={editando.fotoParaLer} dados={dados}
           salvar={salvar} remover={remover} aoFechar={() => setEditando(null)}
           aoPagar={(b) => { setEditando(null); setPagando(b); }} />
       )}
