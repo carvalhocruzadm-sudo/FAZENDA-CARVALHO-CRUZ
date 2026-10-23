@@ -58,6 +58,11 @@ function EditorBoleto({ inicial, aviso, dados, salvar, remover, aoPagar, aoFecha
   const gravar = async () => {
     const { reg: pronto, erro: e } = prepararRegistro("boletos", reg, dados);
     if (e) { setErro(e); return; }
+    // Sem código não dá para ter certeza: mesma empresa, valor e vencimento pede confirmação.
+    const nome = (t) => String(t ?? "").trim().toLowerCase();
+    const parecido = dados.boletos.find((b) => b.id !== pronto.id && nome(b.empresa) === nome(pronto.empresa)
+      && Number(b.valor) === Number(pronto.valor) && b.vencimento === pronto.vencimento);
+    if (parecido && !window.confirm(`Atenção: já existe um pagamento para ${parecido.empresa}, de ${brl(parecido.valor)}, vencendo em ${data(parecido.vencimento)}${parecido.pago ? " (já PAGO)" : ""}.\n\nÉ outro pagamento mesmo? Toque em OK para salvar assim mesmo.`)) return;
     setSalvando(true);
     try {
       await salvar("boletos", pronto);
@@ -327,7 +332,7 @@ export default function Boletos(props) {
     const digitos = soDigitos(lido.linha_digitavel);
     const repetido = dados.boletos.find((b) => soDigitos(b.linha_digitavel) === digitos);
     if (repetido) {
-      setEditando({ reg: { ...repetido }, aviso: ["info", "Este boleto já está na programação."] });
+      setEditando({ reg: { ...repetido }, aviso: ["", `⚠️ Boleto repetido: este boleto já está na programação${repetido.pago ? " e já foi PAGO" : ""}. Abri o que já estava lançado — não lance de novo.`] });
       return;
     }
     const conhecida = empresaJaConhecida(dados.boletos, lido);
@@ -367,7 +372,7 @@ export default function Boletos(props) {
         ["boletos", "Todos os pagamentos"],
       ]} />
 
-      {lendo && <LeitorBoleto aoLer={aoLer} aoFechar={() => setLendo(false)} />}
+      {lendo && <LeitorBoleto dados={dados} aoLer={aoLer} aoFechar={() => setLendo(false)} />}
       {editando && (
         <EditorBoleto key={editando.reg.id ?? "novo"} inicial={editando.reg} aviso={editando.aviso} dados={dados}
           salvar={salvar} remover={remover} aoFechar={() => setEditando(null)}

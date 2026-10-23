@@ -291,7 +291,7 @@ export function Entrada({ dados, salvar, irPara }) {
       valor: boleto.valor, vencimento: boleto.vencimento, forma_pagamento: "Boleto", categoria: "Produtos químicos",
       linha_digitavel: formatarLinha(boleto.linha_digitavel), banco: boleto.banco, pago: false, a_conferir: true, foto: fotoBoleto,
       observacao: `Lido no depósito por ${operador?.nome ?? "operador"} em ${dataBR(hoje())}. A compra entra no estoque pela aprovação: ao pagar, não precisa lançar de novo em Despesas.`,
-    });
+    }, dados);
     if (erro) throw new Error(`Boleto: ${erro}`);
     return (await salvar("boletos", reg)).id;
   };
@@ -433,7 +433,8 @@ export function Entrada({ dados, salvar, irPara }) {
             <span>{boleto ? `Código lido${boleto.valor ? ` · ${brl(boleto.valor)}` : ""}${boleto.vencimento ? ` · vence ${dataBR(boleto.vencimento)}` : ""}` : "Ler o código de barras do boleto"}</span>
           </button>
           {lendoBoleto && (
-            <LeitorBoleto aoFechar={() => setLendoBoleto(false)}
+            <LeitorBoleto dados={dados} aoFechar={() => setLendoBoleto(false)}
+              aoRepetido={() => falar("Atenção! Este boleto já foi lançado. Confira para não pagar duas vezes.")}
               aoLer={(lido) => { setBoleto(lido); setLendoBoleto(false); vibrar([60, 40, 60]); falar("Código do boleto lido. Ele vai direto para a programação de pagamentos."); }} />
           )}
           {boleto && (

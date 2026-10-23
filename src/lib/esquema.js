@@ -44,7 +44,7 @@
  * pelo próprio sistema, como a despesa lançada a partir de um boleto).
  */
 
-import { lerCodigoBoleto } from "./boleto.js";
+import { boletoJaLancado, lerCodigoBoleto } from "./boleto.js";
 import { principioDe } from "./principiosAtivos.js";
 
 export const hoje = () => new Date().toISOString().slice(0, 10);
@@ -810,7 +810,13 @@ export const ESQUEMA = {
       },
       pago: (reg) => ({ data_pagamento: reg.pago ? reg.data_pagamento || hoje() : null }),
     },
-    validar: (r) => (r.linha_digitavel && lerCodigoBoleto(r.linha_digitavel).erro) || null,
+    validar: (r, dados) => {
+      if (!r.linha_digitavel) return null;
+      const erro = lerCodigoBoleto(r.linha_digitavel).erro;
+      if (erro) return erro;
+      const repetido = boletoJaLancado(dados, r.linha_digitavel, { boleto: r.id }, true);
+      return repetido ? `Boleto repetido: este código ${repetido} Não dá para lançar o mesmo boleto duas vezes.` : null;
+    },
     colunas: ["vencimento", "empresa", "descricao", "forma_pagamento", "categoria", "valor", "pago", "data_pagamento"],
     ordem: (a, b) => String(a.vencimento ?? "").localeCompare(String(b.vencimento ?? "")),
   },
