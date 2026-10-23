@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { Abas, Icone, Stat } from "../components/ui";
-import { PERIODOS, aReceber, diesel, estoqueInsumos, intervalo, situacaoRevisao, soma } from "../lib/calculos";
+import { PERIODOS, aPagarProprietarios, aReceber, diesel, estoqueInsumos, intervalo, situacaoRevisao, soma } from "../lib/calculos";
 import { brl, baixarCSV, data, leitura, numero } from "../lib/formato";
 import { KG_CAIXA, NOMES_MESES, anosComDados, indicadores, mesLegivel } from "../lib/indicadores";
 import { nomesTalhoesDaOrdem } from "../lib/talhoes";
@@ -279,6 +279,9 @@ function Resumo({ dados, r, irPara }) {
 
   const tanque = diesel(dados);
   const totalReceber = soma(aReceber(dados).filter((x) => x.saldo > 0), (x) => x.saldo);
+  const proprietarios = aPagarProprietarios(dados);
+  const totalPagar = soma(proprietarios.filter((x) => x.saldo > 0), (x) => x.saldo);
+  const devendoA = proprietarios.filter((x) => x.saldo > 0.009).length;
   const caixa = r.entradas.total - r.saidas.total;
   const resultado = r.totais.liquido - r.totais.custo;
   const categorias = Object.entries(r.saidas.porCategoria).map(([rotulo, valor]) => ({ rotulo, valor })).sort((a, b) => b.valor - a.valor);
@@ -295,6 +298,10 @@ function Resumo({ dados, r, irPara }) {
         <Stat rotulo="Saiu do caixa" valor={brl(r.saidas.total)} sub="despesas + diesel + insumos + peças" cor="vermelho" />
         <Stat rotulo="Saldo de caixa" valor={brl(caixa)} cor={caixa < 0 ? "vermelho" : ""} />
         <Stat rotulo="A receber (total)" valor={brl(totalReceber)} sub="vendas − recebimentos, tudo" cor="laranja" />
+        {proprietarios.length > 0 && (
+          <Stat rotulo="A pagar (laranja de terceiros)" valor={brl(totalPagar)} cor="vermelho"
+            sub={devendoA ? `${devendoA} ${devendoA === 1 ? "proprietário" : "proprietários"} · detalhe em Vendas` : "tudo pago"} />
+        )}
         <Stat rotulo="Diesel no tanque" valor={`${numero(tanque.saldo, 0)} L`} sub={tanque.precoMedio ? `preço médio ${brl(tanque.precoMedio)}/L` : "sem compras lançadas"} cor="cinza" />
       </div>
 
