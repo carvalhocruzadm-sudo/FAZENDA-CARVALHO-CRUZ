@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import CaixaComprovantes from "../components/CaixaComprovantes";
 import Crud from "../components/Crud";
@@ -983,10 +983,10 @@ function Despesas(props) {
 }
 
 /**
- * Pix feito pelo computador: o banco gera um PDF. Aqui se anexa esse PDF e
- * abre a mesma tela do comprovante compartilhado (lê valor, data e
- * favorecido; a pessoa diz do que é a despesa). Embaixo, as despesas que já
- * têm comprovante.
+ * Pix feito pelo computador: o banco gera um PDF. Aqui se anexa esse PDF —
+ * ou se cola (Ctrl+V) a imagem do comprovante copiada do WhatsApp — e abre a
+ * mesma tela do comprovante compartilhado (lê valor, data e favorecido; a
+ * pessoa diz do que é a despesa). Embaixo, as despesas que já têm comprovante.
  */
 function PixComprovante(props) {
   const [lancando, setLancando] = useState(null);
@@ -995,10 +995,22 @@ function PixComprovante(props) {
     e.target.value = "";
     if (arquivo) setLancando({ arquivo, texto: "" });
   };
+  // Ctrl+V em qualquer lugar da aba: se o que foi copiado é imagem ou PDF, vira comprovante.
+  useEffect(() => {
+    if (lancando) return undefined;
+    const colar = (e) => {
+      const arquivo = [...(e.clipboardData?.files ?? [])].find((a) => a.type.startsWith("image/") || a.type === "application/pdf");
+      if (!arquivo) return;
+      e.preventDefault();
+      setLancando({ arquivo, texto: "" });
+    };
+    window.addEventListener("paste", colar);
+    return () => window.removeEventListener("paste", colar);
+  }, [lancando]);
   const anexar = (
     <label className="btn primario">
-      <Icone nome="mais" /> Anexar PDF do Pix
-      <input type="file" accept="application/pdf,.pdf" hidden onChange={escolher} />
+      <Icone nome="mais" /> Anexar PDF ou imagem do Pix
+      <input type="file" accept="application/pdf,.pdf,image/*" hidden onChange={escolher} />
     </label>
   );
   return (
@@ -1006,8 +1018,10 @@ function PixComprovante(props) {
       <div className="cartao" style={{ marginBottom: 16 }}>
         <h2>Pix feito pelo computador</h2>
         <p className="descricao">
-          Anexe o PDF que o banco gera. O valor, a data e o favorecido são lidos do comprovante; você escolhe
-          a categoria e escreve do que é a despesa. Ela entra junto com as outras despesas, com o PDF guardado.
+          Anexe o PDF que o banco gera — ou copie a imagem do comprovante (no WhatsApp: botão direito na imagem →
+          Copiar imagem) e aperte <b>Ctrl+V</b> aqui nesta tela. O valor, a data e o favorecido são lidos do
+          comprovante; você escolhe a categoria e escreve do que é a despesa. Ela entra junto com as outras
+          despesas, com o comprovante guardado.
         </p>
         {anexar}
       </div>
