@@ -103,6 +103,20 @@ const culturaDoTalhao = {
   },
 };
 
+/**
+ * Serviço com laranja de terceiros é feito fora da fazenda: não tem talhão.
+ * Marcar a caixa esconde o talhão e já coloca a cultura Laranja.
+ */
+const campoTerceiros = { tipo: "booleano", rotulo: "Laranja de terceiros (fora da fazenda)" };
+const naFazenda = (r) => !r.terceiros;
+const aoMarcarTerceiros = {
+  terceiros: (reg, dados) => {
+    if (!reg.terceiros) return {};
+    const laranja = dados.culturas.find((c) => /laranja/i.test(c.nome ?? ""));
+    return { talhao_id: null, ...(laranja ? { cultura_id: laranja.id } : {}) };
+  },
+};
+
 export const ESQUEMA = {
   // ─── Cadastros ────────────────────────────────────────────────────────────
   culturas: {
@@ -262,7 +276,8 @@ export const ESQUEMA = {
       implemento_id: { tipo: "ref", colecao: "maquinas", rotulo: "Implemento", filtro: (m) => m.categoria === "implemento" },
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
       operacao: { tipo: "sugestao", rotulo: "Operação", sugestoes: OPERACOES, obrigatorio: true },
-      talhao_id: refTalhao,
+      terceiros: campoTerceiros,
+      talhao_id: { ...refTalhao, mostrarSe: naFazenda },
       cultura_id: refCultura,
       leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, obrigatorio: true },
       leitura_final: { tipo: "numero", rotulo: "Leitura final", casas: 1, obrigatorio: true },
@@ -272,6 +287,7 @@ export const ESQUEMA = {
     },
     aoMudar: {
       ...culturaDoTalhao,
+      ...aoMarcarTerceiros,
       // A leitura inicial sugerida é a última leitura conhecida da máquina.
       maquina_id: (reg, dados, ctx) => (ctx?.ultimaLeitura ? { leitura_inicial: ctx.ultimaLeitura(reg.maquina_id) } : {}),
     },
@@ -320,14 +336,15 @@ export const ESQUEMA = {
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
       litros: { tipo: "numero", rotulo: "Litros", casas: 1, obrigatorio: true },
       leitura: { tipo: "numero", rotulo: "Horímetro / km no abastecimento", casas: 1 },
-      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)" },
+      terceiros: campoTerceiros,
+      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)", mostrarSe: naFazenda },
       cultura_id: refCultura,
       posto: { tipo: "texto", rotulo: "Posto", mostrarSe: (r) => r.origem === "posto" },
       preco_litro: { tipo: "dinheiro", rotulo: "Preço por litro", casas: 3, mostrarSe: (r) => r.origem === "posto" },
       valor: { tipo: "dinheiro", rotulo: "Valor", somenteLeitura: true, mostrarSe: (r) => r.origem === "posto" },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    aoMudar: culturaDoTalhao,
+    aoMudar: { ...culturaDoTalhao, ...aoMarcarTerceiros },
     calcular: (r) => ({ valor: r.origem === "posto" ? +(num(r.litros) * num(r.preco_litro)).toFixed(2) : null }),
     colunas: ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "talhao_id", "valor"],
   },
