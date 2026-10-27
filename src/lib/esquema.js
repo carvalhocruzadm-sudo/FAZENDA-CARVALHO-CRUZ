@@ -105,15 +105,27 @@ const culturaDoTalhao = {
 
 /**
  * Serviço com laranja de terceiros é feito fora da fazenda: não tem talhão.
- * Marcar a caixa esconde o talhão e já coloca a cultura Laranja.
+ * Por isso a cultura vem antes do talhão. Marcar a caixa esconde o talhão e já
+ * coloca a cultura Laranja. Sem marcar, o talhão só lista os talhões da
+ * cultura escolhida.
  */
+const ehLaranja = (dados, id) => /laranja/i.test(dados.culturas?.find((c) => c.id === id)?.nome ?? "");
 const campoTerceiros = { tipo: "booleano", rotulo: "Laranja de terceiros (fora da fazenda)" };
 const naFazenda = (r) => !r.terceiros;
+const talhaoDaCultura = (t, r) => !r?.cultura_id || !t.cultura_id || t.cultura_id === r.cultura_id;
 const aoMarcarTerceiros = {
   terceiros: (reg, dados) => {
     if (!reg.terceiros) return {};
     const laranja = dados.culturas.find((c) => /laranja/i.test(c.nome ?? ""));
     return { talhao_id: null, ...(laranja ? { cultura_id: laranja.id } : {}) };
+  },
+  // Trocou a cultura: tira o talhão de outra cultura e desmarca terceiros se não for laranja.
+  cultura_id: (reg, dados) => {
+    const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
+    return {
+      ...(t && !talhaoDaCultura(t, reg) ? { talhao_id: null } : {}),
+      ...(reg.terceiros && !ehLaranja(dados, reg.cultura_id) ? { terceiros: false } : {}),
+    };
   },
 };
 
@@ -276,9 +288,9 @@ export const ESQUEMA = {
       implemento_id: { tipo: "ref", colecao: "maquinas", rotulo: "Implemento", filtro: (m) => m.categoria === "implemento" },
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
       operacao: { tipo: "sugestao", rotulo: "Operação", sugestoes: OPERACOES, obrigatorio: true },
-      terceiros: campoTerceiros,
-      talhao_id: { ...refTalhao, mostrarSe: naFazenda },
       cultura_id: refCultura,
+      terceiros: campoTerceiros,
+      talhao_id: { ...refTalhao, mostrarSe: naFazenda, filtro: talhaoDaCultura },
       leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, obrigatorio: true },
       leitura_final: { tipo: "numero", rotulo: "Leitura final", casas: 1, obrigatorio: true },
       trabalhado: { tipo: "numero", rotulo: "Horas / km", casas: 1, somenteLeitura: true },
@@ -336,9 +348,9 @@ export const ESQUEMA = {
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
       litros: { tipo: "numero", rotulo: "Litros", casas: 1, obrigatorio: true },
       leitura: { tipo: "numero", rotulo: "Horímetro / km no abastecimento", casas: 1 },
-      terceiros: campoTerceiros,
-      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)", mostrarSe: naFazenda },
       cultura_id: refCultura,
+      terceiros: campoTerceiros,
+      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)", mostrarSe: naFazenda, filtro: talhaoDaCultura },
       posto: { tipo: "texto", rotulo: "Posto", mostrarSe: (r) => r.origem === "posto" },
       preco_litro: { tipo: "dinheiro", rotulo: "Preço por litro", casas: 3, mostrarSe: (r) => r.origem === "posto" },
       valor: { tipo: "dinheiro", rotulo: "Valor", somenteLeitura: true, mostrarSe: (r) => r.origem === "posto" },

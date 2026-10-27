@@ -136,7 +136,7 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
     case "ref": {
       const def = ESQUEMA[campo.colecao];
       const opcoes = (dados[campo.colecao] ?? [])
-        .filter((x) => x.id === valor || (x.ativo !== false && (!campo.filtro || campo.filtro(x))))
+        .filter((x) => x.id === valor || (x.ativo !== false && (!campo.filtro || campo.filtro(x, reg))))
         .sort(def.ordem ?? (() => 0));
       controle = (
         <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
