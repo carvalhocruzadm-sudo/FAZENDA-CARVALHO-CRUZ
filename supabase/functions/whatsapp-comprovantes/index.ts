@@ -324,7 +324,16 @@ Deno.serve(async (req) => {
     for (const mudanca of entrada.changes ?? []) {
       const v = mudanca.value ?? {};
       const nomes = new Map((v.contacts ?? []).map((c: { wa_id: string; profile?: { name?: string } }) => [c.wa_id, c.profile?.name ?? ""]));
-      for (const msg of (v.messages ?? []) as Mensagem[]) tarefas.push(tratar(msg, String(nomes.get(msg.from) ?? ""), v.metadata?.phone_number_id));
+      for (const msg of (v.messages ?? []) as Mensagem[]) {
+        console.log(`Mensagem recebida de ${msg.from} (${msg.type})`);
+        tarefas.push(tratar(msg, String(nomes.get(msg.from) ?? ""), v.metadata?.phone_number_id));
+      }
+      // A Meta aceita a resposta na hora e só depois avisa se não conseguiu entregar.
+      for (const st of v.statuses ?? []) {
+        if (st.status !== "failed") continue;
+        const erro = st.errors?.[0];
+        console.error(`Resposta NÃO entregue para ${st.recipient_id}: erro ${erro?.code ?? "?"} — ${erro?.title ?? "sem detalhe"}`);
+      }
     }
   }
 
