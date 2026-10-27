@@ -79,8 +79,10 @@ legenda para que foi ("diária João", "adubo milho") que ele classifica certinh
 - O mesmo comprovante mandado duas vezes não duplica (ele reconhece o ID da transação).
 - Só lança o que vem dos números autorizados; mensagem de qualquer outro número é ignorada.
 - Usa o WhatsApp oficial da Meta, então precisa de **um número só para o agente** (um chip que não esteja
-  no WhatsApp do celular). As primeiras mil conversas do mês são grátis; a leitura pela IA custa alguns
-  centavos por comprovante na conta da Anthropic.
+  no WhatsApp do celular). Responder a quem mandou mensagem é grátis na Meta, e o Supabase também
+  não cobra nesse volume. Só a leitura pela IA é paga, na conta da Anthropic: com o modelo padrão
+  (Haiku) dá uns R$ 1 por mês para ~130 comprovantes. Se ele errar muito, troque para o Sonnet (lê
+  melhor, uns R$ 15 a 20 por mês): `supabase secrets set MODELO_COMPROVANTE=claude-sonnet-5-5`.
 - Tudo que o agente lança fica marcado; para apagar só o que veio dele:
   `delete from public.despesas where importado = 'WHATSAPP-IA';`
 

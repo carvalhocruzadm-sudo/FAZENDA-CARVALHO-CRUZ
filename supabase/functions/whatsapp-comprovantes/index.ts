@@ -13,7 +13,7 @@
 //   WHATSAPP_APP_SECRET          "Chave secreta do app" (Meta → Configurações do app → Básico)
 //   WHATSAPP_VERIFY_TOKEN        uma senha qualquer que você inventa e repete na Meta
 //   WHATSAPP_NUMEROS_AUTORIZADOS quem pode mandar comprovante, com DDI e DDD: 5511999998888,5511977776666
-//   (opcional) MODELO_COMPROVANTE=claude-sonnet-5-5 · WHATSAPP_GRAPH_VERSAO=v23.0
+//   (opcional) MODELO_COMPROVANTE=claude-sonnet-5-5 (lê melhor, custa mais; o padrão é o Haiku) · WHATSAPP_GRAPH_VERSAO=v23.0
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
@@ -173,7 +173,7 @@ Regras:
     method: "POST",
     headers: { "x-api-key": segredo("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
-      model: Deno.env.get("MODELO_COMPROVANTE") ?? "claude-sonnet-5-5",
+      model: Deno.env.get("MODELO_COMPROVANTE") ?? "claude-haiku-5-5",
       max_tokens: 16000,
       output_config: { effort: "low" },
       tools: [FERRAMENTA],
