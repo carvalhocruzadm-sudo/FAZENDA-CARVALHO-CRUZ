@@ -27,16 +27,22 @@ import TurmasSemana from "./TurmasSemana";
  * cadastro) ou um relatório próprio.
  */
 export function Secao({ abas, props }) {
-  const [atual, setAtual] = useState(abas[0][0]);
+  // `abaInicial` e `abrirNovo` vêm do "+ Lançar" e dos avisos do Início.
+  const { abaInicial, abrirNovo, ...resto } = props;
+  const [atual, setAtual] = useState(() => (abas.some(([i]) => i === abaInicial) ? abaInicial : abas[0][0]));
+  // O formulário em branco só abre na aba de chegada, uma vez.
+  const [novoPendente, setNovoPendente] = useState(Boolean(abrirNovo));
   const aba = abas.find(([id]) => id === atual) ?? abas[0];
   const [id, , conteudo] = aba;
   const Relatorio = typeof conteudo === "function" ? conteudo : null;
+  const trocar = (i) => { setAtual(i); setNovoPendente(false); };
+  const p = { ...resto, abrirNovo: novoPendente };
   return (
     <>
-      <Abas abas={abas.map(([i, rotulo]) => [i, rotulo])} atual={id} aoTrocar={setAtual} />
+      <Abas abas={abas.map(([i, rotulo]) => [i, rotulo])} atual={id} aoTrocar={trocar} />
       {Relatorio
-        ? <Relatorio key={id} {...props} />
-        : <Crud key={id} colecao={conteudo?.colecao ?? id} {...props} {...(conteudo ?? {})} />}
+        ? <Relatorio key={id} {...p} />
+        : <Crud key={id} colecao={conteudo?.colecao ?? id} {...p} {...(conteudo ?? {})} />}
     </>
   );
 }
@@ -271,8 +277,6 @@ export function Lavoura(props) {
       ["safras", "Safras"],
       ["colheitas", "Colheitas"],
       ["planejamento", "Planejamento da safra", Planejamento],
-      ["fazendas", "Cadastro de fazendas"],
-      ["culturas", "Culturas"],
     ]} />
   );
 }
@@ -317,9 +321,35 @@ export function Maquinas(props) {
   return (
     <Secao props={props} abas={[
       ["situacao", "Situação e revisões", SituacaoMaquinas],
-      ["operacoes", "Horímetro / operações"],
       ["revisoes", "Revisões feitas"],
-      ["maquinas", "Inventário"],
+    ]} />
+  );
+}
+
+// ─── Atividades de campo ────────────────────────────────────────────────────
+
+/** Tudo o que se faz nos talhões, num lugar só (como as "Atividades" do Aegro). */
+export function Atividades(props) {
+  return (
+    <Secao props={props} abas={[
+      ["aplicacoes", "Aplicações de produto"],
+      ["operacoes", "Horímetro / serviços de máquina"],
+      ["ordens", "Ordens de pulverização", OrdensPulverizacao],
+    ]} />
+  );
+}
+
+// ─── Cadastros ──────────────────────────────────────────────────────────────
+
+/** O que quase não muda fica fora das telas do dia a dia. */
+export function Cadastros(props) {
+  return (
+    <Secao props={props} abas={[
+      ["fazendas", "Fazendas"],
+      ["culturas", "Culturas"],
+      ["insumos", "Produtos / insumos", ProdutosQuimicos],
+      ["maquinas", "Máquinas e veículos"],
+      ["compradores", "Compradores", Compradores],
     ]} />
   );
 }
@@ -664,14 +694,11 @@ export function Quimicos(props) {
     <Secao props={props} abas={[
       ...(aprovar ? [abaAprovar] : []),
       ["estoque", "Estoque", EstoqueQuimicos],
-      ["ordens", "Ordens de pulverização", OrdensPulverizacao],
+      ["insumo_entradas", "Entradas / compras"],
       ["agronomo", `Aplicações do agrônomo${novas ? ` (${novas} ${novas === 1 ? "nova" : "novas"})` : ""}`, AplicacoesAgronomo],
       ["link", "Link do agrônomo", LinkAgronomo],
       ["balanco", "Balanço / conferência", BalancoEstoque],
       ["insumo_ajustes", "Histórico de balanços"],
-      ["aplicacoes", "Aplicações / saídas"],
-      ["insumo_entradas", "Entradas / compras"],
-      ["insumos", "Produtos", ProdutosQuimicos],
       ...(aprovar ? [] : [abaAprovar]),
     ]} />
   );
@@ -815,7 +842,6 @@ export function Vendas(props) {
       ["apagar", "A pagar (laranja de terceiros)", APagarProprietarios],
       ["resumo", "Resumo por cultura", VendasPorCultura],
       ["notas", "Notas fiscais (Bling)", NotasFiscais],
-      ["compradores", "Compradores", Compradores],
     ]} />
   );
 }

@@ -41,6 +41,8 @@ const P = {
   check: "M5 12l5 5L20 7",
   esquerda: "M15 18l-6-6 6-6",
   direita: "M9 18l6-6-6-6",
+  atividade: "M9 3h6v3H9zM9 4.5H6a1 1 0 00-1 1V20a1 1 0 001 1h12a1 1 0 001-1V5.5a1 1 0 00-1-1h-3M9 13l2 2 4-4",
+  pasta: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z",
 };
 
 export function Icone({ nome, tamanho = 18, className }) {

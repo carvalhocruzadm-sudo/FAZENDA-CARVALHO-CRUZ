@@ -8,6 +8,7 @@ import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { daCaixa, lerCompartilhado, listarCaixa } from "./lib/arquivos";
 import { salvarComAviso, textoDoAviso } from "./lib/avisos";
+import { LANCAMENTOS } from "./lib/navegacao";
 import { iniciarNtfy } from "./lib/ntfy";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Boletos from "./pages/Boletos";
@@ -15,41 +16,92 @@ import Agronomo from "./pages/Agronomo";
 import Avisos from "./pages/Avisos";
 import ModoCampo from "./pages/Campo";
 import Login, { NovaSenha } from "./pages/Login";
+import Inicio from "./pages/Inicio";
 import Painel from "./pages/Painel";
 import Funcionarios from "./pages/Funcionarios";
-import { CadastrosCampo, Diesel, Financeiro, Fretes, Lavoura, Maquinas, Pluviometro, Quimicos, Turmas, Usuarios, Vendas } from "./pages/Secoes";
+import { Atividades, Cadastros, CadastrosCampo, Diesel, Financeiro, Fretes, Lavoura, Maquinas, Pluviometro, Quimicos, Turmas, Usuarios, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 import Ticket, { LINK_TICKET } from "./pages/Ticket";
 
-const MENU = [
-  ["painel", "Painel", "painel", Painel],
-  ["avisos", "Avisos do campo", "sino", Avisos],
-  ["lavoura", "Lavoura e talhões", "cultura", Lavoura],
-  ["ticket", "Ticket da balança", "cesto", Ticket],
-  ["vendas", "Vendas", "venda", Vendas],
-  ["turmas", "Turmas de colheita", "pessoas", Turmas],
-  ["financeiro", "Financeiro", "dinheiro", Financeiro],
-  ["boletos", "Programação de pagamentos", "calendario", Boletos],
-  ["maquinas", "Máquinas e horímetro", "trator", Maquinas],
-  ["diesel", "Diesel", "combustivel", Diesel],
-  ["quimicos", "Químicos e insumos", "frasco", Quimicos],
-  ["fretes", "Caminhões e fretes", "caminhao", Fretes],
-  ["pluviometro", "Pluviômetro", "chuva", Pluviometro],
-  ["equipe", "Funcionários", "pessoas", Funcionarios],
-  ["campo", "Modo Campo", "trator", CadastrosCampo],
-  ["usuarios", "Usuários", "pessoas", Usuarios],
-  ["sync", "Sincronização", "nuvem", Sincronizacao],
+/**
+ * Menu em grupos, como no Aegro: o dia a dia (produção, estoque, patrimônio,
+ * dinheiro) separado dos relatórios e dos cadastros, que quase não mudam.
+ * [id, rótulo, ícone, tela, frase que aparece embaixo do título]
+ */
+const GRUPOS = [
+  [null, [
+    ["inicio", "Início", "casa", Inicio, "O que precisa da sua atenção hoje"],
+    ["avisos", "Avisos do campo", "sino", Avisos, "O que foi lançado no Modo Campo e na balança"],
+  ]],
+  ["Produção", [
+    ["lavoura", "Safra e talhões", "cultura", Lavoura, "Talhões, safras, planejamento e colheitas"],
+    ["atividades", "Atividades de campo", "atividade", Atividades, "Aplicações de produto, horímetro e ordens de pulverização"],
+    ["ticket", "Ticket da balança", "cesto", Ticket, "Lançar a carga que saiu pesada na balança"],
+    ["turmas", "Turmas de colheita", "pessoas", Turmas, "Quanto pagar a cada turma, por semana"],
+    ["pluviometro", "Pluviômetro", "chuva", Pluviometro, "Chuva de cada dia e de cada mês"],
+  ]],
+  ["Estoque", [
+    ["quimicos", "Insumos", "frasco", Quimicos, "Químicos, adubos e sementes: saldo, compras, agrônomo e balanço"],
+    ["diesel", "Diesel", "combustivel", Diesel, "Tanque da fazenda, compras e abastecimentos"],
+  ]],
+  ["Patrimônio", [
+    ["maquinas", "Máquinas", "trator", Maquinas, "Situação das revisões e revisões feitas"],
+    ["fretes", "Caminhões e fretes", "caminhao", Fretes, "Viagens, diesel e custos de cada caminhão"],
+  ]],
+  ["Comercial e financeiro", [
+    ["vendas", "Vendas", "venda", Vendas, "Cargas vendidas, recebimentos, a receber e notas"],
+    ["financeiro", "Financeiro", "dinheiro", Financeiro, "Despesas, Pix, entradas, resultado e custo por cultura"],
+    ["boletos", "Programação de pagamentos", "calendario", Boletos, "Boletos e pagamentos por data de vencimento"],
+  ]],
+  ["Relatórios", [
+    ["painel", "Painel de indicadores", "grafico", Painel, "Gráficos por cultura, fazenda, talhão, mês e comparativo"],
+  ]],
+  ["Configuração", [
+    ["cadastros", "Cadastros", "pasta", Cadastros, "Fazendas, culturas, produtos, máquinas e compradores"],
+    ["equipe", "Funcionários", "pessoas", Funcionarios, "Cadastro e folha dos funcionários"],
+    ["campo", "Modo Campo", "trator", CadastrosCampo, "O que o tratorista vê no celular"],
+    ["usuarios", "Usuários", "chave", Usuarios, "Quem entra no sistema e o que pode ver"],
+    ["sync", "Sincronização", "nuvem", Sincronizacao, "Envio dos lançamentos para a nuvem"],
+  ]],
 ];
+const MENU = GRUPOS.flatMap(([, itens]) => itens);
 
 function IndicadorSync({ aoClicar }) {
   const s = useSync();
-  if (!supabaseConfigurado) return <button className="sync" onClick={aoClicar}><i className="offline" /> Modo demonstração</button>;
+  if (!supabaseConfigurado) return <button className="sync" onClick={aoClicar}><i className="offline" /> <span>Modo demonstração</span></button>;
   const [cls, texto] = !s.online ? ["offline", "Sem internet"]
     : s.falhas ? ["erro", `${s.falhas} com erro`]
       : s.sincronizando ? ["pendente", "Sincronizando…"]
         : s.pendentes ? ["pendente", `${s.pendentes} para enviar`]
           : ["", "Sincronizado"];
-  return <button className="sync" onClick={aoClicar}><i className={cls} /> {texto}</button>;
+  return <button className="sync" onClick={aoClicar} title={texto}><i className={cls} /> <span>{texto}</span></button>;
+}
+
+/** Lista do botão "+ Lançar": escolhe o que lançar e cai direto no formulário. */
+function MenuLancar({ aoEscolher, aoFechar }) {
+  useEffect(() => {
+    const esc = (e) => e.key === "Escape" && aoFechar();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [aoFechar]);
+  return (
+    <div className="lancar-fundo" onMouseDown={(e) => e.target === e.currentTarget && aoFechar()}>
+      <div className="lancar" role="dialog" aria-label="O que você quer lançar?">
+        <header>
+          <h2>O que você quer lançar?</h2>
+          <button className="btn icone" onClick={aoFechar} aria-label="Fechar"><Icone nome="fechar" /></button>
+        </header>
+        <div className="lancar-lista">
+          {LANCAMENTOS.map(([rotulo, icone, tela, aba, dica]) => (
+            <button key={rotulo} onClick={() => aoEscolher(tela, aba)}>
+              <span className="lancar-icone"><Icone nome={icone} /></span>
+              <span><b>{rotulo}</b><small>{dica}</small></span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -239,9 +291,14 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
   const [tela, setTela] = useState(() => {
     // O link fixado no grupo do WhatsApp (/ticket) abre direto no lançamento do ticket.
     if (location.pathname.replace(/\/+$/, "") === LINK_TICKET) return "ticket";
-    try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
+    try { return localStorage.getItem("fcc-tela") || "inicio"; } catch { return "inicio"; }
   });
+  // Aba e "abrir formulário novo" de quem chamou (o "+ Lançar", um aviso do Início…).
+  // O contador refaz a tela mesmo quando se volta para a mesma seção.
+  const [destino, setDestino] = useState({ vez: 0 });
   const [menuAberto, setMenuAberto] = useState(false);
+  const [lancarAberto, setLancarAberto] = useState(false);
+  const fecharLancar = useCallback(() => setLancarAberto(false), []);
   const [balao, fecharBalao] = useAvisosNovos(dados.avisos, pronto, email);
   const naoLidos = dados.avisos.filter((a) => !a.lido).length;
   useEffect(() => iniciarNtfy(), []);
@@ -314,15 +371,17 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
   const [trocandoSenha, setTrocandoSenha] = useState(false);
   const fecharTrocaSenha = useCallback(() => setTrocandoSenha(false), []);
 
-  const irPara = (id) => {
+  const irPara = (id, { aba, novo } = {}) => {
     setTela(id);
+    setDestino((d) => ({ aba, novo, vez: d.vez + 1 }));
     setMenuAberto(false);
+    setLancarAberto(false);
     window.scrollTo(0, 0);
     if (location.pathname !== "/") history.replaceState(null, "", "/");
     try { localStorage.setItem("fcc-tela", id); } catch { /* sem armazenamento: só não lembra a aba */ }
   };
 
-  const [, rotulo, , Pagina] = MENU.find(([id]) => id === tela) ?? MENU[0];
+  const [telaAtual, rotulo, , Pagina, sub] = MENU.find(([id]) => id === tela) ?? MENU[0];
 
   return (
     <CulturaAtiva.Provider value={culturaAtiva}>
@@ -334,11 +393,16 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
           <div><b>Fazenda</b><small>Carvalho Cruz</small></div>
         </div>
         <nav>
-          {MENU.map(([id, r, icone]) => (
-            <button key={id} className={tela === id ? "ativo" : ""} onClick={() => irPara(id)}>
-              <Icone nome={icone} /> {r}
-              {id === "avisos" && naoLidos > 0 && <span className="qtd-avisos">{naoLidos}</span>}
-            </button>
+          {GRUPOS.map(([grupo, itens]) => (
+            <div key={grupo ?? "inicio"} className="menu-grupo">
+              {grupo && <div className="menu-grupo-titulo">{grupo}</div>}
+              {itens.map(([id, r, icone]) => (
+                <button key={id} className={telaAtual === id ? "ativo" : ""} onClick={() => irPara(id)}>
+                  <Icone nome={icone} /> <span>{r}</span>
+                  {id === "avisos" && naoLidos > 0 && <span className="qtd-avisos">{naoLidos}</span>}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="rodape">
@@ -354,7 +418,10 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
       <main className="principal">
         <header className="topo">
           <button className="btn icone menu" onClick={() => setMenuAberto(true)} aria-label="Abrir menu"><Icone nome="menu" /></button>
-          <h1>{rotulo}</h1>
+          <div className="topo-titulo">
+            <h1>{rotulo}</h1>
+            {sub && <small>{sub}</small>}
+          </div>
           {pronto && <SeletorCultura culturas={dados.culturas} cultura={cultura} setCultura={setCultura} />}
           <button className="btn icone sininho" onClick={() => irPara("avisos")}
             title={naoLidos ? `${naoLidos} aviso(s) novo(s) do campo` : "Avisos do campo"} aria-label="Avisos do campo">
@@ -362,6 +429,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
             {naoLidos > 0 && <span className="qtd-avisos">{naoLidos > 99 ? "99+" : naoLidos}</span>}
           </button>
           <IndicadorSync aoClicar={() => irPara("sync")} />
+          <button className="btn primario lancar-btn" onClick={() => setLancarAberto(true)}><Icone nome="mais" /> Lançar</button>
         </header>
         <div className="conteudo">
           {erro && <div className="aviso">Erro ao abrir o banco do aparelho: {erro}</div>}
@@ -370,11 +438,23 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
             <div className="aviso">{atalho} <button className="btn" onClick={() => setAtalho(null)}>Fechar</button></div>
           )}
           {!pronto ? <div className="vazio">Carregando…</div> : (
-            <Pagina key={tela} dados={dados} salvar={salvar} salvarVarios={salvarVarios} remover={remover} irPara={irPara} email={email}
+            <Pagina key={`${telaAtual}-${destino.vez}`} abaInicial={destino.aba} abrirNovo={destino.novo} dados={dados} salvar={salvar} salvarVarios={salvarVarios} remover={remover} irPara={irPara} email={email}
               sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} abrirCampo={abrirCampo} />
           )}
         </div>
       </main>
+      {/* No celular: barra de baixo com o principal e o "+" no meio, como nos apps de campo. */}
+      <nav className="barra-baixo">
+        {[["inicio", "Início", "casa"], ["atividades", "Atividades", "atividade"]].map(([id, r, icone]) => (
+          <button key={id} className={telaAtual === id ? "ativo" : ""} onClick={() => irPara(id)}><Icone nome={icone} /><span>{r}</span></button>
+        ))}
+        <button className="mais" onClick={() => setLancarAberto(true)} aria-label="Lançar"><Icone nome="mais" tamanho={26} /></button>
+        <button className={telaAtual === "financeiro" ? "ativo" : ""} onClick={() => irPara("financeiro")}><Icone nome="dinheiro" /><span>Financeiro</span></button>
+        <button onClick={() => setMenuAberto(true)}><Icone nome="menu" /><span>Menu</span></button>
+      </nav>
+      {lancarAberto && (
+        <MenuLancar aoFechar={fecharLancar} aoEscolher={(id, aba) => irPara(id, { aba, novo: Boolean(aba) })} />
+      )}
       {pronto && compartilhado && (
         <LancarComprovante compartilhado={compartilhado} dados={dados} salvar={salvar}
           aoFechar={() => setCompartilhado(null)}
