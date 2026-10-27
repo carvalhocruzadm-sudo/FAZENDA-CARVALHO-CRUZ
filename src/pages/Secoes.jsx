@@ -74,7 +74,7 @@ export function Atividades(props) {
   return (
     <Secao props={props} abas={[
       ["aplicacoes", "Aplicações de produto"],
-      ["operacoes", "Serviços de máquina (horímetro)"],
+      ["operacoes", "Horímetro / máquinas"],
     ]} />
   );
 }
