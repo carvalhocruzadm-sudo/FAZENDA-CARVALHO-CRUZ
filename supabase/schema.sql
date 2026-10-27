@@ -1010,6 +1010,16 @@ create table if not exists public.bling_conexao (
   atualizado_em timestamptz default now()
 );
 alter table public.bling_conexao enable row level security;
+
+-- Recados do agente de comprovantes pelo WhatsApp: texto mandado antes da foto
+-- ("almoço 1620"), que vira a legenda do próximo comprovante. Só a função usa.
+create table if not exists public.whatsapp_recados (
+  id bigint generated always as identity primary key,
+  numero text not null,
+  texto text not null,
+  criado_em timestamptz not null default now()
+);
+alter table public.whatsapp_recados enable row level security;
 create unique index if not exists notas_fiscais_venda_idx on public.notas_fiscais (venda_id);
 
 -- ─── Fotos (Storage) ──────────────────────────────────────────────────────
