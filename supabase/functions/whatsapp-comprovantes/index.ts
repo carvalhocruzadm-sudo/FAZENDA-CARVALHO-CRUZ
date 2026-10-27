@@ -152,7 +152,7 @@ async function lerComprovante(arquivo: { bytes: Uint8Array; tipo: string }, lege
     : { type: "image", source: { type: "base64", media_type: arquivo.tipo, data: dados } };
 
   const pedido = `Este arquivo foi mandado pelo WhatsApp para o financeiro da Fazenda Carvalho Cruz (milho, laranja, silagem, abóbora, amendoim, confinamento).
-Leia o comprovante e chame lancar_despesa.
+Leia o comprovante e responda chamando a ferramenta lancar_despesa (sempre, mesmo que não seja comprovante).
 
 Legenda da mensagem: ${legenda ? `"${legenda}"` : "(sem legenda)"}
 Hoje: ${new Date().toISOString().slice(0, 10)}
@@ -174,9 +174,10 @@ Regras:
     headers: { "x-api-key": segredo("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
       model: Deno.env.get("MODELO_COMPROVANTE") ?? "claude-sonnet-5-5",
-      max_tokens: 1500,
+      max_tokens: 16000,
+      output_config: { effort: "low" },
       tools: [FERRAMENTA],
-      tool_choice: { type: "tool", name: FERRAMENTA.name },
+      tool_choice: { type: "auto" },
       messages: [{ role: "user", content: [bloco, { type: "text", text: pedido }] }],
     }),
   });
