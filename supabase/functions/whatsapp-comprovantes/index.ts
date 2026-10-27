@@ -114,6 +114,7 @@ const FERRAMENTA = {
       descricao: { type: "string", description: "Descrição curta da despesa. Use a legenda da mensagem quando houver." },
       centro: { type: "string", enum: ["geral", "cultura"], description: "geral, ou cultura quando a legenda ou o histórico deixam claro para qual cultura foi." },
       cultura_id: { type: ["string", "null"], description: "id da cultura (da lista) quando centro = cultura." },
+      maquina_id: { type: ["string", "null"], description: "id da máquina/caminhão (da lista) quando o texto diz que a despesa foi dela." },
       id_transacao: { type: ["string", "null"], description: "ID da transação / autenticação / E2E do comprovante, se aparecer." },
       duvida: { type: ["string", "null"], description: "O que ficou incerto e vale a pessoa conferir. null se estiver tudo claro." },
     },
@@ -124,14 +125,16 @@ const FERRAMENTA = {
 type Leitura = {
   e_comprovante: boolean; motivo?: string; data?: string; valor?: number; favorecido?: string;
   forma_pagamento?: string; categoria?: string; tipo?: string; descricao?: string; centro?: string;
-  cultura_id?: string | null; id_transacao?: string | null; duvida?: string | null;
+  cultura_id?: string | null; maquina_id?: string | null; id_transacao?: string | null; duvida?: string | null;
 };
 
-type Contexto = { culturas: { id: string; nome: string }[]; historico: string };
+type Item = { id: string; nome: string };
+type Contexto = { culturas: Item[]; maquinas: Item[]; historico: string };
 
 async function contexto(db: ReturnType<typeof banco>): Promise<Contexto> {
-  const [{ data: culturas }, { data: recentes }] = await Promise.all([
+  const [{ data: culturas }, { data: maquinas }, { data: recentes }] = await Promise.all([
     db.from("culturas").select("id, nome").order("nome"),
+    db.from("maquinas").select("id, nome, modelo, placa").order("nome"),
     db.from("despesas").select("favorecido, categoria, tipo, centro, cultura_id, data").not("favorecido", "is", null).order("data", { ascending: false }).limit(1500),
   ]);
   // O último lançamento de cada favorecido ensina à IA como a fazenda costuma classificar.
@@ -143,7 +146,11 @@ async function contexto(db: ReturnType<typeof banco>): Promise<Contexto> {
     const cult = d.centro === "cultura" ? ` · cultura ${nomeCultura.get(d.cultura_id) ?? "?"}` : "";
     vistos.set(chave, `${chave} → ${d.categoria}${d.tipo ? ` / ${d.tipo}` : ""}${cult}`);
   }
-  return { culturas: culturas ?? [], historico: [...vistos.values()].join("\n") };
+  return {
+    culturas: culturas ?? [],
+    maquinas: (maquinas ?? []).map((m) => ({ id: m.id, nome: [m.nome, m.modelo, m.placa].filter(Boolean).join(" · ") })),
+    historico: [...vistos.values()].join("\n"),
+  };
 }
 
 async function lerComprovante(arquivo: { bytes: Uint8Array; tipo: string }, legenda: string, ctx: Contexto): Promise<Leitura> {
@@ -155,18 +162,23 @@ async function lerComprovante(arquivo: { bytes: Uint8Array; tipo: string }, lege
   const pedido = `Este arquivo foi mandado pelo WhatsApp para o financeiro da Fazenda Carvalho Cruz (milho, laranja, silagem, abóbora, amendoim, confinamento).
 Leia o comprovante e responda chamando a ferramenta lancar_despesa (sempre, mesmo que não seja comprovante).
 
-Legenda da mensagem: ${legenda ? `"${legenda}"` : "(sem legenda)"}
+O que a pessoa escreveu (legenda da foto e mensagens de texto mandadas logo antes): ${legenda ? `"${legenda}"` : "(nada)"}
 Hoje: ${new Date().toISOString().slice(0, 10)}
 
 Culturas cadastradas (id → nome):
 ${ctx.culturas.map((c) => `${c.id} → ${c.nome}`).join("\n") || "(nenhuma)"}
 
+Máquinas e caminhões (id → nome):
+${ctx.maquinas.map((m) => `${m.id} → ${m.nome}`).join("\n") || "(nenhuma)"}
+
 Como a fazenda classificou cada favorecido da última vez (use para escolher categoria, tipo e cultura):
 ${ctx.historico || "(sem histórico)"}
 
 Regras:
-- A legenda manda: se ela diz para que foi (ex.: "diária João", "pró-labore LB", "adubo milho"), use isso na categoria, no tipo e na descrição.
-- Sem legenda, use o histórico do favorecido; se não tiver histórico, escolha a categoria mais provável e diga a dúvida.
+- O que a pessoa escreveu manda, sempre acima do histórico: se diz para que foi (ex.: "diária João", "pró-labore LB", "adubo milho", "almoço"), use isso na categoria, no tipo e na descrição.
+- Comida (almoço, janta, café, lanche, marmita, refeição, restaurante) = "Alimentação", com o tipo "Almoço", "Janta" etc.
+- Se o texto cita uma máquina ou caminhão (nome, modelo ou placa), preencha maquina_id. "1620" é o caminhão MB 1620.
+- Só quando a pessoa não escreveu para que foi, use o histórico do favorecido; se não tiver histórico, escolha a categoria mais provável e diga a dúvida.
 - Pró-labore e retirada dos sócios (Lucas, Carlinhos) = "Retirada / dividendos". Pagamento de boleto de banco/financiamento = "Empréstimos".
 - Valor e data exatamente como no comprovante. Nunca invente: se não der para ler, diga em "duvida".`;
 
@@ -210,7 +222,31 @@ type Mensagem = {
   document?: { id: string; mime_type?: string; caption?: string; filename?: string };
 };
 
-const AJUDA = "Oi! Sou o agente de comprovantes da Fazenda Carvalho Cruz. Me mande a *foto ou o PDF do comprovante* (PIX, boleto, transferência). Se quiser, escreva na legenda para que foi (ex.: \"diária João\", \"adubo milho\") que eu lanço certinho em Despesas.";
+const AJUDA = "Oi! Sou o agente de comprovantes da Fazenda Carvalho Cruz. Me mande a *foto ou o PDF do comprovante* (PIX, boleto, transferência). Se quiser, escreva para que foi (ex.: \"diária João\", \"almoço 1620\") na legenda ou numa mensagem antes da foto, que eu lanço certinho em Despesas.";
+
+// "1620" no texto é o caminhão (mesma regra e mesmo id de src/lib/esquema.js).
+const CAMINHAO_1620 = "00000000-0000-4000-8300-000000000001";
+const tem1620 = (texto?: string | null) => /(^|\D)1620(\D|$)/.test(texto ?? "");
+
+const SAUDACAO = /^\s*(oi+|ol[aá]|bom dia|boa tarde|boa noite|ajuda|menu)[\s!.?]*$/i;
+const MINUTOS_RECADO = 10;
+
+/**
+ * Texto mandado separado da foto ("almoço jhun", "1620") fica anotado em
+ * whatsapp_recados e entra como legenda do próximo comprovante da mesma pessoa.
+ */
+async function anotarRecado(db: ReturnType<typeof banco>, numero: string, texto: string) {
+  const { error } = await db.from("whatsapp_recados").insert({ numero, texto });
+  if (error) console.error("Não consegui anotar o recado (rodou o SQL da tabela whatsapp_recados?):", error.message);
+}
+
+async function recadosRecentes(db: ReturnType<typeof banco>, numero: string) {
+  const desde = new Date(Date.now() - MINUTOS_RECADO * 60_000).toISOString();
+  const { data, error } = await db.from("whatsapp_recados").select("id, texto")
+    .in("numero", variantes(numero)).gte("criado_em", desde).order("criado_em");
+  if (error) console.error("Não consegui ler os recados:", error.message);
+  return (data ?? []) as { id: number; texto: string }[];
+}
 
 async function tratar(msg: Mensagem, nome: string, telefoneId: string) {
   const enviar = (texto: string, citar = true) => responder(telefoneId, msg.from, texto, citar ? msg.id : undefined);
@@ -219,7 +255,12 @@ async function tratar(msg: Mensagem, nome: string, telefoneId: string) {
     return;
   }
   const midia = msg.image ?? msg.document;
-  if (!midia) return enviar(AJUDA, false);
+  if (!midia) {
+    const texto = msg.text?.body?.trim();
+    if (!texto || SAUDACAO.test(texto)) return enviar(AJUDA, false);
+    await anotarRecado(banco(), msg.from, texto);
+    return enviar(`📝 Anotei: "${texto}". Agora mande a foto ou o PDF do comprovante (nos próximos ${MINUTOS_RECADO} minutos) que eu uso isso para lançar.`);
+  }
 
   try {
     const arquivo = await baixarMidia(midia.id);
@@ -228,7 +269,11 @@ async function tratar(msg: Mensagem, nome: string, telefoneId: string) {
     }
 
     const db = banco();
-    const legenda = (midia.caption ?? "").trim();
+    const recados = await recadosRecentes(db, msg.from);
+    const legenda = [...recados.map((r) => r.texto), midia.caption ?? ""].map((t) => t.trim()).filter(Boolean).join(" · ");
+    const usarRecados = async () => {
+      if (recados.length) await db.from("whatsapp_recados").delete().in("id", recados.map((r) => r.id));
+    };
     const ctx = await contexto(db);
     const l = await lerComprovante(arquivo, legenda, ctx);
 
@@ -240,11 +285,14 @@ async function tratar(msg: Mensagem, nome: string, telefoneId: string) {
     }
 
     const cultura = l.centro === "cultura" ? ctx.culturas.find((c) => c.id === l.cultura_id) : undefined;
+    const maquina = ctx.maquinas.find((m) => m.id === l.maquina_id)
+      ?? ([legenda, l.tipo, l.descricao].some(tem1620) ? ctx.maquinas.find((m) => m.id === CAMINHAO_1620) : undefined);
     const quando = msg.timestamp ? new Date(Number(msg.timestamp) * 1000).toISOString().slice(0, 10) : l.data;
     const id = await idDoComprovante(l.id_transacao?.replace(/\s/g, "") || msg.id);
 
     const { data: existente } = await db.from("despesas").select("id, valor, favorecido, data").eq("id", id).maybeSingle();
     if (existente) {
+      await usarRecados();
       return enviar(`Esse comprovante já tinha sido lançado (${reais(Number(existente.valor))} para ${existente.favorecido ?? "?"} em ${dataBr(existente.data)}). Não lancei de novo.`);
     }
 
@@ -264,6 +312,7 @@ async function tratar(msg: Mensagem, nome: string, telefoneId: string) {
       favorecido: l.favorecido || null,
       centro: cultura ? "cultura" : "geral",
       cultura_id: cultura?.id ?? null,
+      maquina_id: maquina?.id ?? null,
       pago: true,
       nota: `WhatsApp · enviado por ${nome || msg.from} em ${dataBr(quando)}${l.id_transacao ? ` · transação ${l.id_transacao}` : ""}`,
       comprovante: caminho,
@@ -272,6 +321,7 @@ async function tratar(msg: Mensagem, nome: string, telefoneId: string) {
 
     const { data: gravado, error } = await db.from("despesas").upsert(despesa, { onConflict: "id", ignoreDuplicates: true }).select("id");
     if (error) throw new Error(`O banco recusou a despesa: ${error.message}`);
+    await usarRecados();
     if (!gravado?.length) {
       return enviar(`Esse comprovante já tinha sido lançado (${reais(despesa.valor)} para ${despesa.favorecido ?? "?"} em ${dataBr(despesa.data)}). Não lancei de novo.`);
     }
@@ -289,6 +339,7 @@ async function tratar(msg: Mensagem, nome: string, telefoneId: string) {
       `• Data: ${dataBr(despesa.data)}`,
       `• Categoria: ${despesa.categoria}${despesa.tipo ? ` (${despesa.tipo})` : ""}`,
       `• Centro de custo: ${cultura ? cultura.nome : "Geral da fazenda"}`,
+      ...(maquina ? [`• Máquina: ${maquina.nome}`] : []),
     ];
     if (l.duvida) linhas.push("", `⚠️ Confira: ${l.duvida}`);
     if (parecidas?.length) linhas.push("", "⚠️ Já existia uma despesa igual (mesmo dia, valor e favorecido). Veja no app se não ficou repetida.");
@@ -324,7 +375,16 @@ Deno.serve(async (req) => {
     for (const mudanca of entrada.changes ?? []) {
       const v = mudanca.value ?? {};
       const nomes = new Map((v.contacts ?? []).map((c: { wa_id: string; profile?: { name?: string } }) => [c.wa_id, c.profile?.name ?? ""]));
-      for (const msg of (v.messages ?? []) as Mensagem[]) tarefas.push(tratar(msg, String(nomes.get(msg.from) ?? ""), v.metadata?.phone_number_id));
+      for (const msg of (v.messages ?? []) as Mensagem[]) {
+        console.log(`Mensagem recebida de ${msg.from} (${msg.type})`);
+        tarefas.push(tratar(msg, String(nomes.get(msg.from) ?? ""), v.metadata?.phone_number_id));
+      }
+      // A Meta aceita a resposta na hora e só depois avisa se não conseguiu entregar.
+      for (const st of v.statuses ?? []) {
+        if (st.status !== "failed") continue;
+        const erro = st.errors?.[0];
+        console.error(`Resposta NÃO entregue para ${st.recipient_id}: erro ${erro?.code ?? "?"} — ${erro?.title ?? "sem detalhe"}`);
+      }
     }
   }
 
