@@ -69,6 +69,64 @@ supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic
 A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
 tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
 
+## 📲 Agente de comprovantes pelo WhatsApp
+
+Mande a **foto ou o PDF do comprovante** (PIX, boleto, transferência) para o número do agente. A IA lê
+valor, data e favorecido, escolhe a categoria olhando como a fazenda já lançou aquele favorecido antes,
+**lança em Despesas** (com a foto do comprovante) e responde no WhatsApp dizendo o que lançou. Escreva na
+legenda para que foi ("diária João", "adubo milho") que ele classifica certinho. Se errar, corrija no app.
+
+- O mesmo comprovante mandado duas vezes não duplica (ele reconhece o ID da transação).
+- Só lança o que vem dos números autorizados; mensagem de qualquer outro número é ignorada.
+- Usa o WhatsApp oficial da Meta, então precisa de **um número só para o agente** (um chip que não esteja
+  no WhatsApp do celular). As primeiras mil conversas do mês são grátis; a leitura pela IA custa alguns
+  centavos por comprovante na conta da Anthropic.
+- Tudo que o agente lança fica marcado; para apagar só o que veio dele:
+  `delete from public.despesas where importado = 'WHATSAPP-IA';`
+
+### Como ligar (uma vez só, uns 40 minutos)
+
+**1. Banco** — rode de novo o [`supabase/schema.sql`](supabase/schema.sql) no **SQL Editor** (cria o campo
+do comprovante na despesa).
+
+**2. Meta (WhatsApp)**
+1. Entre em [developers.facebook.com](https://developers.facebook.com) com o Facebook da empresa →
+   **Meus apps → Criar app** → caso de uso **"Conectar-se com clientes pelo WhatsApp"** → escolha o
+   portfólio empresarial da fazenda.
+2. No app, **WhatsApp → Configuração da API → Adicionar número de telefone**: cadastre o número novo do
+   agente (nome de exibição "Fazenda Carvalho Cruz") e confirme o código que chega por SMS.
+3. **Token permanente**: em [business.facebook.com](https://business.facebook.com) → **Configurações →
+   Usuários do sistema → Adicionar** (função Administrador) → **Atribuir ativos** → marque o app com
+   controle total → **Gerar token**, sem validade, com as permissões `whatsapp_business_messaging` e
+   `whatsapp_business_management`. Copie o token (ele só aparece uma vez).
+4. **Chave secreta do app**: no app, **Configurações do app → Básico → Chave secreta do aplicativo →
+   Mostrar**. Copie.
+
+**3. Supabase** (precisa do [Supabase CLI](https://supabase.com/docs/guides/cli), igual à consulta de produto)
+
+```bash
+supabase secrets set WHATSAPP_TOKEN=cole-o-token-permanente
+supabase secrets set WHATSAPP_APP_SECRET=cole-a-chave-secreta-do-app
+supabase secrets set WHATSAPP_VERIFY_TOKEN=invente-uma-senha-qualquer
+supabase secrets set WHATSAPP_NUMEROS_AUTORIZADOS=5511999998888,5511977776666   # quem pode mandar: 55 + DDD + número
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...      # só se ainda não pôs para a consulta de produto
+supabase functions deploy whatsapp-comprovantes --no-verify-jwt
+```
+
+O `--no-verify-jwt` é porque quem chama é a Meta, não o app: a segurança fica na assinatura da Meta
+(chave secreta do app) e na lista de números autorizados.
+
+**4. Ligar a Meta ao Supabase** — no app da Meta, **WhatsApp → Configuração → Webhook → Editar**:
+- **URL de callback**: `https://SEU-PROJETO.supabase.co/functions/v1/whatsapp-comprovantes`
+- **Token de verificação**: a mesma senha do `WHATSAPP_VERIFY_TOKEN`
+- **Verificar e salvar**, depois em **Campos do webhook** assine **messages**.
+
+**5. Publicar o app da Meta** — **Publicar** (modo Ativo) no topo do painel; ela pede um link de
+política de privacidade (pode ser uma página simples no site). Pronto: salve o número do agente nos
+contatos e mande um comprovante.
+
+Se o agente não responder, veja os erros no Supabase em **Edge Functions → whatsapp-comprovantes → Logs**.
+
 ## 📥 Histórico das planilhas
 
 [`supabase/importacao-historico.sql`](supabase/importacao-historico.sql) traz o histórico das planilhas

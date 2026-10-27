@@ -442,6 +442,8 @@ export const ESQUEMA = {
       vencimento: { tipo: "data", rotulo: "Vencimento" },
       pago: { tipo: "booleano", rotulo: "Pago", padrao: true },
       nota: { tipo: "texto", rotulo: "Nota / documento" },
+      fotos_comprovante: { tipo: "fotos", rotulo: "Comprovante", ladoMaior: 1600, dica: "Os comprovantes mandados pelo WhatsApp já chegam com a foto." },
+      importado: { tipo: "texto", rotulo: "Origem", oculto: true },
     },
     aoMudar: {
       ...culturaDoTalhao,
