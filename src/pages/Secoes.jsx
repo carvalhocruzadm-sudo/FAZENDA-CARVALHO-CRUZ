@@ -17,16 +17,21 @@ import AprovarEntradas from "./AprovarEntradas";
  * cadastro) ou um relatório próprio.
  */
 function Secao({ abas, props }) {
-  const [atual, setAtual] = useState(abas[0][0]);
+  const { abaInicial, abrirNovo, ...resto } = props;
+  const [atual, setAtual] = useState(() => (abas.some(([i]) => i === abaInicial) ? abaInicial : abas[0][0]));
+  // O formulário em branco (vindo do "+ Lançar") só abre na aba de chegada, uma vez.
+  const [novoPendente, setNovoPendente] = useState(Boolean(abrirNovo));
   const aba = abas.find(([id]) => id === atual) ?? abas[0];
   const [id, , conteudo] = aba;
   const Relatorio = typeof conteudo === "function" ? conteudo : null;
+  const trocar = (i) => { setAtual(i); setNovoPendente(false); };
+  const p = { ...resto, abrirNovo: novoPendente };
   return (
     <>
-      <Abas abas={abas.map(([i, rotulo]) => [i, rotulo])} atual={id} aoTrocar={setAtual} />
+      {abas.length > 1 && <Abas abas={abas.map(([i, rotulo]) => [i, rotulo])} atual={id} aoTrocar={trocar} />}
       {Relatorio
-        ? <Relatorio key={id} {...props} />
-        : <Crud key={id} colecao={conteudo?.colecao ?? id} {...props} {...(conteudo ?? {})} />}
+        ? <Relatorio key={id} {...p} />
+        : <Crud key={id} colecao={conteudo?.colecao ?? id} {...p} {...(conteudo ?? {})} />}
     </>
   );
 }
@@ -57,10 +62,34 @@ export function Lavoura(props) {
   return (
     <Secao props={props} abas={[
       ["talhoes", "Talhões / sítios"],
-      ["colheitas", "Colheitas"],
       ["planejamento", "Planejamento da safra", Planejamento],
+      ["colheitas", "Colheitas"],
+    ]} />
+  );
+}
+
+// ─── Atividades de campo ────────────────────────────────────────────────────
+
+export function Atividades(props) {
+  return (
+    <Secao props={props} abas={[
+      ["aplicacoes", "Aplicações de produto"],
+      ["operacoes", "Serviços de máquina (horímetro)"],
+    ]} />
+  );
+}
+
+// ─── Cadastros ──────────────────────────────────────────────────────────────
+
+export function Cadastros(props) {
+  return (
+    <Secao props={props} abas={[
       ["fazendas", "Fazendas"],
       ["culturas", "Culturas"],
+      ["insumos", "Produtos / insumos"],
+      ["maquinas", "Máquinas e veículos"],
+      ["funcionarios", "Funcionários"],
+      ["contatos", "Clientes e fornecedores", Contatos],
     ]} />
   );
 }
@@ -83,7 +112,7 @@ function SituacaoMaquinas({ dados }) {
       </p>
       <div className="barra"><span>Consumo no período:</span><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
       <TabelaSimples
-        vazio="Cadastre as máquinas na aba Cadastro."
+        vazio="Cadastre as máquinas em Cadastros → Máquinas e veículos."
         linhas={linhas.map((l) => ({ ...l, id: l.m.id }))}
         colunas={[
           { rotulo: "Máquina", valor: (l) => l.m.nome },
@@ -104,9 +133,8 @@ export function Maquinas(props) {
   return (
     <Secao props={props} abas={[
       ["situacao", "Situação e revisões", SituacaoMaquinas],
-      ["operacoes", "Horímetro / operações"],
       ["revisoes", "Revisões feitas"],
-      ["maquinas", "Inventário"],
+      ["operacoes", "Horímetro / operações"],
     ]} />
   );
 }
@@ -184,7 +212,7 @@ function EstoqueQuimicos({ dados }) {
         </button>
       </div>
       <TabelaSimples
-        vazio="Cadastre os produtos na aba Produtos e lance as entradas."
+        vazio="Cadastre os produtos em Cadastros → Produtos e lance as compras."
         linhas={lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({ ...x, id: x.insumo.id }))}
         colunas={[
           { rotulo: "Produto", valor: (x) => x.insumo.nome },
@@ -203,15 +231,14 @@ function EstoqueQuimicos({ dados }) {
   );
 }
 
-export function Quimicos(props) {
+export function Estoque(props) {
   // Com produto esperando aprovação, a aba de aprovar vem primeiro.
   const pendentes = props.dados.solicitacoes_produto.filter((s) => s.situacao === "pendente").length;
   const aprovar = ["aprovar", pendentes ? `Aprovar entradas (${pendentes})` : "Aprovar entradas", AprovarEntradas];
   const abas = [
-    ["estoque", "Estoque", EstoqueQuimicos],
-    ["aplicacoes", "Aplicações / saídas"],
-    ["insumo_entradas", "Entradas / compras"],
-    ["insumos", "Produtos"],
+    ["estoque", "Saldo em estoque", EstoqueQuimicos],
+    ["insumo_entradas", "Compras / entradas"],
+    ["aplicacoes", "Saídas (aplicações)"],
   ];
   return <Secao props={props} abas={pendentes ? [aprovar, ...abas] : [...abas, aprovar]} />;
 }
@@ -314,13 +341,11 @@ function Contatos(props) {
 export function Vendas(props) {
   return (
     <>
-      <div className="aviso info">A emissão de NF-e pelo sistema é a próxima etapa. Por enquanto, anote o número da nota em cada venda.</div>
       <Secao props={props} abas={[
         ["vendas", "Cargas vendidas"],
         ["recebimentos", "Recebimentos"],
         ["areceber", "A receber", AReceber],
         ["resumo", "Resumo por cultura", VendasPorCultura],
-        ["contatos", "Clientes e fornecedores", Contatos],
       ]} />
     </>
   );
@@ -336,7 +361,7 @@ function ResumoFretes({ dados }) {
       <p className="descricao">Como a planilha FRETES: faturamento dos fretes, diesel (posto ou tanque) e demais custos do caminhão (despesas e revisões lançadas com ele).</p>
       <div className="barra"><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
       <TabelaSimples
-        vazio="Cadastre os caminhões no Inventário de máquinas (categoria Caminhão)."
+        vazio="Cadastre os caminhões em Cadastros → Máquinas e veículos (categoria Caminhão)."
         linhas={lista.map((x) => ({ ...x, id: x.caminhao.id }))}
         colunas={[
           { rotulo: "Caminhão", valor: (x) => x.caminhao.nome },
@@ -466,14 +491,10 @@ function Custos({ dados }) {
 export function Financeiro(props) {
   return (
     <Secao props={props} abas={[
-      ["resumo", "Resumo do mês", ResumoFinanceiro],
-      ["despesas", "Despesas"],
+      ["resumo", "Resumo", ResumoFinanceiro],
+      ["despesas", "Despesas / contas a pagar"],
       ["entradas", "Outras entradas"],
       ["custos", "Custo por cultura e talhão", Custos],
     ]} />
   );
-}
-
-export function Equipe(props) {
-  return <Crud colecao="funcionarios" {...props} />;
 }

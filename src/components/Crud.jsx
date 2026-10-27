@@ -40,12 +40,14 @@ function exportarCSV(nome, colunas, def, linhas, dados) {
  * total no rodapé, formulário para incluir/editar, repetir e apagar.
  * `filtro` restringe a lista (ex.: só os abastecimentos de posto) e
  * `padrao` preenche o registro novo e `acoes` entra como botão extra na barra.
+ * `abrirNovo` já abre o formulário em branco.
  */
-export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes }) {
+export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes, abrirNovo }) {
   const def = ESQUEMA[colecao];
   const [busca, setBusca] = useState("");
   const [periodo, setPeriodo] = useState(periodoInicial ?? (def.lancamento ? "mes" : "tudo"));
-  const [rascunho, setRascunho] = useState(null);
+  // Vindo do "+ Lançar", a tela já abre com o formulário em branco.
+  const [rascunho, setRascunho] = useState(() => (abrirNovo ? { ...registroNovo(colecao), ...(padrao ?? {}) } : null));
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const repete = def.lancamento && !def.semRepetir;

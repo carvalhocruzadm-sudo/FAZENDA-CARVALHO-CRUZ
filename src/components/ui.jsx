@@ -33,6 +33,10 @@ const P = {
   nuvem: "M7 18a5 5 0 01-.5-10A6 6 0 0118 9a4.5 4.5 0 01-.5 9z",
   exportar: "M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4",
   importar: "M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4",
+  atividade: "M9 3h6v3H9zM9 4.5H6a1 1 0 00-1 1V20a1 1 0 001 1h12a1 1 0 001-1V5.5a1 1 0 00-1-1h-3M9 13l2 2 4-4",
+  pasta: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z",
+  seta: "M9 6l6 6-6 6",
+  calendario: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
 };
 
 export function Icone({ nome, tamanho = 18, className }) {
