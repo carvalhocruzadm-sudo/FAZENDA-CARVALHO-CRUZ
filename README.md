@@ -257,6 +257,56 @@ Toda despesa nova guarda **quem lançou** (o login), que aparece na lista e no f
 vira um aviso no **sininho** de quem está no escritório e uma notificação no **ntfy**, igual aos
 lançamentos do campo (veja "Notificação no celular" abaixo).
 
+## 📲 Agente de comprovantes pelo WhatsApp
+
+Mande a **foto ou o PDF do comprovante** (PIX, boleto, transferência) para o número do agente. A IA lê
+valor, data e favorecido, escolhe a categoria olhando como a fazenda já lançou aquele favorecido antes,
+**lança em Despesas** com o arquivo no campo **Comprovante** e responde no WhatsApp dizendo o que lançou.
+Escreva na legenda para que foi ("diária João", "adubo milho") que ele classifica certinho. Se errar,
+corrija no app — em **Lançado por** aparece "WhatsApp · nome de quem mandou".
+
+- O mesmo comprovante mandado duas vezes não duplica (ele reconhece o ID da transação).
+- Só lança o que vem dos números autorizados; mensagem de qualquer outro número é ignorada.
+- Responder a quem mandou mensagem é grátis na Meta. Só a leitura pela IA é paga, na conta da Anthropic:
+  com o modelo padrão (Haiku) dá uns R$ 1 por mês para ~130 comprovantes. Para trocar pelo Sonnet (lê
+  melhor, uns R$ 15 a 20 por mês): segredo `MODELO_AGENTE_WHATSAPP=claude-sonnet-5-5`.
+- Para apagar só o que veio dele: `delete from public.despesas where lancado_por like 'WhatsApp%';`
+
+### Como ligar (uma vez só)
+
+**1. Meta** — em [developers.facebook.com](https://developers.facebook.com): **Meus apps → Criar app** →
+caso de uso **"Conectar-se com clientes pelo WhatsApp"** → **Etapa 1. Experimente** (número de teste da
+Meta; cadastre em "Para" os números que vão mandar comprovante) ou **Etapa 2** para um chip próprio.
+Anote a **chave secreta do app** (Configurações do app → Básico). Gere um **token permanente** em
+[business.facebook.com](https://business.facebook.com) → Configurações → Usuários do sistema → Adicionar
+(Administrador) → Atribuir ativos (o app, controle total) → Gerar token sem validade, com
+`whatsapp_business_messaging` e `whatsapp_business_management`.
+
+**2. Supabase** — **Edge Functions → Secrets**:
+
+| Segredo | Valor |
+|---|---|
+| `WHATSAPP_TOKEN` | o token permanente |
+| `WHATSAPP_APP_SECRET` | a chave secreta do app |
+| `WHATSAPP_VERIFY_TOKEN` | uma senha que você inventa |
+| `WHATSAPP_NUMEROS_AUTORIZADOS` | quem pode mandar: `5579999998888,5511977776666` (55 + DDD + número) |
+| `ANTHROPIC_API_KEY` | chave de [console.anthropic.com](https://console.anthropic.com) (com crédito) |
+
+Depois **Deploy a new function → Via Editor**, nome `whatsapp-comprovantes`, cole
+[`supabase/functions/whatsapp-comprovantes/index.ts`](supabase/functions/whatsapp-comprovantes/index.ts)
+→ **Deploy**, e nos detalhes da função **desligue "Enforce JWT verification"** (quem chama é a Meta, não o
+app; a segurança fica na assinatura da Meta e na lista de números).
+
+**3. Ligar a Meta ao agente** — no app da Meta, **Configurar webhooks**: URL
+`https://SEU-PROJETO.supabase.co/functions/v1/whatsapp-comprovantes`, token de verificação = a senha do
+`WHATSAPP_VERIFY_TOKEN` → **Verificar e salvar** → em **Campos do webhook** assine **messages**.
+
+**4. Publicar o app da Meta** — sem isso a Meta não entrega as mensagens de verdade. Em **Configurações
+do app → Básico**, use como política de privacidade `https://SEU-SITE/privacidade.html` (e
+`…/privacidade.html#exclusao` para exclusão de dados), depois **Publicar**.
+
+Se o agente não responder, veja **Edge Functions → whatsapp-comprovantes → Logs**.
+
 ## 📥 Histórico das planilhas
 
 [`supabase/importacao-historico.sql`](supabase/importacao-historico.sql) traz o histórico das planilhas
