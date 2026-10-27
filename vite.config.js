@@ -46,7 +46,7 @@ export default defineConfig({
         importScripts: ["compartilhar-sw.js", "sync-sw.js"],
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest,woff2}"],
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/privacidade/],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         runtimeCaching: [
