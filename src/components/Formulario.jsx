@@ -156,7 +156,7 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
       const deProduto = campo.colecao === "insumos";
       const termo = achar.trim().toLowerCase();
       const opcoes = (dados[campo.colecao] ?? [])
-        .filter((x) => x.id === valor || (x.ativo !== false && (!campo.filtro || campo.filtro(x))))
+        .filter((x) => x.id === valor || (x.ativo !== false && (!campo.filtro || campo.filtro(x, reg))))
         // Produto: dá para achar pelo nome, fabricante, tipo ou princípio ativo.
         .filter((x) => !deProduto || !termo || x.id === valor
           || [x.nome, x.fabricante, x.tipo, x.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(termo)))
@@ -189,7 +189,7 @@ function Campo({ colecao, chave, campo, reg, dados, aoMudar }) {
       const def = ESQUEMA[campo.colecao];
       const marcados = Array.isArray(valor) ? valor : [];
       const opcoes = (dados[campo.colecao] ?? [])
-        .filter((x) => marcados.includes(x.id) || (x.ativo !== false && (!campo.filtro || campo.filtro(x))))
+        .filter((x) => marcados.includes(x.id) || (x.ativo !== false && (!campo.filtro || campo.filtro(x, reg))))
         .sort(def.ordem ?? (() => 0));
       controle = (
         <div className="escolhas" id={id}>
@@ -306,7 +306,12 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
   }
   const principais = visiveis.filter(([, c]) => !c.opcional);
   const opcionaisAbertos = visiveis.filter(([, c]) => c.opcional && grupos.find((g) => g.nome === c.opcional).aberto);
-  const mostrar = ([chave, c]) => <Campo key={chave} colecao={colecao} chave={chave} campo={c} reg={reg} dados={dados} aoMudar={aoMudar} />;
+  // Cultura sem talhão (laranja de terceiros) aparece sozinha; trocando por ela, a escolha acompanha.
+  const mudarCampo = (chave, v) => {
+    if (chave === "cultura_id" && escolha) escolha.props.setCultura(v ?? "");
+    aoMudar(chave, v);
+  };
+  const mostrar = ([chave, c]) => <Campo key={chave} colecao={colecao} chave={chave} campo={c} reg={reg} dados={dados} aoMudar={mudarCampo} />;
 
   return (
     <div className="form">

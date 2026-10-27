@@ -232,6 +232,21 @@ const culturaDoTalhao = {
   },
 };
 
+/**
+ * Nos lançamentos do operador a cultura vem antes do talhão: o talhão só
+ * aparece depois da cultura, só lista os talhões dela e some para a laranja
+ * de terceiros (é serviço fora da fazenda, não tem talhão).
+ */
+const talhaoDaCultura = (t, r) => !r?.cultura_id || !t.cultura_id || t.cultura_id === r.cultura_id;
+const talhaoNaFazenda = { filtro: talhaoDaCultura, paraCultura: (c) => c.id !== LARANJA_TERCEIROS };
+const trocouCultura = {
+  // Trocou a cultura: tira o talhão que é de outra cultura.
+  cultura_id: (reg, dados) => {
+    const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
+    return (t && !talhaoDaCultura(t, reg)) || reg.cultura_id === LARANJA_TERCEIROS ? { talhao_id: null } : {};
+  },
+};
+
 // "1620" no tipo ou na descrição de uma despesa é o caminhão (MB 1620).
 // Mesmo id que a importação das planilhas dá ao caminhão.
 const CAMINHAO_1620 = "00000000-0000-4000-8300-000000000001";
@@ -556,7 +571,7 @@ export const ESQUEMA = {
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
       operacao: { tipo: "sugestao", rotulo: "Operação", sugestoes: OPERACOES, sugestoesDe: ["servicos", "nome"], obrigatorio: true },
       cultura_id: refCultura,
-      talhao_id: refTalhao,
+      talhao_id: { ...refTalhao, ...talhaoNaFazenda },
       leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, leituraMedidor: true, obrigatorio: true },
       leitura_final: { tipo: "numero", rotulo: "Leitura final", casas: 1, leituraMedidor: true, obrigatorio: true },
       trabalhado: { tipo: "numero", rotulo: "Horas / km", casas: 1, leituraMedidor: true, somenteLeitura: true },
@@ -565,6 +580,7 @@ export const ESQUEMA = {
     },
     aoMudar: {
       ...culturaDoTalhao,
+      ...trocouCultura,
       // A leitura inicial sugerida é a última leitura conhecida da máquina.
       maquina_id: (reg, dados, ctx) => (ctx?.ultimaLeitura ? { leitura_inicial: ctx.ultimaLeitura(reg.maquina_id) } : {}),
     },
@@ -616,7 +632,7 @@ export const ESQUEMA = {
       litros: { tipo: "numero", rotulo: "Litros", casas: 1, obrigatorio: true },
       leitura: { tipo: "numero", rotulo: "Horímetro / km no abastecimento", casas: 1, leituraMedidor: true },
       cultura_id: refCultura,
-      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)" },
+      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)", ...talhaoNaFazenda },
       posto: { tipo: "texto", rotulo: "Posto", mostrarSe: (r) => r.origem === "posto" },
       preco_litro: { tipo: "dinheiro", rotulo: "Preço por litro", casas: 3, mostrarSe: (r) => r.origem === "posto" },
       valor: { tipo: "dinheiro", rotulo: "Valor", somenteLeitura: true, mostrarSe: (r) => r.origem === "posto" },
@@ -624,7 +640,7 @@ export const ESQUEMA = {
       foto_bomba: { tipo: "foto", rotulo: "Foto da bomba (litros)", lado: 1280 },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    aoMudar: culturaDoTalhao,
+    aoMudar: { ...culturaDoTalhao, ...trocouCultura },
     calcular: (r) => ({ valor: r.origem === "posto" ? +(num(r.litros) * num(r.preco_litro)).toFixed(2) : null }),
     porTalhao: { dividir: ["litros"] },
     // Não deixa lançar 2 abastecimentos da mesma máquina com o mesmo operador no mesmo dia.

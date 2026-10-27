@@ -17,7 +17,7 @@ export default function useEscolhaTalhoes(colecao, dados) {
   const [cultura, setCultura] = useState("");
   const [areas, setAreas] = useState({});
 
-  const ativo = useCallback((reg) => Boolean(def.porTalhao && reg && !reg.id && def.campos.talhao_id && campoVisivel(def.campos.talhao_id, reg)), [def]);
+  const ativo = useCallback((reg) => Boolean(def.porTalhao && reg && !reg.id && def.campos.talhao_id && campoVisivel(def.campos.talhao_id, reg, dados)), [def, dados]);
 
   const iniciar = useCallback((reg) => {
     const t = reg?.talhao_id && dados.talhoes.find((x) => x.id === reg.talhao_id);
