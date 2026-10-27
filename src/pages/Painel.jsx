@@ -1,18 +1,11 @@
 import { useMemo, useState } from "react";
 
 import { Abas, Icone, Stat } from "../components/ui";
-import { PERIODOS, aPagarProprietarios, aReceber, diesel, estoqueInsumos, intervalo, situacaoRevisao, soma } from "../lib/calculos";
-import { brl, baixarCSV, data, leitura, numero } from "../lib/formato";
+import { PERIODOS, aPagarProprietarios, aReceber, diesel, intervalo, soma } from "../lib/calculos";
+import { brl, baixarCSV, data, numero } from "../lib/formato";
 import { KG_CAIXA, NOMES_MESES, anosComDados, indicadores, mesLegivel } from "../lib/indicadores";
-import { nomesTalhoesDaOrdem } from "../lib/talhoes";
+import { avisosDeContas, pendencias } from "../lib/pendencias";
 import useCulturaAtiva from "../hooks/useCulturaAtiva";
-
-/** Data ISO daqui a `dias` (fora do componente: o painel se refaz quando os dados mudam). */
-function diaISO(dias) {
-  const d = new Date();
-  d.setDate(d.getDate() + dias);
-  return d.toISOString().slice(0, 10);
-}
 
 // ─── Formatos ───────────────────────────────────────────────────────────────
 
@@ -243,39 +236,7 @@ function BrutoAoLiquido({ t }) {
 // ─── Abas ───────────────────────────────────────────────────────────────────
 
 function Resumo({ dados, r, irPara }) {
-  const alertas = useMemo(() => {
-    const lista = [];
-    const hojeIso = diaISO(0);
-    const em7 = diaISO(7);
-    const tanque = diesel(dados);
-    for (const m of dados.maquinas.filter((x) => x.ativo !== false)) {
-      const s = situacaoRevisao(dados, m);
-      const un = m.medidor === "km" ? "km" : "h";
-      if (s.estado === "vencida") lista.push({ tipo: "ruim", texto: `${m.nome}: revisão vencida há ${leitura(-s.faltam)} ${un}`, ir: "maquinas" });
-      if (s.estado === "proxima") lista.push({ tipo: "atencao", texto: `${m.nome}: revisão em ${leitura(s.faltam)} ${un}`, ir: "maquinas" });
-    }
-    for (const x of estoqueInsumos(dados)) {
-      if (x.negativo) lista.push({ tipo: "ruim", texto: `${x.insumo.nome}: estoque negativo (${numero(x.saldo)} ${x.insumo.unidade}) — falta lançar entrada`, ir: "quimicos" });
-      else if (x.baixo) lista.push({ tipo: "atencao", texto: `${x.insumo.nome}: estoque baixo (${numero(x.saldo)} ${x.insumo.unidade})`, ir: "quimicos" });
-    }
-    const aConferir = dados.insumo_entradas.filter((e) => e.a_conferir).length;
-    if (aConferir) lista.push({ tipo: "atencao", texto: `${aConferir} entrada(s) de produto lançada(s) no depósito esperando sua aprovação`, ir: "quimicos" });
-    const ticketsCampo = dados.vendas.filter((v) => v.a_conferir).length;
-    if (ticketsCampo) lista.push({ tipo: "atencao", texto: `${ticketsCampo} ticket(s) da balança lançado(s) pelos funcionários aguardando aprovação`, ir: "ticket" });
-    for (const o of dados.pulverizacoes.filter((x) => x.situacao === "aberta")) {
-      lista.push({ tipo: "atencao", texto: `${o.titulo ? `${o.titulo} — ` : ""}Pulverização em ${nomesTalhoesDaOrdem(dados, o)} (${data(o.data)}) esperando separar no depósito`, ir: "quimicos" });
-    }
-    if (tanque.litrosEntrada && tanque.saldo < 0) lista.push({ tipo: "ruim", texto: `Tanque de diesel negativo (${numero(tanque.saldo, 0)} L) — falta lançar compra`, ir: "diesel" });
-    for (const d of dados.despesas.filter((x) => !x.pago && x.vencimento)) {
-      if (d.vencimento < hojeIso) lista.push({ tipo: "ruim", texto: `Conta vencida ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
-      else if (d.vencimento <= em7) lista.push({ tipo: "atencao", texto: `Vence ${data(d.vencimento)}: ${d.descricao} — ${brl(d.valor)}`, ir: "financeiro" });
-    }
-    for (const b of dados.boletos.filter((x) => !x.pago && x.vencimento)) {
-      if (b.vencimento < hojeIso) lista.push({ tipo: "ruim", texto: `Pagamento vencido ${data(b.vencimento)}: ${b.empresa} — ${brl(b.valor)} (${b.forma_pagamento || "Boleto"})`, ir: "boletos" });
-      else if (b.vencimento <= em7) lista.push({ tipo: "atencao", texto: `Pagamento vence ${data(b.vencimento)}: ${b.empresa} — ${brl(b.valor)} (${b.forma_pagamento || "Boleto"})`, ir: "boletos" });
-    }
-    return lista;
-  }, [dados]);
+  const alertas = useMemo(() => [...pendencias(dados), ...avisosDeContas(dados)], [dados]);
 
   const tanque = diesel(dados);
   const totalReceber = soma(aReceber(dados).filter((x) => x.saldo > 0), (x) => x.saldo);
@@ -329,7 +290,7 @@ function Resumo({ dados, r, irPara }) {
                 <li key={i}>
                   <span className={`selo ${a.tipo}`}><Icone nome="alerta" tamanho={12} /></span>
                   <span style={{ flex: 1 }}>{a.texto}</span>
-                  <button className="btn" onClick={() => irPara(a.ir)}>Ver</button>
+                  <button className="btn" onClick={() => irPara(a.ir, { aba: a.aba })}>Ver</button>
                 </li>
               ))}
             </ul>

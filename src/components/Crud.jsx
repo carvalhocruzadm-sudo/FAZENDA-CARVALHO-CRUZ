@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PERIODOS, noPeriodo, ultimaLeitura } from "../lib/calculos";
 import useCulturaAtiva, { daCultura } from "../hooks/useCulturaAtiva";
@@ -45,10 +45,11 @@ function exportarCSV(nome, colunas, campos, valorDe, linhas, dados) {
  * total no rodapé, formulário para incluir/editar, repetir e apagar.
  * `filtro` restringe a lista (ex.: só os abastecimentos de posto) e
  * `padrao` preenche o registro novo e `acoes` entra como botão extra na barra.
+ * `abrirNovo` (vindo do "+ Lançar") já abre o formulário em branco.
  * `calculadas` são colunas só da lista, que não vão para o banco:
  * `{ campos: { chave: { tipo, rotulo… } }, calcular: (dados) => Map(id → { chave: valor }) }`.
  */
-export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes, calculadas }) {
+export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes, calculadas, abrirNovo }) {
   const def = ESQUEMA[colecao];
   const campos = useMemo(() => ({ ...def.campos, ...calculadas?.campos }), [def, calculadas]);
   const valores = useMemo(() => calculadas?.calcular(dados), [calculadas, dados]);
@@ -119,6 +120,13 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
     }
     abrir(reg);
   };
+  // Vindo do "+ Lançar": abre o formulário em branco assim que a tela aparece (uma vez só).
+  useEffect(() => {
+    if (!abrirNovo) return undefined;
+    const t = setTimeout(novo, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const repetir = (reg) => abrir({ ...reg, id: undefined, data: hoje() });
   const fechar = useCallback(() => setRascunho(null), []);
 
