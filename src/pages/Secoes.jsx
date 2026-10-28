@@ -730,13 +730,32 @@ function AReceber({ dados }) {
 function APagarProprietarios({ dados }) {
   const lista = aPagarProprietarios(dados);
   const semPreco = soma(lista, (x) => x.semPreco);
+  const faltaPagar = soma(lista.filter((x) => x.saldo > 0.009), (x) => x.saldo);
+  const devendoA = lista.filter((x) => x.saldo > 0.009).length;
+  // Pagamento com nome que não bate com nenhuma carga: aparece como "pago a mais" e não abate de ninguém.
+  const semCarga = lista.filter((x) => !x.cargas && x.pago > 0.009);
   return (
+    <>
+    <div className="grade">
+      <Stat rotulo="Falta pagar" valor={brl(faltaPagar)} cor={faltaPagar > 0.009 ? "vermelho" : ""}
+        sub={devendoA ? `a ${devendoA} ${devendoA === 1 ? "proprietário" : "proprietários"}` : "tudo pago"} />
+      <Stat rotulo="Já pago" valor={brl(soma(lista, (x) => x.pago))} sub="Despesas → Compra de laranja" />
+      <Stat rotulo="Total comprado" valor={brl(soma(lista, (x) => x.comprado))} cor="laranja"
+        sub={`${soma(lista, (x) => x.cargas)} cargas · ${numero(soma(lista, (x) => x.peso) / 1000, 2)} t`} />
+    </div>
     <div className="cartao">
       <p className="descricao">
         Laranja de terceiros, por proprietário: o valor da compra das cargas (peso × valor pago por tonelada) menos
         o que já foi pago em Despesas → Compra de laranja. A carga não entra nas despesas; só o pagamento entra.
-        Para o pagamento abater aqui, o Favorecido tem que ter o mesmo nome do proprietário da carga.
+        Para o pagamento abater aqui, preencha na despesa o Proprietário da laranja com o mesmo nome da carga
+        (em branco, vale o Favorecido).
       </p>
+      {semCarga.length > 0 && (
+        <div className="aviso">
+          {brl(soma(semCarga, (x) => x.pago))} em pagamentos não bate com o proprietário de nenhuma carga
+          ({semCarga.map((x) => x.proprietario || "sem nome").join(", ")}). Abra a despesa e corrija o Proprietário da laranja.
+        </div>
+      )}
       {semPreco > 0 && (
         <div className="aviso info">{semPreco} carga(s) sem o valor pago por tonelada: abra em Cargas vendidas e preencha para entrar na conta.</div>
       )}
@@ -748,12 +767,14 @@ function APagarProprietarios({ dados }) {
           { rotulo: "Cargas", num: true, valor: (x) => x.cargas },
           { rotulo: "Peso (t)", num: true, valor: (x) => numero(x.peso / 1000, 2) },
           { rotulo: "Comprado", num: true, valor: (x) => brl(x.comprado) },
-          { rotulo: "Pago", num: true, valor: (x) => brl(x.pago) },
+          { rotulo: "Já pago", num: true, valor: (x) => brl(x.pago) },
+          { rotulo: "Último pagamento", valor: (x) => (x.ultimoPagamento ? data(x.ultimoPagamento) : "—") },
           { rotulo: "Falta pagar", num: true, valor: (x) => <b className={x.saldo > 0.009 ? "negativo" : "positivo"}>{brl(x.saldo)}</b> },
         ]}
-        rodape={["Total", soma(lista, (x) => x.cargas), numero(soma(lista, (x) => x.peso) / 1000, 2), brl(soma(lista, (x) => x.comprado)), brl(soma(lista, (x) => x.pago)), brl(soma(lista, (x) => x.saldo))]}
+        rodape={["Total", soma(lista, (x) => x.cargas), numero(soma(lista, (x) => x.peso) / 1000, 2), brl(soma(lista, (x) => x.comprado)), brl(soma(lista, (x) => x.pago)), "", brl(soma(lista, (x) => x.saldo))]}
       />
     </div>
+    </>
   );
 }
 

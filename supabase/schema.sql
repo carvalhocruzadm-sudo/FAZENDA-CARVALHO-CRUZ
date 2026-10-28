@@ -633,6 +633,7 @@ alter table public.despesas add column if not exists descricao text;
 alter table public.despesas add column if not exists valor numeric;
 alter table public.despesas add column if not exists forma_pagamento text;
 alter table public.despesas add column if not exists favorecido text;
+alter table public.despesas add column if not exists proprietario text;
 alter table public.despesas add column if not exists fazenda_id uuid;
 alter table public.despesas add column if not exists centro text;
 alter table public.despesas add column if not exists cultura_id uuid;
