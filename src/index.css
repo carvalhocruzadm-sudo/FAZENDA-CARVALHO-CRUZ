@@ -689,3 +689,15 @@ img.ampliavel { cursor: zoom-in; }
 .leitor-zoom input { flex: 1; accent-color: var(--verde); }
 .aviso.repetido { display: flex; flex-direction: column; gap: 4px; margin: 0; border: 2px solid var(--vermelho); font-size: 14px; }
 .aviso.repetido b { font-size: 16px; }
+
+/* Boletos em PDF: a lista de conferência precisa de espaço para as colunas. */
+.modal:has(.boletos-pdf) { max-width: 1080px; }
+.boletos-pdf td { white-space: normal; vertical-align: top; }
+.boletos-pdf td .entrada { width: 230px; }
+.boletos-pdf td .entrada.valor { width: 110px; text-align: right; }
+.boletos-pdf td[data-rotulo="Vencimento"] .entrada { width: 150px; }
+.boletos-pdf td small { display: block; max-width: 230px; margin: 4px 0 0; }
+.boletos-pdf .selo.atencao { white-space: normal; max-width: 260px; }
+@media (max-width: 760px) {
+  .boletos-pdf td .entrada, .boletos-pdf td .entrada.valor, .boletos-pdf td[data-rotulo="Vencimento"] .entrada { width: 60%; }
+}
