@@ -8,26 +8,54 @@
  *
  * Tipos de campo:
  *   texto · textoLongo · numero · dinheiro · data · booleano
- *   fotos    → lista de fotos (comprimidas, guardadas no próprio registro);
- *              `ladoMaior` muda o tamanho (documento precisa de mais), e
- *              `lerCodigo: [campo, tamanhos]` lê o código de barras da foto
- *              e grava os números nesse campo
+ *   fotos    → lista de fotos (comprimidas, guardadas no próprio registro)
  *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
- *   sugestao → texto livre com sugestões (dá para criar uma categoria nova);
- *              `sugestoesDe: [coleção, coluna]` puxa o que já foi digitado, ou
- *              uma lista delas, cada uma com um filtro opcional na 3ª posição
+ *   sugestao → texto livre com sugestões (dá para criar uma categoria nova)
  *   ref      → aponta para outra coleção (`colecao`, `filtro` opcional)
+ *   refs     → aponta para vários da outra coleção (lista de ids; marca-se tocando)
+ *   foto     → foto tirada no celular; guarda o caminho no Storage (`lado`:
+ *              tamanho máximo em pixels, maior para foto que precisa ser lida)
+ *
+ * `campo` diz o que a conta do Modo Campo (perfil "campo", celular dos
+ * tratoristas) pode fazer na tabela: "le" (só ver) ou "grava" (ver e lançar).
+ * Sem `campo`, essa conta não enxerga a tabela. Vale no banco (RLS).
+ * `campoSql` limita as linhas que ela vê e corrige (ex.: só as entradas que
+ * ela mesma lançou e o escritório ainda não conferiu, sem os preços das outras).
+ *   arquivo  → foto ou PDF anexado (guarda o caminho; ver lib/arquivos.js)
+ *   itens    → lista guardada como JSON (sem campo na tela padrão: tem tela própria)
+ *
+ * `porTalhao` diz como um lançamento com vários talhões se divide (um
+ * registro por talhão): `dividir` os campos repartidos pela área, `area` o
+ * campo que recebe a área do talhão, `leituras` emenda o horímetro, `zerar`
+ * os campos que não fazem sentido repartir. Ver lib/talhoes.js.
+ *
+ * `opcional: "Desconto"` esconde o campo atrás de um botão com esse nome
+ * (campos com o mesmo nome abrem juntos). Abre sozinho se já tiver valor;
+ * fechar o botão apaga o que foi digitado nele.
+ *
+ * `quemLancou: true` grava em `lancado_por` quem estava logado ao criar o
+ * registro (o e-mail do login); editar depois não muda.
  *
  * `calcular(reg, dados)` roda antes de gravar e preenche o que é conta
  * (horas trabalhadas, valor total…). `aoMudar` preenche um campo a partir de
  * outro enquanto se digita (escolher o talhão já traz a cultura dele).
- * Campo com `oculto: true` nunca aparece no formulário (é o código que preenche).
- * `travado(reg)` deixa o lançamento só para ver, sem salvar nem apagar.
+ *
+ * `oculto: true` guarda a coluna sem mostrar no formulário (ligações feitas
+ * pelo próprio sistema, como a despesa lançada a partir de um boleto).
  */
 
-import { fornecedorPeloCnpj, lerBoleto, lerChaveNfe } from "./codigos.js";
+import { boletoJaLancado, lerCodigoBoleto } from "./boleto.js";
+import { principioDe } from "./principiosAtivos.js";
 
 export const hoje = () => new Date().toISOString().slice(0, 10);
+
+/** A segunda-feira da semana de uma data ("2026-10-09" → "2026-10-05"). */
+export function segundaDaSemana(iso) {
+  const d = new Date(`${String(iso).slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
 
 const num = (v) => Number(v) || 0;
 
@@ -48,16 +76,94 @@ export const FORMAS_PAGAMENTO = ["PIX", "Boleto", "Cartão", "Dinheiro", "Transf
 export const FASES = [
   "Pré-plantio / dessecação", "Plantio (adubação, TS, semente)", "Herbicida",
   "1ª cobertura", "1ª pulverização", "2ª cobertura", "2ª pulverização",
-  "3ª pulverização", "Colheita", "Operacional",
+  "3ª pulverização", "Colheita", "Operacional", "Arrendamento", "Juros / financiamento",
 ];
 
-/** Unidades de preço de venda e quantos kg cabem em cada uma. */
+/** Itens do planejamento que não são produto (o resumo à direita da aba PLANEJAMENTO). */
+export const ITENS_PLANEJAMENTO = ["Operacional", "Colheita", "Arrendamento", "Juros"];
+
+/**
+ * Unidades de colheita/venda e quantos kg cabem em cada uma. A "saca" pesa o
+ * que estiver no cadastro da cultura (peso_saca).
+ */
 export const UNIDADES_VENDA = [
-  ["t", "Tonelada", 1000], ["kg", "Quilo", 1], ["sc60", "Saca 60 kg", 60],
+  ["t", "Tonelada", 1000], ["kg", "Quilo", 1], ["saca", "Saca (peso no cadastro da cultura)", null],
+  ["sc60", "Saca 60 kg", 60], ["cx408", "Caixa 40,8 kg (citros)", 40.8],
   ["arroba", "Arroba (15 kg)", 15], ["saco", "Saco (silagem)", null],
   ["caixa", "Caixa", null], ["unidade", "Unidade", null], ["cabeca", "Cabeça", null],
 ];
 const KG_POR_UNIDADE = Object.fromEntries(UNIDADES_VENDA.map(([v, , kg]) => [v, kg]));
+
+/** Quantos kg tem uma unidade (null quando não é de peso: saco, caixa, cabeça…). */
+export function kgPorUnidade(unidade, cultura) {
+  if (unidade === "saca") return Number(cultura?.peso_saca) || null;
+  return KG_POR_UNIDADE[unidade] ?? null;
+}
+
+/** Tipos de cultura. Cada um traz os padrões dos outros campos do cadastro. */
+export const GRUPOS_CULTURA = [
+  ["citros", "Citros (laranja, limão, tangerina)"],
+  ["graos", "Grãos (milho, soja, feijão, amendoim)"],
+  ["hortalicas", "Hortaliças e frutas (abóbora, milho verde)"],
+  ["forragem", "Forragem (silagem, capim)"],
+  ["pecuaria", "Pecuária (confinamento, gado)"],
+  ["outra", "Outra"],
+];
+
+export const MEDIDAS_PRODUTIVIDADE = [
+  ["t_ha", "Toneladas por hectare (t/ha)"],
+  ["sc_ha", "Sacas por hectare (sc/ha)"],
+  ["kg_ha", "Quilos por hectare (kg/ha)"],
+  ["kg_pe", "Quilos por pé (kg/pé)"],
+  ["cx_pe", "Caixas de 40,8 kg por pé (cx/pé)"],
+  ["nenhuma", "Não se aplica"],
+];
+
+/**
+ * O que muda conforme o tipo da cultura escolhida no lançamento. Num campo
+ * do esquema:
+ *   paraCultura(c)          → o campo só aparece para essas culturas
+ *   opcoesDaCultura(c)      → só essas opções da lista (as outras somem)
+ *   sugestoesDaCultura(c)   → sugestões próprias da cultura
+ *   historicoDaCultura      → as sugestões do que já foi digitado vêm só dessa cultura
+ * Enquanto a cultura não foi escolhida, os campos com `paraCultura` ficam
+ * escondidos. Cultura sem tipo ou do tipo "Outra" mostra tudo.
+ */
+const soGrupos = (...grupos) => (c) => !c.grupo || c.grupo === "outra" || grupos.includes(c.grupo);
+
+/** Em que unidade cada tipo de cultura costuma ser vendido/colhido. */
+const UNIDADES_POR_GRUPO = {
+  citros: ["t", "kg", "cx408", "caixa"],
+  graos: ["saca", "sc60", "t", "kg"],
+  hortalicas: ["kg", "caixa", "t", "unidade"],
+  forragem: ["t", "kg", "saco"],
+  pecuaria: ["arroba", "kg", "cabeca", "unidade"],
+};
+const unidadesDaCultura = (c) => UNIDADES_POR_GRUPO[c.grupo];
+
+const CLASSIFICACOES_POR_GRUPO = {
+  citros: ["BOA", "SUKITA", "CASQUINOL", "Indústria", "Mesa"],
+  graos: ["Grão", "Tipo 1", "Tipo 2", "Fora de tipo"],
+  forragem: ["Silagem", "Feno", "Capim"],
+  hortalicas: ["Extra", "Primeira", "Segunda"],
+  pecuaria: ["Boi gordo", "Vaca", "Novilha", "Bezerro"],
+};
+
+/** Fases do planejamento dos citros (as outras culturas usam FASES). */
+export const FASES_CITROS = [
+  "Calagem / gessagem", "Adubação de solo", "Adubação foliar", "Herbicida",
+  "Psilídeo / greening", "Fungicida", "Inseticida / ácaro", "Poda / desbrota",
+  "Colheita", "Operacional",
+];
+
+const PADROES_GRUPO = {
+  citros: { unidade: "t", produtividade: "kg_pe", turma_colheita: true },
+  graos: { unidade: "saca", peso_saca: 60, produtividade: "sc_ha", turma_colheita: false },
+  hortalicas: { unidade: "kg", produtividade: "t_ha", turma_colheita: false },
+  forragem: { unidade: "t", produtividade: "t_ha", turma_colheita: false },
+  pecuaria: { unidade: "arroba", produtividade: "nenhuma", turma_colheita: false },
+  outra: {},
+};
 
 export const TIPOS_INSUMO = [
   ["herbicida", "Herbicida"], ["inseticida", "Inseticida"], ["fungicida", "Fungicida"],
@@ -72,30 +178,53 @@ export const OPERACOES = [
   "Terraplanagem", "Serviço geral",
 ];
 
-/** Ler a chave da nota traz o número dela e o fornecedor (pelo CNPJ); o boleto traz vencimento e valor. */
-const dadosDosCodigos = {
-  chave_nfe: (reg, dados) => {
-    const nfe = lerChaveNfe(reg.chave_nfe);
-    if (!nfe) return {};
-    return { nota: reg.nota || nfe.numero, fornecedor: reg.fornecedor || fornecedorPeloCnpj(dados.contatos, nfe.cnpj) || null };
-  },
-  codigo_boleto: (reg) => {
-    const b = lerBoleto(reg.codigo_boleto);
-    if (!b) return {};
-    // Boleto anexado = conta ainda a pagar (dá para marcar como paga depois).
-    return { vencimento: b.vencimento ?? reg.vencimento, valor: reg.valor || b.valor, pago: false };
-  },
+/** NCM mais comuns das culturas da fazenda (o contador confirma). */
+export const NCM_SUGESTOES = [
+  "10059010", // milho em grão
+  "08051000", // laranja
+  "07099300", // abóbora
+  "12024200", // amendoim descascado
+  "12024100", // amendoim com casca
+  "12149000", // silagem / forragem
+  "07049000", // outras hortaliças
+  "01022990", // bovinos vivos
+];
+
+export const UFS = [
+  "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB",
+  "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+];
+
+/** Situação da NF-e no Bling (o número que a API devolve). */
+export const SITUACOES_NFE = {
+  1: ["Pendente", "neutro"], 2: ["Cancelada", "ruim"], 3: ["Aguardando SEFAZ", "atencao"],
+  4: ["Rejeitada", "ruim"], 5: ["Autorizada", "ok"], 6: ["Autorizada", "ok"], 7: ["Registrada", "ok"],
+  8: ["Aguardando SEFAZ", "atencao"], 9: ["Denegada", "ruim"], 10: ["Consultando", "atencao"], 11: ["Bloqueada", "ruim"],
 };
 
-const fotoDaNota = { tipo: "fotos", rotulo: "Foto da nota fiscal", ladoMaior: 1800, lerCodigo: ["chave_nfe", [44]], dica: "Foto reta, com boa luz, pegando o código de barras." };
-const fotoDoBoleto = { tipo: "fotos", rotulo: "Foto do boleto", ladoMaior: 1800, lerCodigo: ["codigo_boleto", [44, 47]], dica: "Pegue o código de barras inteiro." };
-const chaveNfe = { tipo: "texto", rotulo: "Chave da nota (44 números)", dica: "Sai sozinha da foto quando o celular consegue ler o código de barras" };
-const codigoBoleto = { tipo: "texto", rotulo: "Código do boleto", dica: "Linha digitável ou código de barras" };
+/** Figuras que o gerente escolhe para cada serviço (quem não lê reconhece pelo desenho). */
+export const FIGURAS = [
+  ["🚜", "🚜 Trator / gradagem"], ["⛏️", "⛏️ Aração"], ["🪨", "🪨 Subsolagem"], ["🌱", "🌱 Plantio"],
+  ["💦", "💦 Pulverização"], ["🧪", "🧪 Adubação / químico"], ["✂️", "✂️ Roçagem"], ["🌽", "🌽 Milho / colheita"],
+  ["🍊", "🍊 Laranja"], ["🎃", "🎃 Abóbora"], ["🥜", "🥜 Amendoim"], ["🌾", "🌾 Silagem / capim"],
+  ["🚚", "🚚 Transporte"], ["🐄", "🐄 Gado / ração"], ["🏗️", "🏗️ Terraplanagem"], ["💧", "💧 Água / irrigação"],
+  ["🪵", "🪵 Lenha / madeira"], ["🧹", "🧹 Limpeza"], ["🔧", "🔧 Serviço geral / conserto"],
+];
+
+/** A figura de cada serviço da lista padrão. */
+export const FIGURA_DA_OPERACAO = {
+  "Gradagem": "🚜", "Aração": "⛏️", "Subsolagem": "🪨", "Plantio": "🌱", "Pulverização": "💦",
+  "Adubação": "🧪", "Roçagem": "✂️", "Colheita": "🌽", "Ensilagem": "🌾", "Transporte": "🚚",
+  "Distribuição de ração": "🐄", "Terraplanagem": "🏗️", "Serviço geral": "🔧",
+};
 
 const refTalhao = { tipo: "ref", colecao: "talhoes", rotulo: "Talhão" };
 const refCultura = { tipo: "ref", colecao: "culturas", rotulo: "Cultura" };
 
 /** Escolher o talhão traz a cultura que está nele. */
+/** Pagamento por boleto (os antigos, sem forma, eram todos boleto). */
+const ehBoleto = (r) => !r.forma_pagamento || r.forma_pagamento === "Boleto";
+
 const culturaDoTalhao = {
   talhao_id: (reg, dados) => {
     const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
@@ -104,38 +233,78 @@ const culturaDoTalhao = {
 };
 
 /**
- * Serviço com laranja de terceiros é feito fora da fazenda: não tem talhão.
- * Marcar a caixa esconde o talhão e já coloca a cultura Laranja.
+ * Nos lançamentos do operador a cultura vem antes do talhão: o talhão só
+ * aparece depois da cultura, só lista os talhões dela e some para a laranja
+ * de terceiros (é serviço fora da fazenda, não tem talhão).
  */
-const campoTerceiros = { tipo: "booleano", rotulo: "Laranja de terceiros (fora da fazenda)" };
-const naFazenda = (r) => !r.terceiros;
-const aoMarcarTerceiros = {
-  terceiros: (reg, dados) => {
-    if (!reg.terceiros) return {};
-    const laranja = dados.culturas.find((c) => /laranja/i.test(c.nome ?? ""));
-    return { talhao_id: null, ...(laranja ? { cultura_id: laranja.id } : {}) };
+const talhaoDaCultura = (t, r) => !r?.cultura_id || !t.cultura_id || t.cultura_id === r.cultura_id;
+const talhaoNaFazenda = { filtro: talhaoDaCultura, paraCultura: (c) => c.id !== LARANJA_TERCEIROS };
+const trocouCultura = {
+  // Trocou a cultura: tira o talhão que é de outra cultura.
+  cultura_id: (reg, dados) => {
+    const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
+    return (t && !talhaoDaCultura(t, reg)) || reg.cultura_id === LARANJA_TERCEIROS ? { talhao_id: null } : {};
   },
 };
+
+// "1620" no tipo ou na descrição de uma despesa é o caminhão (MB 1620).
+// Mesmo id que a importação das planilhas dá ao caminhão.
+const CAMINHAO_1620 = "00000000-0000-4000-8300-000000000001";
+const tem1620 = (texto) => /(^|\D)1620(\D|$)/.test(texto ?? "");
+const caminhaoPelo1620 = (reg, dados) => {
+  if (reg.maquina_id || !(tem1620(reg.tipo) || tem1620(reg.descricao))) return {};
+  return dados.maquinas?.some((m) => m.id === CAMINHAO_1620) ? { maquina_id: CAMINHAO_1620 } : {};
+};
+
+// Compra de laranja é sempre laranja de terceiros (compra e revenda), separada
+// da laranja dos sítios da fazenda. Mesmo id do cadastro inicial (seed.js).
+export const LARANJA_TERCEIROS = "00000000-0000-4000-8000-000000000008";
+const laranjaDeTerceiros = (reg, dados) =>
+  reg.categoria === "Compra de laranja" && dados.culturas?.some((c) => c.id === LARANJA_TERCEIROS)
+    ? { centro: "cultura", cultura_id: LARANJA_TERCEIROS, talhao_id: null }
+    : {};
+
+/** Código difícil de adivinhar para o link do agrônomo (192 bits). */
+function novoToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+const totalEmbalagens = (r) => +(num(r.qtd_embalagens) * (num(r.tamanho_embalagem) || 1)).toFixed(3);
 
 export const ESQUEMA = {
   // ─── Cadastros ────────────────────────────────────────────────────────────
   culturas: {
-    titulo: "Culturas", singular: "cultura", icone: "cultura",
+    titulo: "Culturas", singular: "cultura", icone: "cultura", campo: "le",
     descricao: "Milho, laranja, abóbora, confinamento… Cadastre aqui cada cultura nova.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
-      tipo: { tipo: "opcoes", rotulo: "Tipo", opcoes: [["agricola", "Agrícola"], ["pecuaria", "Pecuária"]], padrao: "agricola" },
-      unidade: { tipo: "opcoes", rotulo: "Unidade de venda", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
+      grupo: { tipo: "opcoes", rotulo: "Tipo de cultura", opcoes: GRUPOS_CULTURA, padrao: "graos", obrigatorio: true, dica: "Escolher o tipo já preenche o resto; dá para mudar" },
+      // Agrícola × pecuária: sai do tipo de cultura, não aparece no formulário.
+      tipo: { tipo: "opcoes", rotulo: "Agrícola / pecuária", opcoes: [["agricola", "Agrícola"], ["pecuaria", "Pecuária"]], mostrarSe: () => false },
+      unidade: { tipo: "opcoes", rotulo: "Colhida e vendida em", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "saca" },
+      peso_saca: { tipo: "numero", rotulo: "Peso da saca (kg)", casas: 1, padrao: 60, mostrarSe: (r) => r.unidade === "saca", obrigatorio: true },
+      produtividade: { tipo: "opcoes", rotulo: "Produtividade medida em", opcoes: MEDIDAS_PRODUTIVIDADE, padrao: "sc_ha" },
+      turma_colheita: { tipo: "booleano", rotulo: "Colheita feita por turma (paga por tonelada)" },
+      custo_turma_ton: { tipo: "dinheiro", rotulo: "Valor padrão da turma por tonelada", mostrarSe: (r) => r.turma_colheita, dica: "O ticket já vem com ele; dá para mudar em cada carga" },
+      // Lista antiga de turmas (antes do cadastro de Turmas de colheita); o celular ainda lê, mas não aparece mais no formulário.
+      turmas: { tipo: "texto", rotulo: "Turmas de colheita (lista antiga)", mostrarSe: () => false },
+      ncm: { tipo: "sugestao", rotulo: "NCM (para a nota fiscal)", sugestoes: NCM_SUGESTOES, dica: "Só os números. Confirme com o contador. Ex.: milho 10059010, laranja 08051000" },
+      codigo_nf: { tipo: "texto", rotulo: "Código do produto no Bling", dica: "Se já existe o produto cadastrado no Bling, o mesmo código. Vazio = o nome da cultura" },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "tipo", "unidade", "ativo"],
+    aoMudar: {
+      grupo: (r) => PADROES_GRUPO[r.grupo] ?? {},
+    },
+    calcular: (r) => ({ tipo: r.grupo === "pecuaria" ? "pecuaria" : "agricola" }),
+    colunas: ["nome", "grupo", "unidade", "peso_saca", "produtividade", "turma_colheita", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => r.nome,
   },
 
   fazendas: {
-    titulo: "Fazendas", singular: "fazenda", icone: "casa",
+    titulo: "Fazendas", singular: "fazenda", icone: "casa", campo: "le",
     descricao: "Triunfo/Juerana, São Raimundo, Murtinha, Águas Claras… próprias, arrendadas ou em sociedade.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
@@ -152,32 +321,61 @@ export const ESQUEMA = {
   },
 
   talhoes: {
-    titulo: "Talhões / sítios", singular: "talhão", icone: "mapa",
+    titulo: "Talhões / sítios", singular: "talhão", icone: "mapa", campo: "le",
     descricao: "As áreas de cada fazenda (Gameleira, Galpão, George…) e a cultura que está nelas. No confinamento, cadastre os currais/lotes aqui.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome / número", obrigatorio: true },
+      foto: { tipo: "foto", rotulo: "Foto (aparece no Modo Campo)" },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
       area_ha: { tipo: "numero", rotulo: "Área (ha)", casas: 2 },
       cultura_id: { ...refCultura, rotulo: "Cultura atual" },
-      variedade: { tipo: "texto", rotulo: "Variedade / híbrido" },
       pes: { tipo: "numero", rotulo: "Nº de pés (pomar)", casas: 0 },
-      safra: { tipo: "texto", rotulo: "Safra", dica: "Ex.: 2026/27" },
-      data_plantio: { tipo: "data", rotulo: "Data de plantio" },
-      previsao_colheita: { tipo: "data", rotulo: "Previsão de colheita" },
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "fazenda_id", "area_ha", "cultura_id", "pes", "safra", "data_plantio"],
+    colunas: ["nome", "foto", "fazenda_id", "area_ha", "cultura_id", "pes", "ativo"],
+    filtros: ["fazenda_id", "cultura_id", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }),
     resumo: (r) => r.nome,
   },
 
+  // Variedade, plantio e previsão de colheita mudam a cada safra: ficam aqui, não no talhão.
+  safras: {
+    titulo: "Safras", singular: "safra", icone: "cultura",
+    descricao: "O que foi plantado em cada talhão em cada safra: variedade/híbrido, área plantada, data de plantio e previsão de colheita.",
+    campos: {
+      safra: { tipo: "sugestao", rotulo: "Safra", obrigatorio: true, dica: "Ex.: Milho 2026/27", sugestoesDe: ["safras", "safra"] },
+      talhao_id: { ...refTalhao, obrigatorio: true },
+      fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda", somenteLeitura: true },
+      cultura_id: { ...refCultura, obrigatorio: true },
+      variedade: { tipo: "sugestao", rotulo: "Variedade / híbrido", sugestoesDe: ["safras", "variedade"] },
+      area_ha: { tipo: "numero", rotulo: "Área plantada (ha)", casas: 2 },
+      data_plantio: { tipo: "data", rotulo: "Data de plantio" },
+      previsao_colheita: { tipo: "data", rotulo: "Previsão de colheita" },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    aoMudar: {
+      // Escolher o talhão traz a fazenda, a cultura e a área dele.
+      talhao_id: (reg, dados) => {
+        const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
+        return t ? { fazenda_id: t.fazenda_id ?? null, cultura_id: t.cultura_id ?? reg.cultura_id, area_ha: t.area_ha ?? reg.area_ha } : {};
+      },
+    },
+    calcular: (r, dados) => ({ fazenda_id: dados?.talhoes.find((t) => t.id === r.talhao_id)?.fazenda_id ?? r.fazenda_id ?? null }),
+    colunas: ["safra", "talhao_id", "fazenda_id", "cultura_id", "variedade", "area_ha", "data_plantio", "previsao_colheita"],
+    filtros: ["safra", "fazenda_id", "cultura_id", "variedade"],
+    ordem: (a, b) => (b.safra || "").localeCompare(a.safra || "", "pt-BR", { numeric: true }) || (b.data_plantio || "").localeCompare(a.data_plantio || ""),
+    resumo: (r) => r.safra,
+  },
+
   funcionarios: {
-    titulo: "Funcionários", singular: "funcionário", icone: "pessoas",
+    titulo: "Funcionários", singular: "funcionário", icone: "pessoas", campo: "le",
     descricao: "Tratoristas, gerentes, trabalhadores de campo, motoristas, secretária…",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
+      foto: { tipo: "foto", rotulo: "Foto do rosto (o tratorista se acha por ela)" },
       funcao: { tipo: "sugestao", rotulo: "Função", sugestoes: FUNCOES, obrigatorio: true },
+      lanca_ticket: { tipo: "booleano", rotulo: "Lança ticket da balança", dica: "Aparece no \"Quem é você?\" do ticket, no celular" },
       telefone: { tipo: "texto", rotulo: "Telefone" },
       cpf: { tipo: "texto", rotulo: "CPF" },
       vinculo: { tipo: "opcoes", rotulo: "Vínculo", opcoes: [["mensal", "Mensalista"], ["diarista", "Diarista"], ["temporario", "Temporário / safra"]], padrao: "mensal" },
@@ -186,41 +384,64 @@ export const ESQUEMA = {
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "funcao", "vinculo", "salario", "telefone", "ativo"],
+    colunas: ["nome", "foto", "funcao", "lanca_ticket", "vinculo", "salario", "telefone", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => r.nome,
   },
 
-  contatos: {
-    titulo: "Clientes e fornecedores", singular: "contato", icone: "pessoas",
-    descricao: "Quem compra da fazenda e de quem a fazenda compra. Dá para trazer o cadastro do Bling pelo botão Importar (Bling → Contatos → Exportar). Os nomes aparecem como sugestão em Vendas, Recebimentos, Despesas e compras.",
+  turmas: {
+    titulo: "Turmas de colheita", singular: "turma", icone: "pessoas", campo: "le",
+    descricao: "As turmas que colhem por tonelada (laranja). Aparecem no ticket do celular com a foto. O valor por tonelada não fica aqui porque muda a cada colheita: é informado em cada ticket. O que cada uma tem a receber está na aba \"A pagar por semana\".",
     campos: {
-      nome: { tipo: "texto", rotulo: "Nome / razão social", obrigatorio: true },
-      fantasia: { tipo: "texto", rotulo: "Nome fantasia / apelido" },
-      tipo: { tipo: "opcoes", rotulo: "Tipo", padrao: "cliente", opcoes: [["cliente", "Cliente"], ["fornecedor", "Fornecedor"], ["outro", "Outro (contador, prestador…)"]] },
-      pessoa: { tipo: "opcoes", rotulo: "Pessoa", padrao: "juridica", opcoes: [["juridica", "Jurídica (CNPJ)"], ["fisica", "Física (CPF)"]] },
-      documento: { tipo: "texto", rotulo: "CNPJ / CPF" },
-      inscricao_estadual: { tipo: "texto", rotulo: "Inscrição estadual" },
-      telefone: { tipo: "texto", rotulo: "Telefone / celular" },
-      email: { tipo: "texto", rotulo: "E-mail" },
-      endereco: { tipo: "texto", rotulo: "Endereço", dica: "Rua, número, complemento e bairro" },
-      cidade: { tipo: "texto", rotulo: "Cidade" },
-      uf: { tipo: "texto", rotulo: "UF" },
-      cep: { tipo: "texto", rotulo: "CEP" },
-      ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
+      nome: { tipo: "texto", rotulo: "Nome da turma", obrigatorio: true, dica: "Ex.: Turma do Tião. É o nome que aparece no celular" },
+      encarregado: { tipo: "texto", rotulo: "Encarregado / gato" },
+      telefone: { tipo: "texto", rotulo: "Telefone" },
+      pix: { tipo: "texto", rotulo: "Chave PIX" },
+      cpf: { tipo: "texto", rotulo: "CPF / CNPJ" },
+      culturas: { tipo: "refs", colecao: "culturas", rotulo: "Culturas que colhe", dica: "Toque para marcar uma ou mais. Nenhuma marcada: aparece em todas as culturas colhidas por turma" },
+      // Antes era uma cultura só; quem foi cadastrado assim continua valendo (ver culturasDaTurma).
+      cultura_id: { ...refCultura, rotulo: "Cultura que colhe (antiga)", mostrarSe: () => false },
+      foto: { tipo: "foto", rotulo: "Foto (aparece no celular)" },
+      ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
-      id_bling: { tipo: "texto", rotulo: "Código no Bling", somenteLeitura: true, dica: "Preenchido pela importação; evita duplicar ao importar de novo" },
     },
-    colunas: ["nome", "fantasia", "tipo", "documento", "cidade", "uf", "telefone"],
+    // Mexeu nas culturas: a cultura única do cadastro antigo deixa de valer.
+    aoMudar: { culturas: () => ({ cultura_id: null }) },
+    colunas: ["nome", "foto", "encarregado", "telefone", "pix", "culturas", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR"),
+    resumo: (r) => r.nome,
+  },
+
+  usuarios: {
+    titulo: "Usuários", singular: "usuário", icone: "pessoas",
+    descricao: "Quem usa o sistema e o que cada um pode fazer. O e-mail deve ser o mesmo do login criado no Supabase (Authentication → Users). Perfil Tratorista: esse login só abre o Modo Campo (abastecimento e depósito), no celular. O ticket da balança só aparece no celular de quem tiver marcado \"Lança ticket da balança\". Perfil Lançador de ticket: login separado que só abre o ticket da balança e a chuva do pluviômetro. A chuva aparece no celular de todos os logins de campo.",
+    campos: {
+      funcionario_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Funcionário", dica: "Escolha para trazer o nome e o telefone do cadastro de funcionários" },
+      nome: { tipo: "texto", rotulo: "Nome", obrigatorio: true },
+      email: { tipo: "texto", rotulo: "E-mail de acesso", obrigatorio: true },
+      perfil: { tipo: "opcoes", rotulo: "Perfil", padrao: "operador", opcoes: [["admin", "Administrador (tudo)"], ["gerente", "Gerente"], ["operador", "Operador (lança dados)"], ["consulta", "Só consulta"], ["campo", "Tratorista / campo (só o Modo Campo, no celular)"], ["ticket", "Lançador de ticket (só o ticket da balança, no celular)"]] },
+      ticket_campo: { tipo: "booleano", rotulo: "Lança ticket da balança no celular", mostrarSe: (r) => r.perfil === "campo", dica: "Só quem estiver marcado vê o botão do ticket no Modo Campo" },
+      telefone: { tipo: "texto", rotulo: "Telefone" },
+      ativo: { tipo: "booleano", rotulo: "Acesso liberado", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    aoMudar: {
+      funcionario_id: (reg, dados) => {
+        const f = dados.funcionarios.find((x) => x.id === reg.funcionario_id);
+        return f ? { nome: f.nome, telefone: f.telefone ?? reg.telefone } : {};
+      },
+    },
+    colunas: ["nome", "funcionario_id", "email", "perfil", "ticket_campo", "telefone", "ativo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
-    resumo: (r) => r.fantasia || r.nome,
+    resumo: (r) => r.nome,
   },
 
   maquinas: {
-    titulo: "Máquinas e veículos", singular: "máquina", icone: "trator",
+    titulo: "Máquinas e veículos", singular: "máquina", icone: "trator", campo: "le",
     descricao: "Inventário de tratores, implementos, caminhões e veículos. Tratores e colheitadeiras marcam horímetro; caminhões marcam km.",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome / identificação", obrigatorio: true, dica: "Ex.: Trator MF 4292" },
+      foto: { tipo: "foto", rotulo: "Foto (o tratorista acha o trator por ela)" },
       categoria: { tipo: "opcoes", rotulo: "Categoria", padrao: "trator", opcoes: [
         ["trator", "Trator"], ["colheitadeira", "Colheitadeira"], ["pulverizador", "Pulverizador autopropelido"],
         ["implemento", "Implemento"], ["caminhao", "Caminhão"], ["veiculo", "Carro / moto"], ["outro", "Outro"],
@@ -230,7 +451,7 @@ export const ESQUEMA = {
       modelo: { tipo: "texto", rotulo: "Modelo" },
       ano: { tipo: "numero", rotulo: "Ano" },
       placa: { tipo: "texto", rotulo: "Placa / chassi / série" },
-      leitura_inicial: { tipo: "numero", rotulo: "Horímetro/km no cadastro", casas: 1, dica: "A leitura atual passa a vir dos lançamentos" },
+      leitura_inicial: { tipo: "numero", rotulo: "Horímetro/km no cadastro", casas: 1, leituraMedidor: true, dica: "A leitura atual passa a vir dos lançamentos" },
       intervalo_revisao: { tipo: "numero", rotulo: "Revisão a cada (h ou km)", dica: "Ex.: 250 h, 10.000 km" },
       valor: { tipo: "dinheiro", rotulo: "Valor patrimonial" },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
@@ -242,68 +463,142 @@ export const ESQUEMA = {
           : reg.categoria === "implemento" ? "nenhum" : "horas",
       }),
     },
-    colunas: ["nome", "categoria", "marca", "modelo", "placa", "medidor"],
+    colunas: ["nome", "foto", "categoria", "marca", "modelo", "placa", "medidor"],
     ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }),
     resumo: (r) => r.nome,
   },
 
+  servicos: {
+    titulo: "Serviços / operações", singular: "serviço", icone: "lista", campo: "le",
+    descricao: "A lista de serviços que o tratorista escolhe no Modo Campo (gradagem, plantio, pulverização…). Escolha uma figura e, se quiser, tire uma foto do serviço ou do implemento. Serviço que não se usa mais: desmarque Ativo.",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome do serviço", obrigatorio: true },
+      figura: { tipo: "opcoes", rotulo: "Figura", opcoes: FIGURAS, padrao: "🔧" },
+      foto: { tipo: "foto", rotulo: "Foto (aparece no lugar da figura)" },
+      ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["nome", "figura", "foto", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.nome,
+  },
+
   insumos: {
-    titulo: "Produtos químicos e insumos", singular: "produto", icone: "frasco",
-    descricao: "Defensivos, adubos, sementes, ração… O estoque é a conta: entradas − aplicações.",
+    titulo: "Produtos químicos e insumos", singular: "produto", icone: "frasco", campo: "le",
+    descricao: "Defensivos, adubos, sementes, ração… O estoque é a conta: quantidade inicial + entradas − aplicações. A primeira foto do rótulo, o tipo e o tamanho da embalagem são o que o tratorista vê no depósito (\"pegue 3 galões de 5 L\").",
     campos: {
       nome: { tipo: "texto", rotulo: "Nome comercial", obrigatorio: true },
       fabricante: { tipo: "texto", rotulo: "Fabricante" },
       tipo: { tipo: "opcoes", rotulo: "Tipo", opcoes: TIPOS_INSUMO, padrao: "herbicida" },
       principio_ativo: { tipo: "texto", rotulo: "Princípio ativo" },
       unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: ["L", "kg", "saco", "t", "unidade", "dose"], padrao: "L", obrigatorio: true },
+      tamanho_embalagem: { tipo: "numero", rotulo: "Tamanho da embalagem", casas: 2, dica: "Quanto vem em cada embalagem, na unidade acima. Ex.: galão de 20 L → 20. Se a unidade já é a embalagem (saco, caixa), deixe vazio." },
+      embalagem_tipo: { tipo: "sugestao", rotulo: "Tipo de embalagem", sugestoes: ["Galão", "Bombona", "Frasco", "Balde", "Saco", "Caixa", "Tambor"], padrao: "Galão" },
+      qtd_embalagens: { tipo: "numero", rotulo: "Quantas embalagens você tem hoje", casas: 2, dica: "As próximas compras entram pela aba Entradas / compras. Pode corrigir depois." },
+      estoque_inicial: { tipo: "numero", rotulo: "Quantidade em estoque hoje (total)", casas: 2, dica: "Calculado sozinho (tamanho × embalagens), mas você pode corrigir o total. Ex.: 5 galões de 20 L, mas um está pela metade → 90." },
+      validade: { tipo: "data", rotulo: "Validade", dica: "Se as embalagens têm validades diferentes, coloque a mais próxima de vencer." },
+      custo_inicial: { tipo: "dinheiro", rotulo: "Custo por unidade do produto (opcional)", dica: "Preço de 1 L / 1 kg / 1 unidade do que já está em estoque. Serve para o valor do estoque." },
       estoque_minimo: { tipo: "numero", rotulo: "Estoque mínimo", casas: 2 },
       ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
       fotos_rotulo: { tipo: "fotos", rotulo: "Fotos do rótulo", dica: "Tire foto da frente, do verso e da bula, se tiver." },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    colunas: ["nome", "fabricante", "tipo", "principio_ativo", "unidade", "estoque_minimo"],
+    // Ao mexer no tamanho ou nas embalagens o total é refeito; depois dá para corrigir o total à mão.
+    aoMudar: {
+      // Princípio ativo em branco? Preenche pela tabela de nomes comerciais.
+      nome: (r) => (r.principio_ativo?.trim() ? {} : { principio_ativo: principioDe(r.nome) }),
+      tamanho_embalagem: (r) => (r.qtd_embalagens == null || r.qtd_embalagens === "" ? {} : { estoque_inicial: totalEmbalagens(r) }),
+      qtd_embalagens: (r) => ({ estoque_inicial: r.qtd_embalagens === "" || r.qtd_embalagens == null ? null : totalEmbalagens(r) }),
+    },
+    colunas: ["nome", "fabricante", "tipo", "principio_ativo", "unidade", "estoque_inicial", "validade", "estoque_minimo"],
     ordem: (a, b) => a.nome.localeCompare(b.nome),
     resumo: (r) => `${r.nome} (${r.unidade})`,
   },
 
+  // ─── Agrônomo ─────────────────────────────────────────────────────────────
+  links_agronomo: {
+    titulo: "Links do agrônomo", singular: "link", icone: "pessoas",
+    descricao: "Quem tem o link vê só o estoque de químicos e pode montar uma aplicação. Não vê dinheiro, vendas nem o resto do sistema.",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome do agrônomo", obrigatorio: true },
+      token: { tipo: "texto", rotulo: "Código do link", somenteLeitura: true },
+      ativo: { tipo: "booleano", rotulo: "Link ativo", padrao: true },
+    },
+    // O código nasce uma vez e nunca muda (é ele que vai no link).
+    calcular: (r) => (r.token ? {} : { token: novoToken() }),
+    colunas: ["nome", "ativo"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.nome,
+  },
+
+  recomendacoes: {
+    titulo: "Aplicações do agrônomo", singular: "aplicação do agrônomo", icone: "spray",
+    descricao: "Receitas montadas pelo agrônomo. Só viram saída de estoque quando você der baixa.",
+    campos: {
+      nome: { tipo: "texto", rotulo: "Nome da aplicação", dica: "Ex.: Dessecação do milho" },
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      agronomo: { tipo: "texto", rotulo: "Agrônomo" },
+      // Uma aplicação para vários talhões vira um registro por talhão; todos levam o mesmo grupo.
+      grupo_id: { tipo: "texto", rotulo: "Grupo da aplicação", somenteLeitura: true },
+      cultura_id: refCultura,
+      talhao_id: { ...refTalhao, obrigatorio: true },
+      area_ha: { tipo: "numero", rotulo: "Área a aplicar (ha)", casas: 2 },
+      alvo: { tipo: "texto", rotulo: "Alvo (praga, doença, planta daninha)" },
+      calda_l_ha: { tipo: "numero", rotulo: "Calda (L/ha)", casas: 1 },
+      // Como o agrônomo passou a dose: por hectare ou por pipa (tanque cheio do pulverizador).
+      dose_por: { tipo: "opcoes", rotulo: "Dose por", padrao: "ha", opcoes: [["ha", "Hectare (ha)"], ["pipa", "Pipa (tanque)"]] },
+      ha_por_pipa: { tipo: "numero", rotulo: "Quantos ha uma pipa faz", casas: 2 },
+      // [{ insumo_id, nome, fabricante, principio_ativo, unidade, dose_ha, dose_pipa?, total }]
+      itens: { tipo: "itens", rotulo: "Produtos" },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      situacao: {
+        tipo: "opcoes", rotulo: "Situação", padrao: "nova",
+        opcoes: [["nova", "Nova"], ["aprovada", "Aprovada"], ["aplicada", "Aplicada (baixa dada)"], ["cancelada", "Cancelada"]],
+      },
+      link_id: { tipo: "ref", colecao: "links_agronomo", rotulo: "Link usado" },
+    },
+    colunas: ["nome", "data", "agronomo", "talhao_id", "alvo", "situacao"],
+  },
+
   // ─── Lançamentos ──────────────────────────────────────────────────────────
   operacoes: {
-    titulo: "Horímetro / operações", singular: "operação", icone: "relogio", lancamento: true,
+    titulo: "Horímetro / operações", singular: "operação", icone: "relogio", lancamento: true, campo: "grava",
     descricao: "Cada serviço de máquina: horímetro (ou km) no início e no fim, quem operou e em qual talhão.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / veículo", obrigatorio: true, filtro: (m) => m.medidor !== "nenhum" },
       implemento_id: { tipo: "ref", colecao: "maquinas", rotulo: "Implemento", filtro: (m) => m.categoria === "implemento" },
       operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
-      operacao: { tipo: "sugestao", rotulo: "Operação", sugestoes: OPERACOES, obrigatorio: true },
-      terceiros: campoTerceiros,
-      talhao_id: { ...refTalhao, mostrarSe: naFazenda },
+      operacao: { tipo: "sugestao", rotulo: "Operação", sugestoes: OPERACOES, sugestoesDe: ["servicos", "nome"], obrigatorio: true },
       cultura_id: refCultura,
-      leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, obrigatorio: true },
-      leitura_final: { tipo: "numero", rotulo: "Leitura final", casas: 1, obrigatorio: true },
-      trabalhado: { tipo: "numero", rotulo: "Horas / km", casas: 1, somenteLeitura: true },
+      talhao_id: { ...refTalhao, ...talhaoNaFazenda },
+      leitura_inicial: { tipo: "numero", rotulo: "Leitura inicial", casas: 1, leituraMedidor: true, obrigatorio: true },
+      leitura_final: { tipo: "numero", rotulo: "Leitura final", casas: 1, leituraMedidor: true, obrigatorio: true },
+      trabalhado: { tipo: "numero", rotulo: "Horas / km", casas: 1, leituraMedidor: true, somenteLeitura: true },
       destino: { tipo: "texto", rotulo: "Destino / carga", dica: "Para viagens de caminhão" },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
     aoMudar: {
       ...culturaDoTalhao,
-      ...aoMarcarTerceiros,
+      ...trocouCultura,
       // A leitura inicial sugerida é a última leitura conhecida da máquina.
       maquina_id: (reg, dados, ctx) => (ctx?.ultimaLeitura ? { leitura_inicial: ctx.ultimaLeitura(reg.maquina_id) } : {}),
     },
     calcular: (r) => ({ trabalhado: Math.max(0, num(r.leitura_final) - num(r.leitura_inicial)) }),
     validar: (r) => (num(r.leitura_final) < num(r.leitura_inicial) ? "A leitura final não pode ser menor que a inicial." : null),
+    // Vários talhões: as horas são divididas pela área, uma leitura emendando na outra.
+    porTalhao: { leituras: true },
     colunas: ["data", "maquina_id", "operador_id", "operacao", "talhao_id", "leitura_inicial", "leitura_final", "trabalhado"],
   },
 
   revisoes: {
-    titulo: "Revisões e manutenções", singular: "revisão", icone: "chave", lancamento: true,
+    titulo: "Revisões e manutenções", singular: "revisão", icone: "chave", lancamento: true, campo: "le",
     descricao: "Revisões, trocas de óleo e consertos, com o horímetro/km em que foram feitas.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / veículo", obrigatorio: true },
       tipo: { tipo: "opcoes", rotulo: "Tipo", padrao: "revisao", opcoes: [["revisao", "Revisão programada"], ["oleo", "Troca de óleo / filtros"], ["corretiva", "Conserto / corretiva"], ["pneu", "Pneus"]] },
-      leitura: { tipo: "numero", rotulo: "Horímetro / km", casas: 1 },
+      leitura: { tipo: "numero", rotulo: "Horímetro / km", casas: 1, leituraMedidor: true },
       descricao: { tipo: "textoLongo", rotulo: "O que foi feito" },
       oficina: { tipo: "texto", rotulo: "Oficina / mecânico" },
       valor: { tipo: "dinheiro", rotulo: "Valor (peças + serviço)" },
@@ -319,7 +614,7 @@ export const ESQUEMA = {
       litros: { tipo: "numero", rotulo: "Litros", casas: 1, obrigatorio: true },
       preco_litro: { tipo: "dinheiro", rotulo: "Preço por litro", casas: 3 },
       valor: { tipo: "dinheiro", rotulo: "Valor total", somenteLeitura: true },
-      fornecedor: { tipo: "sugestao", rotulo: "Fornecedor", sugestoesDe: [["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
+      fornecedor: { tipo: "texto", rotulo: "Fornecedor" },
       nota: { tipo: "texto", rotulo: "Nota fiscal" },
     },
     calcular: (r) => ({ valor: +(num(r.litros) * num(r.preco_litro)).toFixed(2) }),
@@ -327,90 +622,92 @@ export const ESQUEMA = {
   },
 
   abastecimentos: {
-    titulo: "Abastecimentos", singular: "abastecimento", icone: "combustivel", lancamento: true,
-    descricao: "Saída do tanque da fazenda ou abastecimento em posto.",
+    titulo: "Abastecimentos", singular: "abastecimento", icone: "combustivel", lancamento: true, campo: "grava",
+    descricao: "Saída do tanque da fazenda ou abastecimento em posto. Os lançados no Modo Campo vêm com a foto do horímetro e da bomba.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       origem: { tipo: "opcoes", rotulo: "Onde abasteceu", padrao: "tanque", opcoes: [["tanque", "Tanque da fazenda"], ["posto", "Posto"]] },
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / veículo", obrigatorio: true, filtro: (m) => m.medidor !== "nenhum" },
-      operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista" },
+      operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Operador / motorista", obrigatorio: true },
       litros: { tipo: "numero", rotulo: "Litros", casas: 1, obrigatorio: true },
-      leitura: { tipo: "numero", rotulo: "Horímetro / km no abastecimento", casas: 1 },
-      terceiros: campoTerceiros,
-      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)", mostrarSe: naFazenda },
+      leitura: { tipo: "numero", rotulo: "Horímetro / km no abastecimento", casas: 1, leituraMedidor: true },
       cultura_id: refCultura,
+      talhao_id: { ...refTalhao, rotulo: "Talhão (se o serviço for de um só)", ...talhaoNaFazenda },
       posto: { tipo: "texto", rotulo: "Posto", mostrarSe: (r) => r.origem === "posto" },
       preco_litro: { tipo: "dinheiro", rotulo: "Preço por litro", casas: 3, mostrarSe: (r) => r.origem === "posto" },
       valor: { tipo: "dinheiro", rotulo: "Valor", somenteLeitura: true, mostrarSe: (r) => r.origem === "posto" },
+      foto_leitura: { tipo: "foto", rotulo: "Foto do horímetro / painel", lado: 1280 },
+      foto_bomba: { tipo: "foto", rotulo: "Foto da bomba (litros)", lado: 1280 },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    aoMudar: { ...culturaDoTalhao, ...aoMarcarTerceiros },
+    aoMudar: { ...culturaDoTalhao, ...trocouCultura },
     calcular: (r) => ({ valor: r.origem === "posto" ? +(num(r.litros) * num(r.preco_litro)).toFixed(2) : null }),
+    porTalhao: { dividir: ["litros"] },
+    // Não deixa lançar 2 abastecimentos da mesma máquina com o mesmo operador no mesmo dia.
+    // As partes de um abastecimento dividido entre talhões não contam como repetidas.
+    validar: (r, dados) => {
+      if (!r.operador_id) return null;
+      const parteDaDivisao = (a) => r.id && a.leitura === r.leitura && a.origem === r.origem
+        && /dividido entre/i.test(a.observacao ?? "") && /dividido entre/i.test(r.observacao ?? "");
+      const repetido = (dados?.abastecimentos ?? []).some((a) => a.id !== r.id && a.data === r.data
+        && a.maquina_id === r.maquina_id && a.operador_id === r.operador_id && !parteDaDivisao(a));
+      return repetido ? "Já existe um abastecimento desta máquina com este operador nesta data." : null;
+    },
     colunas: ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "talhao_id", "valor"],
   },
 
   insumo_entradas: {
     titulo: "Entradas de químicos/insumos", singular: "entrada", icone: "caixa", lancamento: true,
-    descricao: "Compras que entram no estoque. O custo médio sai daqui.",
+    campo: "grava", campoSql: "a_conferir = true",
+    descricao: "Compras que entram no estoque. O custo médio sai daqui. As lançadas no depósito pelo Modo Campo chegam sem preço e marcadas \"Falta conferir\": aprove na aba Aprovar entradas (lá dá para cadastrar o produto novo e lançar o boleto).",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      // Produto sem cadastro, lançado no depósito: fica sem produto até o escritório aprovar.
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: (r) => !r.produto_novo },
+      produto_novo: { tipo: "texto", rotulo: "Produto novo (como chegou no depósito)", oculto: true },
+      unidade_nova: { tipo: "texto", rotulo: "Unidade do produto novo", oculto: true },
+      quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2, obrigatorio: true },
+      valor: { tipo: "dinheiro", rotulo: "Valor total", obrigatorio: (r) => !r.a_conferir },
+      a_conferir: { tipo: "booleano", rotulo: "Falta conferir (veio do depósito sem preço)" },
+      foto: { tipo: "foto", rotulo: "Foto do produto", lado: 1280 },
+      foto_nota: { tipo: "foto", rotulo: "Foto da nota fiscal", lado: 1800 },
+      foto_boleto: { tipo: "foto", rotulo: "Foto do boleto", lado: 1800 },
+      linha_digitavel: { tipo: "texto", rotulo: "Código do boleto (lido no depósito)" },
+      boleto_id: { tipo: "texto", rotulo: "Pagamento lançado", oculto: true },
+      responsavel_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Quem recebeu" },
+      cultura_id: { ...refCultura, rotulo: "Comprado para a cultura" },
+      fornecedor: { tipo: "texto", rotulo: "Fornecedor" },
+      nota: { tipo: "texto", rotulo: "Nota fiscal" },
+      lote: { tipo: "texto", rotulo: "Lote" },
+      validade: { tipo: "data", rotulo: "Validade", dica: "Está na embalagem. O agrônomo vê pela validade." },
+    },
+    colunas: ["data", "insumo_id", "quantidade", "valor", "a_conferir", "validade", "fornecedor"],
+  },
+
+  insumo_ajustes: {
+    titulo: "Balanço / conferência de estoque", singular: "ajuste", icone: "lista", lancamento: true,
+    descricao: "Contagem do que existe de fato no estoque. Guarda só a diferença (+ entra / − sai) e não conta como compra nem como despesa.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
-      quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2, obrigatorio: true },
-      valor: { tipo: "dinheiro", rotulo: "Valor total", obrigatorio: true },
-      cultura_id: { ...refCultura, rotulo: "Comprado para a cultura" },
-      fornecedor: { tipo: "sugestao", rotulo: "Fornecedor", sugestoesDe: [["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
-      nota: { tipo: "texto", rotulo: "Nota fiscal" },
-      lote: { tipo: "texto", rotulo: "Lote / validade" },
-      fotos_nota: fotoDaNota,
-      chave_nfe: chaveNfe,
-      fotos_boleto: fotoDoBoleto,
-      codigo_boleto: codigoBoleto,
-      vencimento: { tipo: "data", rotulo: "Vencimento do boleto" },
-      pago: { tipo: "booleano", rotulo: "Pago", padrao: true },
+      contado: { tipo: "numero", rotulo: "Quantidade contada", casas: 2 },
+      quantidade: { tipo: "numero", rotulo: "Diferença (+ entra / − sai)", casas: 2, obrigatorio: true },
+      custo_unitario: { tipo: "dinheiro", rotulo: "Custo por unidade (opcional)", dica: "Usado no custo médio e no valor em estoque quando a diferença é positiva." },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
-    aoMudar: dadosDosCodigos,
-    colunas: ["data", "insumo_id", "quantidade", "valor", "cultura_id", "fornecedor", "vencimento"],
-  },
-
-  solicitacoes_produto: {
-    titulo: "Entradas de produto para aprovar", singular: "entrada de produto", icone: "caixa", lancamento: true, semRepetir: true,
-    descricao: "Chegou produto na fazenda: escolha o produto (ou escreva o nome, se for novo), a quantidade e tire as fotos do produto, da nota e do boleto. O escritório confere, completa o resto e lança no estoque.",
-    campos: {
-      data: { tipo: "data", rotulo: "Data que chegou", obrigatorio: true, padrao: hoje },
-      operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Quem recebeu", obrigatorio: true },
-      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto (se já tem na lista)" },
-      produto: { tipo: "texto", rotulo: "Nome do produto", obrigatorio: true, dica: "Se for produto novo, escreva o nome como está na embalagem" },
-      quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2, obrigatorio: true },
-      unidade: { tipo: "sugestao", rotulo: "Unidade", sugestoes: ["L", "kg", "saco", "t", "unidade", "dose", "caixa", "galão"], obrigatorio: true },
-      fotos_produto: { tipo: "fotos", rotulo: "Fotos do produto", obrigatorio: true, dica: "Embalagem de frente e o rótulo." },
-      fotos_nota: fotoDaNota,
-      chave_nfe: chaveNfe,
-      fotos_boleto: { ...fotoDoBoleto, dica: "Se veio boleto junto. Pegue o código de barras inteiro." },
-      codigo_boleto: codigoBoleto,
-      observacao: { tipo: "textoLongo", rotulo: "Recado para o escritório" },
-      situacao: { tipo: "opcoes", rotulo: "Situação", oculto: true, padrao: "pendente", opcoes: [["pendente", "Esperando aprovação"], ["aprovada", "Aprovada e lançada"], ["recusada", "Recusada"]] },
-      resposta: { tipo: "texto", rotulo: "Resposta do escritório", oculto: true },
-      entrada_id: { tipo: "texto", rotulo: "Entrada lançada", oculto: true },
-    },
-    aoMudar: {
-      insumo_id: (reg, dados) => {
-        const i = dados.insumos.find((x) => x.id === reg.insumo_id);
-        return i ? { produto: i.nome, unidade: i.unidade } : {};
-      },
-    },
-    travado: (r) => r.situacao !== "pendente",
-    colunas: ["data", "situacao", "produto", "quantidade", "unidade", "operador_id", "resposta"],
+    colunas: ["data", "insumo_id", "contado", "quantidade", "custo_unitario", "observacao"],
   },
 
   aplicacoes: {
-    titulo: "Aplicações / saídas", singular: "aplicação", icone: "spray", lancamento: true,
-    descricao: "Produto que saiu do estoque para um talhão. Vira custo do talhão e da cultura.",
+    titulo: "Aplicações / saídas", singular: "aplicação", icone: "spray", lancamento: true, campo: "grava",
+    descricao: "Produto que saiu do estoque para um talhão. Vira custo do talhão e da cultura. Sobra que voltou da pulverização entra aqui com quantidade negativa.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
-      quantidade: { tipo: "numero", rotulo: "Quantidade total", casas: 2, obrigatorio: true },
-      talhao_id: { ...refTalhao, obrigatorio: true },
+      quantidade: { tipo: "numero", rotulo: "Quantidade total", casas: 2, obrigatorio: true, dica: "Negativa quando é sobra que voltou para o estoque" },
+      pulverizacao_id: { tipo: "ref", colecao: "pulverizacoes", rotulo: "Ordem de pulverização" },
       cultura_id: refCultura,
+      talhao_id: { ...refTalhao, obrigatorio: true },
       dose_ha: { tipo: "numero", rotulo: "Dose por ha", casas: 3 },
       area_aplicada: { tipo: "numero", rotulo: "Área aplicada (ha)", casas: 2 },
       responsavel_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Responsável" },
@@ -418,11 +715,49 @@ export const ESQUEMA = {
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
     aoMudar: culturaDoTalhao,
+    porTalhao: { dividir: ["quantidade"], area: "area_aplicada" },
     colunas: ["data", "insumo_id", "quantidade", "talhao_id", "cultura_id", "dose_ha", "responsavel_id"],
   },
 
+  pulverizacoes: {
+    titulo: "Ordens de pulverização", singular: "ordem de pulverização", icone: "spray", lancamento: true, campo: "grava",
+    descricao: "O gerente cria a ordem: primeiro a cultura, depois marca as fazendas e os talhões (marcar a fazenda já marca todos os talhões dela), o trator e os produtos com a dose por ha. No depósito, o tratorista abre o Modo Campo → Tirar do depósito, vê a ordem com as fotos dos produtos e separa um por um, conferindo pela foto. A saída de cada produto é dividida entre os talhões pela área.",
+    campos: {
+      titulo: { tipo: "texto", rotulo: "Título", dica: "Um nome para reconhecer a ordem. Ex.: 1ª pulverização do milho" },
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      cultura_id: refCultura,
+      // Primeiro talhão marcado (as ordens antigas só tinham este).
+      talhao_id: { ...refTalhao, obrigatorio: true },
+      // Todos os talhões da ordem: [{ talhao_id, area_ha }].
+      talhoes: { tipo: "itens", rotulo: "Talhões" },
+      area_ha: { tipo: "numero", rotulo: "Área a pulverizar (ha)", casas: 2, obrigatorio: true, dica: "Soma das áreas dos talhões marcados" },
+      maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Trator / pulverizador", filtro: (m) => m.medidor === "horas" },
+      operador_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Tratorista" },
+      // Dose dos produtos: por hectare ou por pipa (tanque cheio do pulverizador).
+      dose_por: { tipo: "opcoes", rotulo: "Dose por", padrao: "ha", opcoes: [["ha", "Hectare (ha)"], ["pipa", "Pipa (tanque)"]] },
+      ha_por_pipa: { tipo: "numero", rotulo: "Quantos ha uma pipa faz", casas: 2, mostrarSe: (r) => r.dose_por === "pipa", dica: "Área que um tanque cheio cobre" },
+      situacao: { tipo: "opcoes", rotulo: "Situação", padrao: "aberta", opcoes: [["aberta", "Aberta (esperando separar)"], ["separada", "Produtos separados"], ["concluida", "Concluída"], ["cancelada", "Cancelada"]] },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["titulo", "data", "talhao_id", "area_ha", "maquina_id", "operador_id", "situacao"],
+    resumo: (r) => r.titulo || `Pulverização de ${String(r.data ?? "").split("-").reverse().join("/")}`,
+  },
+
+  pulverizacao_itens: {
+    titulo: "Produtos da ordem de pulverização", singular: "produto da ordem", icone: "frasco", campo: "le",
+    campos: {
+      pulverizacao_id: { tipo: "ref", colecao: "pulverizacoes", rotulo: "Ordem", obrigatorio: true },
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
+      dose_ha: { tipo: "numero", rotulo: "Dose por ha", casas: 3 },
+      // Só nas ordens com dose por pipa (a dose por ha é calculada dela).
+      dose_pipa: { tipo: "numero", rotulo: "Dose por pipa", casas: 3 },
+      quantidade: { tipo: "numero", rotulo: "Quantidade total", casas: 3, obrigatorio: true },
+    },
+    colunas: ["pulverizacao_id", "insumo_id", "dose_ha", "quantidade"],
+  },
+
   despesas: {
-    titulo: "Despesas", singular: "despesa", icone: "dinheiro", lancamento: true,
+    titulo: "Despesas", singular: "despesa", icone: "dinheiro", lancamento: true, quemLancou: true,
     descricao: "Como na planilha FINANCEIRO: categoria, tipo, forma de pagamento e favorecido. Toda despesa vai para um centro de custo: geral, uma cultura ou um talhão. Compra de diesel para o tanque e de químicos para o estoque se lança nas telas deles, não aqui.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
@@ -431,7 +766,7 @@ export const ESQUEMA = {
       descricao: { tipo: "texto", rotulo: "Descrição", obrigatorio: true },
       valor: { tipo: "dinheiro", rotulo: "Valor", obrigatorio: true },
       forma_pagamento: { tipo: "sugestao", rotulo: "Forma de pagamento", sugestoes: FORMAS_PAGAMENTO, padrao: "PIX" },
-      favorecido: { tipo: "sugestao", rotulo: "Favorecido", sugestoesDe: [["despesas", "favorecido"], ["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
+      favorecido: { tipo: "sugestao", rotulo: "Favorecido", sugestoesDe: ["despesas", "favorecido"] },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
       centro: { tipo: "opcoes", rotulo: "Centro de custo", padrao: "geral", opcoes: [["geral", "Geral da fazenda"], ["cultura", "Cultura"], ["talhao", "Talhão"]] },
       cultura_id: { ...refCultura, mostrarSe: (r) => r.centro !== "geral", obrigatorio: (r) => r.centro === "cultura" },
@@ -442,12 +777,64 @@ export const ESQUEMA = {
       vencimento: { tipo: "data", rotulo: "Vencimento" },
       pago: { tipo: "booleano", rotulo: "Pago", padrao: true },
       nota: { tipo: "texto", rotulo: "Nota / documento" },
+      comprovante: { tipo: "arquivo", rotulo: "Comprovante", dica: "Foto ou PDF do comprovante do banco" },
+      lancado_por: { tipo: "texto", rotulo: "Lançado por", somenteLeitura: true, mostrarSe: (r) => Boolean(r.lancado_por) },
     },
     aoMudar: {
       ...culturaDoTalhao,
       centro: (r) => (r.centro === "geral" ? { cultura_id: null, talhao_id: null } : r.centro === "cultura" ? { talhao_id: null } : {}),
+      categoria: laranjaDeTerceiros,
+      tipo: caminhaoPelo1620,
+      descricao: caminhaoPelo1620,
     },
-    colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago"],
+    porTalhao: { dividir: ["valor", "litros"] },
+    colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago", "comprovante", "lancado_por"],
+  },
+
+  boletos: {
+    titulo: "Programação de pagamentos", singular: "pagamento", icone: "calendario",
+    // O Modo Campo lança o boleto lido no depósito (e só vê esses), marcado "falta conferir".
+    campo: "grava", campoSql: "a_conferir = true",
+    descricao: "Contas a pagar — boleto, PIX, transferência, cartão, cheque… — com a empresa, o valor e o vencimento. No boleto, o código (linha digitável) já preenche valor, vencimento e banco. Ao pagar, dá para lançar em Despesas na hora.",
+    campos: {
+      empresa: { tipo: "sugestao", rotulo: "Empresa (quem recebe)", obrigatorio: true, sugestoesDe: [["boletos", "empresa"], ["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"], ["despesas", "favorecido"]] },
+      descricao: { tipo: "texto", rotulo: "Descrição", dica: "Ex.: Adubo safra 26/27 — parcela 2/3" },
+      valor: { tipo: "dinheiro", rotulo: "Valor", obrigatorio: true },
+      vencimento: { tipo: "data", rotulo: "Vencimento", obrigatorio: true },
+      forma_pagamento: { tipo: "sugestao", rotulo: "Forma de pagamento", sugestoes: FORMAS_PAGAMENTO, padrao: "Boleto" },
+      categoria: { tipo: "sugestao", rotulo: "Categoria", sugestoes: CATEGORIAS_DESPESA, dica: "A mesma das despesas; vai junto quando lançar o pagamento" },
+      linha_digitavel: { tipo: "texto", rotulo: "Código do boleto (linha digitável)", mostrarSe: ehBoleto, dica: "Cole ou digite os números: o valor, o vencimento e o banco se preenchem sozinhos" },
+      banco: { tipo: "texto", rotulo: "Banco", somenteLeitura: true, mostrarSe: ehBoleto },
+      chave_pix: { tipo: "texto", rotulo: "Chave PIX / conta para depósito", mostrarSe: (r) => ["PIX", "Transferência"].includes(r.forma_pagamento) },
+      pago: { tipo: "booleano", rotulo: "Pago", padrao: false },
+      data_pagamento: { tipo: "data", rotulo: "Pago em", mostrarSe: (r) => r.pago },
+      fotos: { tipo: "fotos", rotulo: "Foto do boleto / nota" },
+      foto: { tipo: "foto", rotulo: "Foto do boleto (tirada no depósito)", lado: 1800 },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      a_conferir: { tipo: "booleano", rotulo: "Lido no depósito — falta conferir a empresa" },
+      despesa_id: { tipo: "texto", rotulo: "Despesa lançada", oculto: true },
+    },
+    aoMudar: {
+      linha_digitavel: (reg) => {
+        const lido = lerCodigoBoleto(reg.linha_digitavel);
+        if (lido.erro) return {};
+        return {
+          banco: lido.banco,
+          ...(lido.valor ? { valor: lido.valor } : {}),
+          ...(lido.vencimento ? { vencimento: lido.vencimento } : {}),
+        };
+      },
+      pago: (reg) => ({ data_pagamento: reg.pago ? reg.data_pagamento || hoje() : null }),
+    },
+    validar: (r, dados) => {
+      if (!r.linha_digitavel) return null;
+      const erro = lerCodigoBoleto(r.linha_digitavel).erro;
+      if (erro) return erro;
+      const repetido = boletoJaLancado(dados, r.linha_digitavel, { boleto: r.id }, true);
+      return repetido ? `Boleto repetido: este código ${repetido} Não dá para lançar o mesmo boleto duas vezes.` : null;
+    },
+    colunas: ["vencimento", "empresa", "descricao", "forma_pagamento", "categoria", "valor", "pago", "data_pagamento"],
+    ordem: (a, b) => String(a.vencimento ?? "").localeCompare(String(b.vencimento ?? "")),
   },
 
   entradas: {
@@ -468,10 +855,10 @@ export const ESQUEMA = {
     descricao: "O que saiu de cada talhão. Dá a produtividade por hectare.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
-      talhao_id: { ...refTalhao, obrigatorio: true },
       cultura_id: { ...refCultura, obrigatorio: true },
+      talhao_id: { ...refTalhao, obrigatorio: true },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 2, obrigatorio: true },
-      unidade: { tipo: "opcoes", rotulo: "Unidade", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
+      unidade: { tipo: "opcoes", rotulo: "Unidade", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t", opcoesDaCultura: unidadesDaCultura },
       responsavel_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Responsável" },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
@@ -481,45 +868,108 @@ export const ESQUEMA = {
         const c = t && dados.culturas.find((x) => x.id === t.cultura_id);
         return c ? { cultura_id: c.id, unidade: c.unidade || reg.unidade } : {};
       },
+      cultura_id: (reg, dados) => {
+        const c = dados.culturas.find((x) => x.id === reg.cultura_id);
+        return c?.unidade ? { unidade: c.unidade } : {};
+      },
     },
+    porTalhao: { dividir: ["quantidade"] },
     colunas: ["data", "talhao_id", "cultura_id", "quantidade", "unidade", "responsavel_id"],
+  },
+
+  compradores: {
+    titulo: "Compradores (dados da nota)", singular: "comprador", icone: "pessoas",
+    descricao: "Os dados que a NF-e exige de quem compra. O nome tem que ser igual ao que se escreve no campo Comprador da venda.",
+    campos: {
+      nome: { tipo: "sugestao", rotulo: "Nome (como aparece nas vendas)", obrigatorio: true, sugestoesDe: ["vendas", "comprador"] },
+      razao_social: { tipo: "texto", rotulo: "Razão social / nome completo", dica: "Vai na nota. Vazio = o nome acima" },
+      tipo_pessoa: { tipo: "opcoes", rotulo: "Pessoa", opcoes: [["J", "Jurídica (CNPJ)"], ["F", "Física (CPF)"]], padrao: "J" },
+      documento: { tipo: "texto", rotulo: "CNPJ / CPF", obrigatorio: true },
+      contribuinte: {
+        tipo: "opcoes", rotulo: "Contribuinte de ICMS", padrao: "1",
+        opcoes: [["1", "Sim, tem inscrição estadual"], ["2", "Isento de inscrição"], ["9", "Não contribuinte"]],
+      },
+      ie: { tipo: "texto", rotulo: "Inscrição estadual", mostrarSe: (r) => r.contribuinte === "1", obrigatorio: true },
+      email: { tipo: "texto", rotulo: "E-mail (recebe a nota)" },
+      telefone: { tipo: "texto", rotulo: "Telefone" },
+      cep: { tipo: "texto", rotulo: "CEP" },
+      endereco: { tipo: "texto", rotulo: "Endereço (rua)", obrigatorio: true },
+      numero: { tipo: "texto", rotulo: "Número", padrao: "S/N" },
+      complemento: { tipo: "texto", rotulo: "Complemento" },
+      bairro: { tipo: "texto", rotulo: "Bairro", obrigatorio: true },
+      municipio: { tipo: "texto", rotulo: "Município", obrigatorio: true },
+      uf: { tipo: "opcoes", rotulo: "UF", opcoes: UFS.map((u) => [u, u]) },
+      ativo: { tipo: "booleano", rotulo: "Ativo", padrao: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    colunas: ["nome", "documento", "ie", "municipio", "uf"],
+    ordem: (a, b) => a.nome.localeCompare(b.nome),
+    resumo: (r) => r.nome,
   },
 
   vendas: {
     titulo: "Vendas da produção", singular: "venda", icone: "venda", lancamento: true,
-    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos.",
+    // O celular do Modo Campo lança o ticket e só enxerga os que ainda não foram completados (sem preço).
+    // Só os logins de campo marcados em Usuários → "Lança ticket da balança".
+    campo: "grava", campoSql: "a_conferir = true and (select public.campo_ticket())",
+    descricao: "Uma linha por carga, como nas planilhas de venda de milho, laranja e silagem: pesagem, preço, descontos e custos. O que já foi pago entra em Recebimentos. Os tickets da balança lançados pelo link rápido chegam aqui sem comprador e sem preço: é só abrir e completar. Os lançados pelos funcionários (celular ou link) vêm com a foto do ticket e ficam \"Aguardando aprovação\": confira em Ticket da balança → Tickets lançados e aprove, edite ou apague.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
-      comprador: { tipo: "sugestao", rotulo: "Comprador", obrigatorio: true, sugestoesDe: [["vendas", "comprador"], ["contatos", "fantasia", (c) => c.tipo === "cliente"], ["contatos", "nome", (c) => c.tipo === "cliente"]] },
+      comprador: { tipo: "sugestao", rotulo: "Comprador", sugestoesDe: ["vendas", "comprador"] },
       cultura_id: { ...refCultura, obrigatorio: true },
-      safra: { tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"] },
-      talhao_id: { ...refTalhao, rotulo: "Talhão / sítio" },
-      classificacao: { tipo: "sugestao", rotulo: "Tipo / classificação", sugestoes: ["BOA", "SUKITA", "CASQUINOL", "Grão", "Silagem"], sugestoesDe: ["vendas", "classificacao"] },
-      placa: { tipo: "sugestao", rotulo: "Placa", sugestoesDe: ["vendas", "placa"] },
-      tipo_carro: { tipo: "sugestao", rotulo: "Tipo de carro", sugestoes: ["Rodocaçamba", "Graneleiro", "Caçambão", "9 eixos", "Truck", "Toco"] },
-      peso_entrada: { tipo: "numero", rotulo: "Peso entrada / tara (kg)", casas: 1 },
-      peso_saida: { tipo: "numero", rotulo: "Peso saída / bruto (kg)", casas: 1 },
-      peso_liquido: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1, somenteLeitura: true },
-      volumes: { tipo: "numero", rotulo: "Nº de sacos / volumes", casas: 1 },
-      desconto_kg: { tipo: "numero", rotulo: "Desconto (kg)", casas: 1 },
-      unidade: { tipo: "opcoes", rotulo: "Preço por", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t" },
+      safra: { opcional: "Safra", tipo: "sugestao", rotulo: "Safra", dica: "Ex.: Milho 2026", sugestoesDe: ["vendas", "safra"], historicoDaCultura: true },
+      talhao_id: { ...refTalhao, rotulo: "Talhão / sítio", paraCultura: (c) => c.id !== LARANJA_TERCEIROS },
+      // Laranja de terceiros não sai de talhão da fazenda: vale de quem é o pomar.
+      proprietario: {
+        tipo: "sugestao", rotulo: "Proprietário (de quem é a laranja)", sugestoesDe: ["vendas", "proprietario"],
+        paraCultura: (c) => c.id === LARANJA_TERCEIROS,
+      },
+      preco_compra_ton: {
+        tipo: "dinheiro", rotulo: "Valor pago ao proprietário por tonelada", paraCultura: (c) => c.id === LARANJA_TERCEIROS,
+        dica: "Quanto a laranja custou. O pagamento ao proprietário se lança em Despesas → Compra de laranja",
+      },
+      valor_compra: { tipo: "dinheiro", rotulo: "Valor da compra (peso × valor pago)", somenteLeitura: true, paraCultura: (c) => c.id === LARANJA_TERCEIROS },
+      classificacao: {
+        opcional: "Tipo / classificação",
+        tipo: "sugestao", rotulo: "Tipo / classificação", sugestoes: ["BOA", "SUKITA", "CASQUINOL", "Grão", "Silagem"], sugestoesDe: ["vendas", "classificacao"],
+        sugestoesDaCultura: (c) => CLASSIFICACOES_POR_GRUPO[c.grupo], historicoDaCultura: true,
+      },
+      placa: { opcional: "Placa e tipo de carro", tipo: "sugestao", rotulo: "Placa", sugestoesDe: ["vendas", "placa"] },
+      tipo_carro: { opcional: "Placa e tipo de carro", tipo: "sugestao", rotulo: "Tipo de carro", sugestoes: ["Rodocaçamba", "Graneleiro", "Caçambão", "9 eixos", "Truck", "Toco"] },
+      peso_entrada: { opcional: "Peso de entrada e saída", tipo: "numero", rotulo: "Peso entrada / tara (kg)", casas: 1 },
+      peso_saida: { opcional: "Peso de entrada e saída", tipo: "numero", rotulo: "Peso saída / bruto (kg)", casas: 1 },
+      peso_liquido: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1, dica: "Sai da entrada e saída; sem elas, digite o peso do ticket" },
+      volumes: { opcional: "Nº de sacos / volumes", tipo: "numero", rotulo: "Nº de sacos / volumes", casas: 1, paraCultura: soGrupos("graos", "forragem", "hortalicas") },
+      desconto_kg: { opcional: "Desconto", tipo: "numero", rotulo: "Desconto (kg)", casas: 1 },
+      unidade: { tipo: "opcoes", rotulo: "Preço por", opcoes: UNIDADES_VENDA.map(([v, r]) => [v, r]), padrao: "t", opcoesDaCultura: unidadesDaCultura },
       quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 3, dica: "Calculada pelo peso quando o preço é por peso" },
-      preco_unitario: { tipo: "dinheiro", rotulo: "Preço", casas: 4, obrigatorio: true },
+      preco_unitario: { tipo: "dinheiro", rotulo: "Preço", casas: 4 },
       valor_bruto: { tipo: "dinheiro", rotulo: "Valor bruto", somenteLeitura: true },
-      valor_desconto: { tipo: "dinheiro", rotulo: "Valor do desconto", somenteLeitura: true },
-      custo_ton: { tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
-      frete_cobrado: { tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
-      frete: { tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
-      comissao: { tipo: "dinheiro", rotulo: "Comissão" },
-      juros: { tipo: "dinheiro", rotulo: "Juros / antecipação" },
+      valor_desconto: { opcional: "Desconto", tipo: "dinheiro", rotulo: "Valor do desconto", somenteLeitura: true },
+      turma: {
+        opcional: "Turma de colheita",
+        tipo: "sugestao", rotulo: "Turma de colheita", dica: "A turma que colheu", sugestoesDe: ["vendas", "turma"], historicoDaCultura: true,
+        // Só nas culturas colhidas por turma (no cadastro da cultura; a laranja vem marcada).
+        paraCultura: (c) => Boolean(c.turma_colheita),
+      },
+      custo_ton: { opcional: "Custo de colheita / carregamento", tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
+      frete_cobrado: { opcional: "Frete cobrado do comprador", tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
+      frete: { opcional: "Frete pago", tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
+      comissao: { opcional: "Comissão", tipo: "dinheiro", rotulo: "Comissão" },
+      juros: { opcional: "Juros / antecipação", tipo: "dinheiro", rotulo: "Juros / antecipação" },
       valor: { tipo: "dinheiro", rotulo: "Valor líquido", somenteLeitura: true },
-      motorista_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Motorista" },
-      caminhao_id: { tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio (se o frete foi no nosso caminhão)", filtro: (m) => m.categoria === "caminhao" },
-      frete_caminhao: { tipo: "dinheiro", rotulo: "Valor do frete para o caminhão", dica: "Entra como receita do caminhão em Caminhões e fretes (não muda o valor da venda)", mostrarSe: (r) => !!r.caminhao_id },
-      km_caminhao: { tipo: "numero", rotulo: "Km rodado pelo caminhão", casas: 1, mostrarSe: (r) => !!r.caminhao_id },
-      vencimento: { tipo: "data", rotulo: "Vencimento" },
-      nota_fiscal: { tipo: "texto", rotulo: "Nº da nota fiscal" },
-      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      motorista_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "funcionarios", rotulo: "Motorista" },
+      caminhao_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio (se o frete foi no nosso caminhão)", filtro: (m) => m.categoria === "caminhao" },
+      frete_caminhao: {
+        opcional: "Motorista e caminhão próprio", tipo: "dinheiro", rotulo: "Valor do frete para o caminhão", mostrarSe: (r) => !!r.caminhao_id,
+        dica: "Entra como receita do caminhão em Caminhões e fretes (não muda o valor da venda)",
+      },
+      km_caminhao: { opcional: "Motorista e caminhão próprio", tipo: "numero", rotulo: "Km rodado pelo caminhão", casas: 1, mostrarSe: (r) => !!r.caminhao_id },
+      vencimento: { opcional: "Vencimento", tipo: "data", rotulo: "Vencimento" },
+      nota_fiscal: { opcional: "Nota fiscal", tipo: "texto", rotulo: "Nº da nota fiscal" },
+      a_conferir: { tipo: "booleano", rotulo: "Aguardando aprovação (ticket lançado por funcionário)" },
+      foto_ticket: { tipo: "foto", rotulo: "Foto do ticket da balança", lado: 1600 },
+      observacao: { opcional: "Observação", tipo: "textoLongo", rotulo: "Observação" },
     },
     aoMudar: {
       talhao_id: (reg, dados) => {
@@ -529,13 +979,17 @@ export const ESQUEMA = {
       },
       cultura_id: (reg, dados) => {
         const c = dados.culturas.find((x) => x.id === reg.cultura_id);
-        return c?.unidade ? { unidade: c.unidade } : {};
+        return {
+          ...(c?.unidade ? { unidade: c.unidade } : {}),
+          ...(c?.turma_colheita && c.custo_turma_ton != null && reg.custo_ton == null ? { custo_ton: c.custo_turma_ton } : {}),
+        };
       },
     },
-    calcular: (r) => {
+    calcular: (r, dados) => {
       const entrada = num(r.peso_entrada), saida = num(r.peso_saida);
-      const liquido = saida ? Math.abs(saida - entrada) : null;
-      const kgUn = KG_POR_UNIDADE[r.unidade];
+      // Sem entrada/saída vale o peso digitado (ticket da balança).
+      const liquido = saida ? Math.abs(saida - entrada) : r.peso_liquido == null || r.peso_liquido === "" ? null : num(r.peso_liquido);
+      const kgUn = kgPorUnidade(r.unidade, dados?.culturas?.find((c) => c.id === r.cultura_id));
       const quantidade = kgUn && liquido != null ? liquido / kgUn : r.quantidade;
       const bruto = num(quantidade) * num(r.preco_unitario);
       const desconto = kgUn ? (num(r.desconto_kg) / kgUn) * num(r.preco_unitario) : 0;
@@ -545,10 +999,29 @@ export const ESQUEMA = {
         peso_liquido: liquido,
         quantidade: quantidade == null || quantidade === "" ? null : +Number(quantidade).toFixed(3),
         valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2), valor: +liquidoR.toFixed(2),
+        // Só informativo: o custo da compra entra pela despesa "Compra de laranja" (não desconta aqui para não contar duas vezes).
+        valor_compra: r.preco_compra_ton == null || r.preco_compra_ton === "" || liquido == null ? null : +((num(liquido) / 1000) * num(r.preco_compra_ton)).toFixed(2),
       };
     },
-    validar: (r) => (r.quantidade == null ? "Informe os pesos ou a quantidade." : null),
-    colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor"],
+    validar: (r) => (r.quantidade == null && r.peso_liquido == null ? "Informe o peso ou a quantidade." : null),
+    // Carga de vários talhões: peso, quantidade e custos divididos pela área (entrada/saída vão para a observação).
+    porTalhao: { dividir: ["peso_liquido", "volumes", "desconto_kg", "quantidade", "frete_cobrado", "frete", "comissao", "juros"], zerar: ["peso_entrada", "peso_saida"] },
+    colunas: ["data", "comprador", "cultura_id", "talhao_id", "classificacao", "turma", "placa", "peso_liquido", "quantidade", "preco_unitario", "valor_bruto", "valor", "a_conferir"],
+  },
+
+  pagamentos_turmas: {
+    titulo: "Pagamentos das turmas", singular: "pagamento", icone: "dinheiro", lancamento: true,
+    descricao: "O que já foi pago a cada turma de colheita. Na aba \"A pagar por semana\" o botão Pagar lança aqui o que falta.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data do pagamento", obrigatorio: true, padrao: hoje },
+      turma_id: { tipo: "ref", colecao: "turmas", rotulo: "Turma", obrigatorio: true },
+      semana: { tipo: "data", rotulo: "Semana que está pagando (segunda-feira)", obrigatorio: true, dica: "Qualquer dia da semana serve: o sistema acerta para a segunda-feira" },
+      valor: { tipo: "dinheiro", rotulo: "Valor pago", obrigatorio: true },
+      forma: { tipo: "opcoes", rotulo: "Forma", opcoes: [["pix", "PIX"], ["dinheiro", "Dinheiro"], ["transferencia", "Transferência"], ["cheque", "Cheque"]], padrao: "pix" },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    calcular: (r) => ({ semana: r.semana ? segundaDaSemana(r.semana) : r.semana }),
+    colunas: ["data", "turma_id", "semana", "valor", "forma", "observacao"],
   },
 
   recebimentos: {
@@ -556,13 +1029,34 @@ export const ESQUEMA = {
     descricao: "O que cada comprador já pagou (a coluna PAGANTES das planilhas). O saldo a receber é vendas − recebimentos.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
-      comprador: { tipo: "sugestao", rotulo: "Comprador (pagante)", obrigatorio: true, sugestoesDe: [["vendas", "comprador"], ["contatos", "fantasia", (c) => c.tipo === "cliente"], ["contatos", "nome", (c) => c.tipo === "cliente"]] },
+      comprador: { tipo: "sugestao", rotulo: "Comprador (pagante)", obrigatorio: true, sugestoesDe: ["vendas", "comprador"] },
       cultura_id: refCultura,
       valor: { tipo: "dinheiro", rotulo: "Valor", obrigatorio: true },
       forma_pagamento: { tipo: "sugestao", rotulo: "Forma", sugestoes: FORMAS_PAGAMENTO, padrao: "PIX" },
       observacao: { tipo: "texto", rotulo: "Observação" },
     },
     colunas: ["data", "comprador", "cultura_id", "forma_pagamento", "valor", "observacao"],
+  },
+
+  // Escrita só pela função `bling` no Supabase: o app só lê.
+  notas_fiscais: {
+    titulo: "Notas fiscais (Bling)", singular: "nota fiscal", icone: "lista", somenteServidor: true,
+    campos: {
+      venda_id: { tipo: "ref", colecao: "vendas", rotulo: "Venda" },
+      data: { tipo: "data", rotulo: "Emitida em" },
+      comprador: { tipo: "texto", rotulo: "Comprador" },
+      bling_id: { tipo: "numero", rotulo: "Id no Bling", casas: 0 },
+      numero: { tipo: "texto", rotulo: "Número" },
+      serie: { tipo: "texto", rotulo: "Série" },
+      situacao: { tipo: "numero", rotulo: "Situação", casas: 0 },
+      chave_acesso: { tipo: "texto", rotulo: "Chave de acesso" },
+      link_danfe: { tipo: "texto", rotulo: "DANFE" },
+      valor: { tipo: "dinheiro", rotulo: "Valor da nota" },
+      mensagem: { tipo: "textoLongo", rotulo: "Mensagem do Bling / SEFAZ" },
+      // Nota avulsa (sem venda): o que foi digitado na tela, para corrigir.
+      pedido: { tipo: "itens", rotulo: "Dados da nota avulsa" },
+    },
+    colunas: ["data", "numero", "comprador", "valor", "situacao"],
   },
 
   fretes: {
@@ -588,13 +1082,15 @@ export const ESQUEMA = {
 
   planejamento: {
     titulo: "Planejamento da safra", singular: "item do planejamento", icone: "lista",
-    descricao: "Como a aba PLANEJAMENTO: por fase, produto, dose por hectare e preço. O total é dose × hectares × preço.",
+    descricao: "Como a aba PLANEJAMENTO: por fase, produto, dose por hectare e preço. O total é dose × hectares × preço. Custo que não é produto (operacional, colheita, arrendamento, juros) vai em Item, com o valor por hectare no preço.",
     campos: {
-      safra: { tipo: "sugestao", rotulo: "Safra", obrigatorio: true, dica: "Ex.: Milho 2026", sugestoesDe: ["planejamento", "safra"] },
+      safra: { tipo: "sugestao", rotulo: "Safra", obrigatorio: true, dica: "Ex.: Milho 2026", sugestoesDe: ["planejamento", "safra"], historicoDaCultura: true },
       cultura_id: { ...refCultura, obrigatorio: true },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
-      fase: { tipo: "sugestao", rotulo: "Fase", sugestoes: FASES, obrigatorio: true },
-      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: true },
+      talhao_id: { ...refTalhao, rotulo: "Talhão / área", dica: "Quando o plano é de uma área da fazenda (ex.: Gameleira)" },
+      fase: { tipo: "sugestao", rotulo: "Fase", sugestoes: FASES, obrigatorio: true, sugestoesDaCultura: (c) => (c.grupo === "citros" ? FASES_CITROS : FASES) },
+      descricao: { tipo: "sugestao", rotulo: "Item (sem produto)", sugestoes: ITENS_PLANEJAMENTO, dica: "Operacional, colheita, arrendamento, juros… Deixe vazio quando for produto." },
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", obrigatorio: (r) => !r.descricao },
       dose_ha: { tipo: "numero", rotulo: "Quantidade por ha", casas: 3, obrigatorio: true },
       hectares: { tipo: "numero", rotulo: "Hectares", casas: 2, obrigatorio: true },
       quantidade_total: { tipo: "numero", rotulo: "Quantidade total", casas: 2, somenteLeitura: true },
@@ -605,12 +1101,64 @@ export const ESQUEMA = {
       const q = num(r.dose_ha) * num(r.hectares);
       return { quantidade_total: +q.toFixed(3), total: +(q * num(r.preco_unitario)).toFixed(2) };
     },
-    colunas: ["safra", "fazenda_id", "fase", "insumo_id", "dose_ha", "hectares", "quantidade_total", "preco_unitario", "total"],
-    ordem: (a, b) => (a.safra || "").localeCompare(b.safra || "") || FASES.indexOf(a.fase) - FASES.indexOf(b.fase),
+    aoMudar: {
+      talhao_id: (reg, dados) => {
+        const t = dados.talhoes.find((x) => x.id === reg.talhao_id);
+        return t?.fazenda_id ? { fazenda_id: t.fazenda_id } : {};
+      },
+    },
+    colunas: ["safra", "fazenda_id", "talhao_id", "fase", "insumo_id", "descricao", "dose_ha", "hectares", "preco_unitario", "total"],
+    ordem: (a, b) => (a.safra || "").localeCompare(b.safra || "") || ordemFase(a.fase) - ordemFase(b.fase),
+  },
+
+  // ─── Pluviômetro ──────────────────────────────────────────────────────────
+  // Lançada no celular (Modo Campo) pelos tratoristas e pelo lançador de
+  // ticket: vê todas as leituras (para saber se alguém já leu hoje) e lança.
+  chuvas: {
+    titulo: "Pluviômetro", singular: "leitura de chuva", icone: "chuva", lancamento: true,
+    campo: "grava", ticketTambem: true,
+    descricao: "Quanto choveu, lido no pluviômetro. Quem lê vai até ele, tira a foto mostrando o nível da água, informa os milímetros e esvazia o copo.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      milimetros: { tipo: "numero", rotulo: "Chuva (mm)", casas: 1, obrigatorio: true, dica: "Se não choveu, lance 0" },
+      pluviometro: { tipo: "sugestao", rotulo: "Pluviômetro", sugestoes: ["Sede"], sugestoesDe: ["chuvas", "pluviometro"], padrao: "Sede", obrigatorio: true, dica: "Onde ele fica, se a fazenda tiver mais de um" },
+      responsavel_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Quem leu" },
+      foto: { tipo: "foto", rotulo: "Foto do pluviômetro", lado: 1280, obrigatorio: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação", dica: "Ex.: choveu de madrugada, veio com granizo" },
+    },
+    validar: (r) => (num(r.milimetros) < 0 ? "A chuva não pode ser negativa." : null),
+    colunas: ["data", "pluviometro", "milimetros", "responsavel_id", "foto"],
+  },
+
+  // ─── Avisos ───────────────────────────────────────────────────────────────
+  // Nascem sozinhos a cada lançamento do Modo Campo e do ticket da balança e
+  // aparecem no sininho do escritório. Não têm tela de cadastro própria.
+  // No celular de campo, cada login só grava (e enxerga) os avisos dele.
+  avisos: {
+    titulo: "Avisos do campo", singular: "aviso", icone: "sino",
+    campo: "grava", ticketTambem: true, campoSql: "lower(email) = lower(auth.jwt() ->> 'email')",
+    campos: {
+      momento: { tipo: "texto", rotulo: "Quando" },
+      pessoa: { tipo: "texto", rotulo: "Quem lançou" },
+      email: { tipo: "texto", rotulo: "Login" },
+      colecao: { tipo: "texto", rotulo: "Onde" },
+      registro_id: { tipo: "texto", rotulo: "Registro" },
+      acao: { tipo: "opcoes", rotulo: "O que fez", padrao: "novo", opcoes: [["novo", "Lançou"], ["editado", "Alterou"], ["apagado", "Apagou"]] },
+      ticket: { tipo: "booleano", rotulo: "É ticket" },
+      resumo: { tipo: "textoLongo", rotulo: "Resumo" },
+      lido: { tipo: "booleano", rotulo: "Lido" },
+    },
+    colunas: ["momento", "pessoa", "acao", "colecao", "resumo"],
+    ordem: (a, b) => String(b.momento ?? "").localeCompare(String(a.momento ?? "")),
   },
 };
 
 export const COLECOES = Object.keys(ESQUEMA);
+
+function ordemFase(fase) {
+  const i = FASES.indexOf(fase);
+  return i >= 0 ? i : FASES.length + FASES_CITROS.indexOf(fase);
+}
 
 /** Registro novo com os valores padrão do esquema. */
 export function registroNovo(colecao) {
@@ -626,33 +1174,46 @@ export function campoObrigatorio(campo, reg) {
   return typeof campo.obrigatorio === "function" ? campo.obrigatorio(reg) : Boolean(campo.obrigatorio);
 }
 
-export function campoVisivel(campo, reg) {
-  return !campo.mostrarSe || campo.mostrarSe(reg);
+/** A cultura escolhida no registro (null se ainda não tem ou se não dá para saber). */
+export function culturaDoRegistro(reg, dados) {
+  return (reg?.cultura_id && dados?.culturas?.find((c) => c.id === reg.cultura_id)) || null;
+}
+
+/**
+ * O campo aparece? `mostrarSe` olha o próprio registro; `paraCultura` olha a
+ * cultura escolhida (sem `dados` ou sem cultura, não esconde nada aqui).
+ */
+export function campoVisivel(campo, reg, dados) {
+  if (campo.mostrarSe && !campo.mostrarSe(reg)) return false;
+  const cultura = campo.paraCultura && culturaDoRegistro(reg, dados);
+  return !cultura || campo.paraCultura(cultura);
 }
 
 /**
  * Limpa e completa um registro antes de gravar: números viram número, campo
  * escondido vira nulo, os calculados são refeitos. Devolve { reg, erro }.
+ * `dados` serve às contas que dependem de outro cadastro (o peso da saca)
+ * e ao `validar` que compara com os outros registros.
  */
-export function prepararRegistro(colecao, bruto) {
+export function prepararRegistro(colecao, bruto, dados) {
   const def = ESQUEMA[colecao];
   const reg = { ...bruto };
   for (const [chave, campo] of Object.entries(def.campos)) {
     let v = reg[chave];
-    if (!campoVisivel(campo, reg)) v = null;
+    if (!campoVisivel(campo, reg, dados)) v = null;
     if (["numero", "dinheiro"].includes(campo.tipo)) v = v === "" || v == null ? null : Number(v);
     if (campo.tipo === "booleano") v = Boolean(v);
-    if (campo.tipo === "fotos" && !v?.length) v = null;
+    if (["fotos", "itens", "refs"].includes(campo.tipo) && !v?.length) v = null;
     if (typeof v === "string") v = v.trim() || null;
     reg[chave] = v;
   }
-  Object.assign(reg, def.calcular?.(reg) ?? {});
+  Object.assign(reg, def.calcular?.(reg, dados) ?? {});
 
   for (const [chave, campo] of Object.entries(def.campos)) {
-    if (campoVisivel(campo, reg) && campoObrigatorio(campo, reg) && (reg[chave] == null || reg[chave] === "")) {
+    if (campoVisivel(campo, reg, dados) && campoObrigatorio(campo, reg) && (reg[chave] == null || reg[chave] === "")) {
       return { reg, erro: `Preencha: ${campo.rotulo}` };
     }
   }
-  const erro = def.validar?.(reg);
+  const erro = def.validar?.(reg, dados);
   return { reg, erro: erro || null };
 }
