@@ -5,7 +5,7 @@ import LeitorBoleto from "../components/LeitorBoleto";
 import { Icone, Modal, Stat, TabelaSimples } from "../components/ui";
 import { boletoJaLancado, formatarLinha, lerCodigoBoleto } from "../lib/boleto";
 import { lerBeneficiarioDoBoleto } from "../lib/arquivos";
-import { lerBoletosDoPdf } from "../lib/boletoPdf";
+import { abrirZips, lerBoletosDoPdf } from "../lib/boletoPdf";
 import { soma } from "../lib/calculos";
 import { CATEGORIAS_DESPESA, prepararRegistro, registroNovo } from "../lib/esquema";
 import { brl, data } from "../lib/formato";
@@ -392,8 +392,11 @@ function BoletosEmPdf({ arquivos, dados, salvar, aoFechar }) {
     const atualizar = (chave, preencher) => ativo && setItens((atual) => atual.map((i) => (i.chave === chave ? preencher(i) : i)));
 
     (async () => {
+      // O .zip (o WhatsApp Web junta vários arquivos baixados num só) vira os PDFs de dentro.
+      const { pdfs, problemas } = await abrirZips(arquivos);
+      if (ativo && problemas.length) setItens((atual) => [...atual, ...problemas]);
       // 1º o código de todos (rápido, no aparelho)…
-      for (const arquivo of arquivos) {
+      for (const arquivo of pdfs) {
         const novos = [];
         let achados = [];
         try {
@@ -606,9 +609,9 @@ export default function Boletos(props) {
     <>
       <div className="barra">
         <button className="btn primario" onClick={() => setLendo(true)}><Icone nome="barras" /> Ler boleto</button>
-        <label className="btn" title="Escolha um ou mais PDFs de boleto: o código, o valor e o vencimento são lidos de cada um">
+        <label className="btn" title="Escolha um ou mais PDFs de boleto (ou o .zip baixado do WhatsApp): o código, o valor e o vencimento são lidos de cada um">
           <Icone nome="importar" /> Boletos em PDF
-          <input type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => {
+          <input type="file" accept="application/pdf,.pdf,application/zip,.zip" multiple hidden onChange={(e) => {
             const escolhidos = [...(e.target.files ?? [])];
             e.target.value = "";
             if (escolhidos.length) setPdfs(escolhidos);
