@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { BotaoFoto, Foto } from "../components/Foto";
 import PainelTickets from "../components/PainelTickets";
 import { Icone } from "../components/ui";
+import useCulturaAtiva from "../hooks/useCulturaAtiva";
 import { salvarComAviso } from "../lib/avisos";
 import { hoje } from "../lib/esquema";
 import { brl, numero } from "../lib/formato";
@@ -60,7 +61,9 @@ function Escolhas({ opcoes, marcados, aoTocar }) {
 }
 
 export default function Ticket({ dados, salvar, remover, email }) {
-  const [r, setR] = useState(() => vazio());
+  // Dentro da tela de uma cultura, o ticket já vem com ela.
+  const { cultura: culturaDaTela } = useCulturaAtiva();
+  const [r, setR] = useState(() => ({ ...vazio(), cultura_id: culturaDaTela || null }));
   const [erro, setErro] = useState(null);
   const [salvo, setSalvo] = useState(null);
   const [salvando, setSalvando] = useState(false);

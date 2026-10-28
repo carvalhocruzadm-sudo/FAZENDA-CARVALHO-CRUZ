@@ -561,11 +561,7 @@ td.acoes .btn + .btn { margin-left: 4px; }
 .miniatura-ticket { height: 56px; border-radius: 6px; border: 1px solid var(--linha); }
 .foto-ticket-edicao { display: block; max-width: 100%; max-height: 45vh; margin: 0 auto 12px; border-radius: 8px; }
 
-/* Seletor de cultura do topo: vale para todas as telas. */
-.cultura-ativa { width: auto; max-width: 200px; }
-.cultura-ativa.ativo { border-color: var(--laranja); background: var(--laranja-pale); font-weight: 600; }
 .dica-cultura { color: var(--texto-2); font-style: italic; }
-@media (max-width: 720px) { .topo .cultura-ativa { max-width: 130px; padding: 6px 8px; } }
 
 /* ─── Painel ─────────────────────────────────────────────────────────────── */
 .filtros-painel .entrada { width: auto; max-width: 100%; }
@@ -701,3 +697,55 @@ img.ampliavel { cursor: zoom-in; }
 @media (max-width: 760px) {
   .boletos-pdf td .entrada, .boletos-pdf td .entrada.valor, .boletos-pdf td[data-rotulo="Vencimento"] .entrada { width: 60%; }
 }
+
+/* ─── Culturas ──────────────────────────────────────────────────────────── */
+/* No menu: uma entrada por cultura, com o desenho dela. */
+.menu-culturas { background: #f7f8f3; border-radius: 12px; margin: 4px 0; padding: 4px 0 6px; }
+.lateral nav .emoji { font-style: normal; font-size: 17px; width: 18px; text-align: center; line-height: 1; }
+.lateral nav button.nova-cultura { color: var(--texto-2); font-size: 12.5px; padding-top: 6px; padding-bottom: 6px; }
+
+/* Abas dentro de uma aba (na tela da cultura): menores, sublinhadas. */
+.abas.sub { gap: 2px; border-bottom: 1px solid var(--linha); margin-top: -4px; }
+.abas.sub button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; }
+.abas.sub button.ativa { color: var(--verde); background: none; border-bottom-color: var(--verde); }
+
+/* Início: um cartão por cultura. */
+.titulo-secao { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--texto-2); margin: 6px 0 10px; }
+.grade-culturas { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); margin-bottom: 22px; }
+.cartao-cultura { background: var(--cartao); border: 1px solid #ecece4; border-radius: var(--raio); box-shadow: var(--sombra); padding: 14px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.cartao-cultura:hover { border-color: var(--verde-claro); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07); }
+.cartao-cultura header { display: flex; align-items: center; gap: 10px; }
+.cartao-cultura header b { display: block; font-size: 16px; }
+.cartao-cultura header small { color: var(--texto-2); font-size: 12px; }
+.cartao-cultura .qtd-avisos { margin: 0; }
+.emoji-grande { font-size: 28px; width: 44px; height: 44px; border-radius: 12px; background: var(--fundo); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.cartao-cultura dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 0; }
+.cartao-cultura dt { color: var(--texto-2); font-size: 11.5px; }
+.cartao-cultura dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cartao-cultura footer { border-top: 1px solid #f0f0ea; padding-top: 8px; }
+.cartao-cultura.nova { align-items: center; justify-content: center; flex-direction: row; color: var(--texto-2); font-weight: 600; border-style: dashed; box-shadow: none; background: none; min-height: 120px; }
+@media (max-width: 640px) {
+  /* No celular: duas culturas por linha, só vendas e resultado. */
+  .grade-culturas { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .cartao-cultura { padding: 10px; gap: 8px; }
+  .cartao-cultura header { gap: 8px; }
+  .cartao-cultura header b { font-size: 14px; }
+  .emoji-grande { font-size: 22px; width: 34px; height: 34px; }
+  .cartao-cultura dl { grid-template-columns: 1fr; gap: 4px; }
+  .cartao-cultura dl > div { display: flex; justify-content: space-between; gap: 6px; }
+  .cartao-cultura dl > div:nth-child(1), .cartao-cultura dl > div:nth-child(3), .cartao-cultura footer { display: none; }
+  .cartao-cultura dd { font-size: 13px; }
+  .cartao-cultura.nova { min-height: 0; }
+}
+
+/* "+ Lançar": escolher a cultura primeiro. */
+.lancar-corpo { overflow-y: auto; padding: 12px; }
+.lancar-corpo .lancar-lista { padding: 6px 0; overflow: visible; }
+.lancar-culturas { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 6px; }
+.lancar-culturas button { border: 1px solid var(--linha); background: var(--cartao); border-radius: 20px; padding: 6px 12px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.lancar-culturas button.ativa { background: var(--verde); border-color: var(--verde); color: #fff; }
+.lancar-titulo { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #a3a396; padding: 12px 4px 2px; border-top: 1px solid var(--linha); margin-top: 6px; }
+.boas-vindas .entrada, .barra-cultura .entrada { width: auto; }
+.grade.grade-5 { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 1200px) { .grade.grade-5 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .grade.grade-5 { grid-template-columns: 1fr 1fr; } }

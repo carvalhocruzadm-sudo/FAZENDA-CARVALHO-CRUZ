@@ -180,7 +180,7 @@ function Tabela({ titulo, arquivo, colunas, linhas, rodape, ordemInicial, vazio 
 const somaF = (lista, campo, f) => f(soma(lista, (x) => x[campo]));
 
 /** Período: os atalhos (este mês, este ano…), cada ano inteiro e cada mês. */
-function SeletorPeriodoPainel({ anos, valor, aoMudar, rotulo = "Período" }) {
+export function SeletorPeriodoPainel({ anos, valor, aoMudar, rotulo = "Período" }) {
   return (
     <select className="entrada" value={valor} onChange={(e) => aoMudar(e.target.value)} aria-label={rotulo}>
       <optgroup label="Período">
@@ -290,7 +290,7 @@ function Resumo({ dados, r, irPara }) {
                 <li key={i}>
                   <span className={`selo ${a.tipo}`}><Icone nome="alerta" tamanho={12} /></span>
                   <span style={{ flex: 1 }}>{a.texto}</span>
-                  <button className="btn" onClick={() => irPara(a.ir, { aba: a.aba })}>Ver</button>
+                  <button className="btn" onClick={() => irPara(a.ir, { aba: a.aba, sub: a.sub })}>Ver</button>
                 </li>
               ))}
             </ul>

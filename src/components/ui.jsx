@@ -63,9 +63,9 @@ export function Stat({ rotulo, valor, sub, cor }) {
   );
 }
 
-export function Abas({ abas, atual, aoTrocar }) {
+export function Abas({ abas, atual, aoTrocar, className = "" }) {
   return (
-    <div className="abas" role="tablist">
+    <div className={`abas ${className}`} role="tablist">
       {abas.map(([id, rotulo]) => (
         <button key={id} role="tab" aria-selected={atual === id} className={atual === id ? "ativa" : ""} onClick={() => aoTrocar(id)}>
           {rotulo}

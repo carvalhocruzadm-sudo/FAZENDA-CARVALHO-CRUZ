@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 
-import { Icone, SeletorPeriodo, Stat } from "../components/ui";
-import { PERIODOS, aReceber, diesel, entradasDoPeriodo, estoqueInsumos, resumoChuva, saidasDoPeriodo, soma } from "../lib/calculos";
-import { brl, data, leitura, nomeRef, numero } from "../lib/formato";
-import { LANCAMENTOS } from "../lib/navegacao";
-import { contasAPagar, pendencias } from "../lib/pendencias";
+import { Icone, Stat } from "../components/ui";
+import { aReceber, diesel, estoqueInsumos, resumoChuva, soma } from "../lib/calculos";
+import { brl, data, numero } from "../lib/formato";
+import { anosComDados, indicadores } from "../lib/indicadores";
+import { contasAPagar, pendencias, pendenciasDasCulturas, ultimasAtividades } from "../lib/pendencias";
+import { culturasAtivas, dadosDaCultura, emojiDaCultura, telaDaCultura } from "../lib/porCultura";
+import { SeletorPeriodoPainel } from "./Painel";
 
 function saudacao() {
   const h = new Date().getHours();
@@ -15,6 +17,8 @@ function hojePorExtenso() {
   const t = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
+
+const toneladas = (kg) => `${numero(kg / 1000, 1)} t`;
 
 /** Cartão com título e, à direita, um link para a tela completa. */
 function Bloco({ titulo, icone, acao, children }) {
@@ -29,70 +33,70 @@ function Bloco({ titulo, icone, acao, children }) {
   );
 }
 
+/** Um cartão por cultura: os números dela e a entrada para a tela dela. */
+function CartaoCultura({ c, numeros, irPara }) {
+  const abrir = () => irPara(telaDaCultura(c.id));
+  return (
+    <div className="cartao-cultura" role="button" tabIndex={0} onClick={abrir} onKeyDown={(e) => e.key === "Enter" && abrir()}>
+      <header>
+        <span className="emoji-grande">{emojiDaCultura(c)}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <b>{c.nome}</b>
+          <small>{numeros.talhoes ? `${numero(numeros.area, 1)} ha · ${numeros.talhoes} ${numeros.talhoes === 1 ? "talhão" : "talhões"}` : "sem talhão"}</small>
+        </div>
+        {numeros.pendentes > 0 && <span className="qtd-avisos" title="Coisas esperando você nesta cultura">{numeros.pendentes}</span>}
+      </header>
+      <dl>
+        <div><dt>Produção</dt><dd>{numeros.kg ? toneladas(numeros.kg) : "—"}</dd></div>
+        <div><dt>Vendas</dt><dd>{brl(numeros.liquido)}</dd></div>
+        <div><dt>Custo</dt><dd>{brl(numeros.custo)}</dd></div>
+        <div><dt>Resultado</dt><dd className={numeros.liquido - numeros.custo < 0 ? "negativo" : "positivo"}>{brl(numeros.liquido - numeros.custo)}</dd></div>
+      </dl>
+      <footer>
+        <span className="ver-mais">Abrir {c.nome} <Icone nome="direita" tamanho={14} /></span>
+      </footer>
+    </div>
+  );
+}
+
 /**
- * Tela de entrada, no jeito do Aegro: o que precisa de atenção, as contas
- * que vencem, as últimas atividades no campo e atalhos para lançar.
- * Os gráficos e comparações ficam no Painel de indicadores.
+ * Tela de entrada: a fazenda vista pelas culturas. Um cartão para cada uma
+ * (clicar abre tudo dela) e, embaixo, o que é da fazenda toda: o que precisa
+ * de atenção, as contas que vencem e o que foi feito por último no campo.
  */
 export default function Inicio({ dados, irPara }) {
-  const [periodo, setPeriodo] = useState("mes");
+  const anos = useMemo(() => anosComDados(dados), [dados]);
+  const [periodo, setPeriodo] = useState(() => anos[0] ?? "ano");
 
   const r = useMemo(() => {
-    const saidas = saidasDoPeriodo(dados, periodo);
-    const entradas = entradasDoPeriodo(dados, periodo);
-    const n = (lista) => lista ?? [];
-
-    // Últimas atividades no campo: uma linha do tempo do que foi lançado.
-    const atividades = [
-      ...n(dados.aplicacoes).map((a) => ({
-        ...a, icone: "spray", ir: "atividades", aba: "aplicacoes",
-        titulo: `Aplicação: ${nomeRef(dados, "insumos", a.insumo_id)}`,
-        detalhe: `${numero(a.quantidade)} ${dados.insumos.find((i) => i.id === a.insumo_id)?.unidade ?? ""} · ${nomeRef(dados, "talhoes", a.talhao_id)}`,
-      })),
-      ...n(dados.operacoes).map((o) => ({
-        ...o, icone: "relogio", ir: "atividades", aba: "operacoes",
-        titulo: `${o.operacao || "Serviço"}: ${nomeRef(dados, "maquinas", o.maquina_id)}`,
-        detalhe: [o.trabalhado ? leitura(o.trabalhado) : null, o.talhao_id ? nomeRef(dados, "talhoes", o.talhao_id) : null,
-          o.operador_id ? nomeRef(dados, "funcionarios", o.operador_id) : null].filter(Boolean).join(" · "),
-      })),
-      ...n(dados.colheitas).map((c) => ({
-        ...c, icone: "cesto", ir: "lavoura", aba: "colheitas",
-        titulo: `Colheita: ${nomeRef(dados, "culturas", c.cultura_id)}`,
-        detalhe: `${numero(c.quantidade)} ${c.unidade ?? ""} · ${nomeRef(dados, "talhoes", c.talhao_id)}`,
-      })),
-      ...n(dados.abastecimentos).map((a) => ({
-        ...a, icone: "combustivel", ir: "diesel", aba: "abastecimentos",
-        titulo: `Abastecimento: ${nomeRef(dados, "maquinas", a.maquina_id)}`,
-        detalhe: `${numero(a.litros, 0)} L · ${a.origem === "posto" ? "posto" : "tanque"}`,
-      })),
-    ].sort((a, b) => String(b.data ?? "").localeCompare(String(a.data ?? "")) || String(b.atualizado_em ?? "").localeCompare(String(a.atualizado_em ?? "")))
-      .slice(0, 8);
-
-    // A lavoura de hoje: área ativa por cultura.
-    const lavoura = new Map();
-    for (const t of dados.talhoes.filter((x) => x.ativo !== false)) {
-      const nome = t.cultura_id ? nomeRef(dados, "culturas", t.cultura_id) : "Sem cultura";
-      const x = lavoura.get(nome) ?? { nome, area: 0, talhoes: 0 };
-      x.area += Number(t.area_ha) || 0;
-      x.talhoes++;
-      lavoura.set(nome, x);
-    }
-
+    const ind = indicadores(dados, { periodo, cultura: "", fazenda: "" });
+    const porCultura = new Map(ind.culturas.map((x) => [x.id, x]));
+    const culturas = culturasAtivas(dados).map((c) => {
+      const talhoes = dados.talhoes.filter((t) => t.ativo !== false && t.cultura_id === c.id);
+      const x = porCultura.get(c.id);
+      return {
+        c,
+        numeros: {
+          talhoes: talhoes.length, area: soma(talhoes, (t) => t.area_ha),
+          kg: x?.kg ?? 0, liquido: x?.liquido ?? 0, custo: x?.custo ?? 0,
+          pendentes: pendenciasDasCulturas(dadosDaCultura(dados, c.id)).length,
+        },
+      };
+    });
     return {
-      saidas, entradas, atividades,
+      ind, culturas,
       tanque: diesel(dados),
       chuva: resumoChuva(dados),
       aReceber: soma(aReceber(dados).filter((x) => x.saldo > 0), (x) => x.saldo),
       valorEstoque: soma(estoqueInsumos(dados), (x) => x.valorEstoque),
       alertas: pendencias(dados).sort((a, b) => (a.tipo === "ruim" ? 0 : 1) - (b.tipo === "ruim" ? 0 : 1)),
       contas: contasAPagar(dados, 30),
-      lavoura: [...lavoura.values()].sort((a, b) => b.area - a.area),
+      atividades: ultimasAtividades(dados, 8),
     };
   }, [dados, periodo]);
 
-  const resultado = r.entradas.total - r.saidas.total;
-  const areaTotal = soma(r.lavoura, (x) => x.area);
-  const ir = (x) => irPara(x.ir, { aba: x.aba });
+  const caixa = r.ind.entradas.total - r.ind.saidas.total;
+  const ir = (x) => irPara(x.ir, { aba: x.aba, sub: x.sub });
 
   return (
     <>
@@ -101,20 +105,29 @@ export default function Inicio({ dados, irPara }) {
           <h2>{saudacao()}!</h2>
           <small>{hojePorExtenso()}</small>
         </div>
-        <SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} />
+        <SeletorPeriodoPainel anos={anos} valor={periodo} aoMudar={setPeriodo} />
       </div>
 
+      <h3 className="titulo-secao">Suas culturas</h3>
+      <div className="grade-culturas">
+        {r.culturas.map(({ c, numeros }) => <CartaoCultura key={c.id} c={c} numeros={numeros} irPara={irPara} />)}
+        <button className="cartao-cultura nova" onClick={() => irPara("cadastros", { aba: "culturas", novo: true })}>
+          <Icone nome="mais" tamanho={22} /> Nova cultura
+        </button>
+      </div>
+
+      <h3 className="titulo-secao">A fazenda toda</h3>
       <div className="grade grade-4">
-        <Stat rotulo="Entrou no caixa" valor={brl(r.entradas.total)} sub="recebimentos + fretes + aditivos" />
-        <Stat rotulo="Saiu do caixa" valor={brl(r.saidas.total)} sub="despesas + diesel + insumos + peças" cor="vermelho" />
-        <Stat rotulo="Saldo de caixa" valor={brl(resultado)} cor={resultado < 0 ? "vermelho" : ""} />
+        <Stat rotulo="Entrou no caixa" valor={brl(r.ind.entradas.total)} sub="recebimentos + fretes + aditivos" />
+        <Stat rotulo="Saiu do caixa" valor={brl(r.ind.saidas.total)} sub="despesas + diesel + insumos + peças" cor="vermelho" />
+        <Stat rotulo="Saldo de caixa" valor={brl(caixa)} cor={caixa < 0 ? "vermelho" : ""} />
         <Stat rotulo="A receber" valor={brl(r.aReceber)} sub="vendas − recebimentos, tudo" cor="laranja" />
       </div>
 
       <div className="resumo-rapido">
         <button onClick={() => irPara("diesel")}><small>Diesel no tanque</small><b className={r.tanque.saldo < 0 ? "negativo" : ""}>{numero(r.tanque.saldo, 0)} L</b></button>
         <button onClick={() => irPara("quimicos", { aba: "estoque" })}><small>Insumos em estoque</small><b>{brl(r.valorEstoque)}</b></button>
-        <button onClick={() => irPara("lavoura")}><small>Área em produção</small><b>{numero(areaTotal, 1)} ha</b></button>
+        <button onClick={() => irPara("comercial", { aba: "areceber" })}><small>Compradores devendo</small><b>{brl(r.aReceber)}</b></button>
         <button onClick={() => irPara("pluviometro")}><small>Chuva no mês</small><b>{numero(r.chuva.mes, 1)} mm</b></button>
       </div>
 
@@ -152,22 +165,11 @@ export default function Inicio({ dados, irPara }) {
           )}
         </Bloco>
 
-        <Bloco titulo="Lançar rápido" icone="mais">
-          <div className="atalhos">
-            {LANCAMENTOS.slice(0, 8).map(([rotulo, icone, tela, aba]) => (
-              <button key={rotulo} onClick={() => irPara(tela, { aba, novo: Boolean(aba) })}>
-                <span className="lancar-icone"><Icone nome={icone} /></span>
-                <span>{rotulo}</span>
-              </button>
-            ))}
-          </div>
-        </Bloco>
-
-        <Bloco titulo="Últimas atividades no campo" icone="atividade" acao={["Ver todas", () => irPara("atividades")]}>
+        <Bloco titulo="Últimas atividades no campo" icone="atividade">
           {r.atividades.length === 0 ? <div className="vazio">Nenhuma atividade lançada ainda.</div> : (
             <ul className="linha-tempo">
               {r.atividades.map((a) => (
-                <li key={`${a.icone}-${a.id}`} className="clicavel" onClick={() => ir(a)}>
+                <li key={a.id} className="clicavel" onClick={() => ir(a)}>
                   <span className="lancar-icone pequeno"><Icone nome={a.icone} tamanho={15} /></span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <b>{a.titulo}</b>
@@ -178,29 +180,6 @@ export default function Inicio({ dados, irPara }) {
               ))}
             </ul>
           )}
-        </Bloco>
-
-        <Bloco titulo="Lavoura hoje" icone="cultura" acao={["Ver talhões", () => irPara("lavoura", { aba: "talhoes" })]}>
-          {r.lavoura.length === 0 ? <div className="vazio">Cadastre os talhões em Safra e talhões.</div> : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {r.lavoura.map((x) => (
-                <div key={x.nome}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                    <span>{x.nome} <small className="apagado">· {x.talhoes} {x.talhoes === 1 ? "talhão" : "talhões"}</small></span>
-                    <b>{numero(x.area, 1)} ha</b>
-                  </div>
-                  <div className="barra-h"><div style={{ width: `${areaTotal ? (x.area / areaTotal) * 100 : 0}%` }} /></div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Bloco>
-
-        <Bloco titulo="Números da safra" icone="grafico" acao={["Painel de indicadores", () => irPara("painel")]}>
-          <p className="descricao" style={{ marginBottom: 0 }}>
-            Vendas por mês, custo por cultura, produtividade por talhão, rankings e comparativo entre safras
-            ficam no <b>Painel de indicadores</b>.
-          </p>
         </Bloco>
       </div>
     </>
