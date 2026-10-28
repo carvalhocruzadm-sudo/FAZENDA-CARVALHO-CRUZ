@@ -237,20 +237,27 @@ export function aReceber(dados) {
   return [...mapa.values()].map((x) => ({ ...x, saldo: x.vendido - x.recebido })).sort((a, b) => b.saldo - a.saldo);
 }
 
-/** Fretes do caminhão: faturamento, diesel e custos por caminhão. */
+/**
+ * Fretes do caminhão: faturamento, diesel e custos por caminhão. As vendas
+ * levadas no nosso caminhão também contam como viagem: o "frete para o
+ * caminhão" informado na venda entra no faturamento dele (é receita do
+ * caminhão, não dinheiro novo no caixa — por isso fica fora de entradasDoPeriodo).
+ */
 export function resumoFretes(dados, periodo) {
   const { precoMedio } = diesel(dados);
   const caminhoes = dados.maquinas.filter((m) => m.categoria === "caminhao");
   return caminhoes.map((c) => {
     const fretes = noPeriodo(dados.fretes, periodo).filter((f) => f.caminhao_id === c.id);
-    const faturamento = soma(fretes, (f) => f.valor);
-    const km = soma(fretes, (f) => f.km);
+    const vendas = noPeriodo(dados.vendas, periodo).filter((v) => v.caminhao_id === c.id && (n(v.frete_caminhao) || n(v.km_caminhao)));
+    const freteVendas = soma(vendas, (v) => v.frete_caminhao);
+    const faturamento = soma(fretes, (f) => f.valor) + freteVendas;
+    const km = soma(fretes, (f) => f.km) + soma(vendas, (v) => v.km_caminhao);
     const abast = noPeriodo(dados.abastecimentos, periodo).filter((a) => a.maquina_id === c.id);
     const litros = soma(abast, (a) => a.litros);
     const combustivel = soma(abast, (a) => custoAbastecimento(a, precoMedio));
     const outros = soma(noPeriodo(dados.despesas, periodo).filter((d) => d.maquina_id === c.id), (d) => d.valor)
       + soma(noPeriodo(dados.revisoes, periodo).filter((r) => r.maquina_id === c.id), (r) => r.valor);
-    return { caminhao: c, viagens: fretes.length, faturamento, km, litros, combustivel, outros, resultado: faturamento - combustivel - outros, porKm: km ? faturamento / km : null };
+    return { caminhao: c, viagens: fretes.length + vendas.length, freteVendas, faturamento, km, litros, combustivel, outros, resultado: faturamento - combustivel - outros, porKm: km ? faturamento / km : null };
   });
 }
 

@@ -333,7 +333,7 @@ function ResumoFretes({ dados }) {
   const lista = resumoFretes(dados, periodo);
   return (
     <div className="cartao">
-      <p className="descricao">Como a planilha FRETES: faturamento dos fretes, diesel (posto ou tanque) e demais custos do caminhão (despesas e revisões lançadas com ele).</p>
+      <p className="descricao">Como a planilha FRETES: faturamento dos fretes (inclusive o frete das vendas levadas no nosso caminhão), diesel (posto ou tanque) e demais custos do caminhão (despesas e revisões lançadas com ele).</p>
       <div className="barra"><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
       <TabelaSimples
         vazio="Cadastre os caminhões no Inventário de máquinas (categoria Caminhão)."
@@ -342,7 +342,7 @@ function ResumoFretes({ dados }) {
           { rotulo: "Caminhão", valor: (x) => x.caminhao.nome },
           { rotulo: "Viagens", num: true, valor: (x) => x.viagens },
           { rotulo: "Km", num: true, valor: (x) => numero(x.km, 0) },
-          { rotulo: "Faturamento", num: true, valor: (x) => brl(x.faturamento) },
+          { rotulo: "Faturamento", num: true, valor: (x) => (x.freteVendas ? <>{brl(x.faturamento)}<br /><small>vendas {brl(x.freteVendas)}</small></> : brl(x.faturamento)) },
           { rotulo: "R$/km", num: true, valor: (x) => (x.porKm ? brl(x.porKm) : "—") },
           { rotulo: "Diesel", num: true, valor: (x) => `${brl(x.combustivel)} (${numero(x.litros, 0)} L)` },
           { rotulo: "Outros custos", num: true, valor: (x) => brl(x.outros) },

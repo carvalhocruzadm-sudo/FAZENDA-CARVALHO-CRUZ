@@ -411,6 +411,8 @@ alter table public.vendas add column if not exists juros numeric;
 alter table public.vendas add column if not exists valor numeric;
 alter table public.vendas add column if not exists motorista_id uuid;
 alter table public.vendas add column if not exists caminhao_id uuid;
+alter table public.vendas add column if not exists frete_caminhao numeric;
+alter table public.vendas add column if not exists km_caminhao numeric;
 alter table public.vendas add column if not exists vencimento date;
 alter table public.vendas add column if not exists nota_fiscal text;
 alter table public.vendas add column if not exists observacao text;
