@@ -8,7 +8,7 @@ import { Icone, Modal, SeletorPeriodo } from "./ui";
 
 /** Colunas que ganham total no rodapé da lista. */
 const SOMAVEIS = new Set([
-  "valor", "valor_bruto", "valor_desconto", "total", "litros", "quantidade", "trabalhado",
+  "valor", "valor_bruto", "valor_desconto", "valor_beneficiamento", "total", "litros", "quantidade", "trabalhado",
   "peso_liquido", "peso_kg", "km", "quantidade_total", "area_ha", "pes", "frete", "comissao",
 ]);
 

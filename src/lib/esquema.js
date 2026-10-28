@@ -508,6 +508,8 @@ export const ESQUEMA = {
       valor_bruto: { tipo: "dinheiro", rotulo: "Valor bruto", somenteLeitura: true },
       valor_desconto: { tipo: "dinheiro", rotulo: "Valor do desconto", somenteLeitura: true },
       custo_ton: { tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
+      beneficiamento_ton: { tipo: "dinheiro", rotulo: "Beneficiamento (R$ por tonelada)", dica: "Desconta do bruto: peso líquido em toneladas × este valor" },
+      valor_beneficiamento: { tipo: "dinheiro", rotulo: "Valor do beneficiamento", somenteLeitura: true },
       frete_cobrado: { tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
       frete: { tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
       comissao: { tipo: "dinheiro", rotulo: "Comissão" },
@@ -538,11 +540,13 @@ export const ESQUEMA = {
       const bruto = num(quantidade) * num(r.preco_unitario);
       const desconto = kgUn ? (num(r.desconto_kg) / kgUn) * num(r.preco_unitario) : 0;
       const custo = (num(liquido) / 1000) * num(r.custo_ton);
-      const liquidoR = bruto + num(r.frete_cobrado) - desconto - custo - num(r.frete) - num(r.comissao) - num(r.juros);
+      const beneficiamento = (num(liquido) / 1000) * num(r.beneficiamento_ton);
+      const liquidoR = bruto + num(r.frete_cobrado) - desconto - custo - beneficiamento - num(r.frete) - num(r.comissao) - num(r.juros);
       return {
         peso_liquido: liquido,
         quantidade: quantidade == null || quantidade === "" ? null : +Number(quantidade).toFixed(3),
-        valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2), valor: +liquidoR.toFixed(2),
+        valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2),
+        valor_beneficiamento: +beneficiamento.toFixed(2), valor: +liquidoR.toFixed(2),
       };
     },
     validar: (r) => (r.quantidade == null ? "Informe os pesos ou a quantidade." : null),
