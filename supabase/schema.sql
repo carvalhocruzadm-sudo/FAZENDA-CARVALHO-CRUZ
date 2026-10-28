@@ -795,6 +795,7 @@ alter table public.vendas add column if not exists custo_ton numeric;
 alter table public.vendas add column if not exists frete_cobrado numeric;
 alter table public.vendas add column if not exists frete numeric;
 alter table public.vendas add column if not exists comissao numeric;
+alter table public.vendas add column if not exists juros_pct numeric;
 alter table public.vendas add column if not exists juros numeric;
 alter table public.vendas add column if not exists valor numeric;
 alter table public.vendas add column if not exists motorista_id uuid;

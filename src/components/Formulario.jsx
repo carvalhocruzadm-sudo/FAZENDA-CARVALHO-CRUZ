@@ -270,7 +270,7 @@ export default function Formulario({ colecao, reg, setReg, dados, contexto, some
       if (aberto) novo.delete(grupo); else novo.add(grupo);
       return novo;
     });
-    if (aberto) preencher(Object.fromEntries(campos.filter(([, c]) => !c.somenteLeitura).map(([k]) => [k, null])));
+    if (aberto) preencher(Object.fromEntries(campos.map(([k]) => [k, null])));
   };
 
   // A cultura vem logo depois da data: é ela que decide o que mais se pergunta.
