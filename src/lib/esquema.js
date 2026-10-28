@@ -767,6 +767,11 @@ export const ESQUEMA = {
       valor: { tipo: "dinheiro", rotulo: "Valor", obrigatorio: true },
       forma_pagamento: { tipo: "sugestao", rotulo: "Forma de pagamento", sugestoes: FORMAS_PAGAMENTO, padrao: "PIX" },
       favorecido: { tipo: "sugestao", rotulo: "Favorecido", sugestoesDe: ["despesas", "favorecido"] },
+      // O PIX nem sempre sai no nome do dono da laranja (esposa, filho…): este é o nome que abate em "A pagar".
+      proprietario: {
+        tipo: "sugestao", rotulo: "Proprietário da laranja (de quem é a carga)", mostrarSe: (r) => r.categoria === "Compra de laranja",
+        sugestoesDe: [["vendas", "proprietario"], ["despesas", "proprietario"]], dica: "Mesmo nome da carga. Em branco, vale o Favorecido",
+      },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
       centro: { tipo: "opcoes", rotulo: "Centro de custo", padrao: "geral", opcoes: [["geral", "Geral da fazenda"], ["cultura", "Cultura"], ["talhao", "Talhão"]] },
       cultura_id: { ...refCultura, mostrarSe: (r) => r.centro !== "geral", obrigatorio: (r) => r.centro === "cultura" },
