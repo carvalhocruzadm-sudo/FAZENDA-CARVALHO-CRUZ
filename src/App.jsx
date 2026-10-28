@@ -8,63 +8,66 @@ import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
 import { daCaixa, lerCompartilhado, listarCaixa } from "./lib/arquivos";
 import { salvarComAviso, textoDoAviso } from "./lib/avisos";
-import { LANCAMENTOS } from "./lib/navegacao";
+import { DA_CULTURA, DA_FAZENDA } from "./lib/navegacao";
 import { iniciarNtfy } from "./lib/ntfy";
+import { culturaDaTela, culturasAtivas, dadosDaCultura, emojiDaCultura, telaDaCultura } from "./lib/porCultura";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Boletos from "./pages/Boletos";
 import Agronomo from "./pages/Agronomo";
 import Avisos from "./pages/Avisos";
+import Cultura from "./pages/Cultura";
 import ModoCampo from "./pages/Campo";
 import Login, { NovaSenha } from "./pages/Login";
 import Inicio from "./pages/Inicio";
 import Painel from "./pages/Painel";
 import Funcionarios from "./pages/Funcionarios";
-import { Atividades, Cadastros, CadastrosCampo, Diesel, Financeiro, Fretes, Lavoura, Maquinas, Pluviometro, Quimicos, Turmas, Usuarios, Vendas } from "./pages/Secoes";
+import { Cadastros, CadastrosCampo, Comercial, Diesel, Financeiro, Fretes, Maquinas, Pluviometro, Quimicos, Turmas, Usuarios } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 import Ticket, { LINK_TICKET } from "./pages/Ticket";
 
 /**
- * Menu em grupos, como no Aegro: o dia a dia (produção, estoque, patrimônio,
- * dinheiro) separado dos relatórios e dos cadastros, que quase não mudam.
+ * O sistema é organizado pelas culturas: logo abaixo do Início vem uma
+ * entrada para cada cultura ativa (montada a partir do cadastro), com tudo o
+ * que é dela. Aqui ficam as telas da fazenda toda, que juntam todas as
+ * culturas: dinheiro, estoque, máquinas, pessoas e configuração.
  * [id, rótulo, ícone, tela, frase que aparece embaixo do título]
  */
 const GRUPOS = [
   [null, [
-    ["inicio", "Início", "casa", Inicio, "O que precisa da sua atenção hoje"],
+    ["inicio", "Início", "casa", Inicio, "A fazenda toda: cada cultura e o que precisa da sua atenção"],
     ["avisos", "Avisos do campo", "sino", Avisos, "O que foi lançado no Modo Campo e na balança"],
   ]],
-  ["Produção", [
-    ["lavoura", "Safra e talhões", "cultura", Lavoura, "Talhões, safras, planejamento e colheitas"],
-    ["atividades", "Atividades de campo", "atividade", Atividades, "Aplicações de produto, horímetro e ordens de pulverização"],
-    ["ticket", "Ticket da balança", "cesto", Ticket, "Lançar a carga que saiu pesada na balança"],
-    ["turmas", "Turmas de colheita", "pessoas", Turmas, "Quanto pagar a cada turma, por semana"],
-    ["pluviometro", "Pluviômetro", "chuva", Pluviometro, "Chuva de cada dia e de cada mês"],
-  ]],
-  ["Estoque", [
-    ["quimicos", "Insumos", "frasco", Quimicos, "Químicos, adubos e sementes: saldo, compras, agrônomo e balanço"],
-    ["diesel", "Diesel", "combustivel", Diesel, "Tanque da fazenda, compras e abastecimentos"],
-  ]],
-  ["Patrimônio", [
-    ["maquinas", "Máquinas", "trator", Maquinas, "Situação das revisões e revisões feitas"],
-    ["fretes", "Caminhões e fretes", "caminhao", Fretes, "Viagens, diesel e custos de cada caminhão"],
-  ]],
-  ["Comercial e financeiro", [
-    ["vendas", "Vendas", "venda", Vendas, "Cargas vendidas, recebimentos, a receber e notas"],
+  ["Dinheiro (todas as culturas)", [
     ["financeiro", "Financeiro", "dinheiro", Financeiro, "Despesas, Pix, entradas, resultado e custo por cultura"],
     ["boletos", "Programação de pagamentos", "calendario", Boletos, "Boletos e pagamentos por data de vencimento"],
+    ["comercial", "Vendas e recebimentos", "venda", Comercial, "Tickets, recebimentos, a receber e notas de todas as culturas"],
+  ]],
+  ["Estoque e máquinas", [
+    ["quimicos", "Insumos", "frasco", Quimicos, "Químicos, adubos e sementes: saldo, compras, saídas, agrônomo e balanço"],
+    ["diesel", "Diesel", "combustivel", Diesel, "Tanque da fazenda, compras e abastecimentos"],
+    ["maquinas", "Máquinas", "trator", Maquinas, "Revisões, horímetro e consumo"],
+    ["fretes", "Caminhões e fretes", "caminhao", Fretes, "Viagens, diesel e custos de cada caminhão"],
+  ]],
+  ["Campo e pessoas", [
+    ["pluviometro", "Pluviômetro", "chuva", Pluviometro, "Chuva de cada dia e de cada mês"],
+    ["turmas", "Turmas de colheita", "pessoas", Turmas, "Quanto pagar a cada turma, por semana"],
+    ["equipe", "Funcionários", "pessoas", Funcionarios, "Cadastro e folha dos funcionários"],
   ]],
   ["Relatórios", [
-    ["painel", "Painel de indicadores", "grafico", Painel, "Gráficos por cultura, fazenda, talhão, mês e comparativo"],
+    ["painel", "Indicadores da fazenda", "grafico", Painel, "Gráficos de todas as culturas: por fazenda, talhão, mês e comparativo"],
   ]],
   ["Configuração", [
     ["cadastros", "Cadastros", "pasta", Cadastros, "Fazendas, culturas, produtos, máquinas e compradores"],
-    ["equipe", "Funcionários", "pessoas", Funcionarios, "Cadastro e folha dos funcionários"],
     ["campo", "Modo Campo", "trator", CadastrosCampo, "O que o tratorista vê no celular"],
     ["usuarios", "Usuários", "chave", Usuarios, "Quem entra no sistema e o que pode ver"],
     ["sync", "Sincronização", "nuvem", Sincronizacao, "Envio dos lançamentos para a nuvem"],
   ]],
 ];
-const MENU = GRUPOS.flatMap(([, itens]) => itens);
+/** Telas fora do menu: o link do ticket fixado no WhatsApp (/ticket) abre aqui. */
+const OCULTAS = [
+  ["ticket", "Ticket da balança", "cesto", Ticket, "Lançar a carga que saiu pesada na balança"],
+];
+const MENU = [...GRUPOS.flatMap(([, itens]) => itens), ...OCULTAS];
 
 function IndicadorSync({ aoClicar }) {
   const s = useSync();
@@ -77,8 +80,23 @@ function IndicadorSync({ aoClicar }) {
   return <button className="sync" onClick={aoClicar} title={texto}><i className={cls} /> <span>{texto}</span></button>;
 }
 
-/** Lista do botão "+ Lançar": escolhe o que lançar e cai direto no formulário. */
-function MenuLancar({ aoEscolher, aoFechar }) {
+function ItemLancar({ rotulo, icone, dica, aoClicar }) {
+  return (
+    <button onClick={aoClicar}>
+      <span className="lancar-icone"><Icone nome={icone} /></span>
+      <span><b>{rotulo}</b><small>{dica}</small></span>
+    </button>
+  );
+}
+
+/**
+ * O botão "+ Lançar": primeiro a cultura (na tela de uma cultura, já vem
+ * ela), depois o que lançar — e cai direto no formulário, com a cultura
+ * preenchida. Embaixo, o que é da fazenda toda.
+ */
+function MenuLancar({ culturas, culturaAtual, aoEscolher, aoFechar }) {
+  const [escolhida, setEscolhida] = useState(culturaAtual ?? (culturas.length === 1 ? culturas[0].id : null));
+  const cultura = culturas.find((c) => c.id === escolhida);
   useEffect(() => {
     const esc = (e) => e.key === "Escape" && aoFechar();
     window.addEventListener("keydown", esc);
@@ -88,16 +106,31 @@ function MenuLancar({ aoEscolher, aoFechar }) {
     <div className="lancar-fundo" onMouseDown={(e) => e.target === e.currentTarget && aoFechar()}>
       <div className="lancar" role="dialog" aria-label="O que você quer lançar?">
         <header>
-          <h2>O que você quer lançar?</h2>
+          <h2>{cultura ? <>Lançar em {emojiDaCultura(cultura)} {cultura.nome}</> : "Lançar em qual cultura?"}</h2>
           <button className="btn icone" onClick={aoFechar} aria-label="Fechar"><Icone nome="fechar" /></button>
         </header>
-        <div className="lancar-lista">
-          {LANCAMENTOS.map(([rotulo, icone, tela, aba, dica]) => (
-            <button key={rotulo} onClick={() => aoEscolher(tela, aba)}>
-              <span className="lancar-icone"><Icone nome={icone} /></span>
-              <span><b>{rotulo}</b><small>{dica}</small></span>
-            </button>
-          ))}
+        <div className="lancar-corpo">
+          <div className="lancar-culturas">
+            {culturas.map((c) => (
+              <button key={c.id} className={c.id === escolhida ? "ativa" : ""} onClick={() => setEscolhida(c.id)}>
+                <span>{emojiDaCultura(c)}</span> {c.nome}
+              </button>
+            ))}
+          </div>
+          {cultura ? (
+            <div className="lancar-lista">
+              {DA_CULTURA.map(([rotulo, icone, aba, sub, dica, formulario]) => (
+                <ItemLancar key={rotulo} rotulo={rotulo} icone={icone} dica={dica}
+                  aoClicar={() => aoEscolher(telaDaCultura(cultura.id), { aba, sub, novo: formulario })} />
+              ))}
+            </div>
+          ) : <p className="descricao" style={{ padding: "0 4px" }}>Toque na cultura acima para ver o que dá para lançar nela.</p>}
+          <div className="lancar-titulo">Da fazenda toda (sem cultura)</div>
+          <div className="lancar-lista">
+            {DA_FAZENDA.map(([rotulo, icone, tela, aba, dica, formulario]) => (
+              <ItemLancar key={rotulo} rotulo={rotulo} icone={icone} dica={dica} aoClicar={() => aoEscolher(tela, { aba, novo: formulario })} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -136,32 +169,6 @@ function useAvisosNovos(avisos, pronto, email) {
   }, [avisos, pronto, email]);
 
   return [balao, () => setBalao(null)];
-}
-
-/** Escolher a cultura aqui vale para o sistema todo (fica guardado no aparelho). */
-function useCulturaGuardada(culturas, pronto) {
-  const [cultura, setCulturaEstado] = useState(() => {
-    try { return localStorage.getItem("fcc-cultura") || ""; } catch { return ""; }
-  });
-  const setCultura = useCallback((c) => {
-    setCulturaEstado(c);
-    try { localStorage.setItem("fcc-cultura", c); } catch { /* sem armazenamento: só não lembra */ }
-  }, []);
-  // Cultura apagada ou desativada: volta para todas.
-  const existe = !cultura || !pronto || (culturas ?? []).some((c) => c.id === cultura && c.ativo !== false);
-  return [existe ? cultura : "", setCultura];
-}
-
-function SeletorCultura({ culturas, cultura, setCultura }) {
-  const ativas = (culturas ?? []).filter((c) => c.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  if (!ativas.length) return null;
-  return (
-    <select className={`entrada cultura-ativa${cultura ? " ativo" : ""}`} value={cultura} onChange={(e) => setCultura(e.target.value)}
-      aria-label="Cultura" title="Mostra só os lançamentos desta cultura e já lança nela">
-      <option value="">Todas as culturas</option>
-      {ativas.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-    </select>
-  );
 }
 
 /** Comprovante que chegou há menos disto abre sozinho quando o app vem para a tela. */
@@ -302,8 +309,6 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
   const [balao, fecharBalao] = useAvisosNovos(dados.avisos, pronto, email);
   const naoLidos = dados.avisos.filter((a) => !a.lido).length;
   useEffect(() => iniciarNtfy(), []);
-  const [cultura, setCultura] = useCulturaGuardada(dados.culturas, pronto);
-  const culturaAtiva = useMemo(() => ({ cultura, setCultura }), [cultura, setCultura]);
   const [compartilhado, setCompartilhado] = useState(null);
 
   // Veio do "Compartilhar" do celular (comprovante do banco): abre o lançamento.
@@ -371,9 +376,9 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
   const [trocandoSenha, setTrocandoSenha] = useState(false);
   const fecharTrocaSenha = useCallback(() => setTrocandoSenha(false), []);
 
-  const irPara = (id, { aba, novo } = {}) => {
+  const irPara = (id, { aba, sub, novo } = {}) => {
     setTela(id);
-    setDestino((d) => ({ aba, novo, vez: d.vez + 1 }));
+    setDestino((d) => ({ aba, sub, novo, vez: d.vez + 1 }));
     setMenuAberto(false);
     setLancarAberto(false);
     window.scrollTo(0, 0);
@@ -381,7 +386,16 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
     try { localStorage.setItem("fcc-tela", id); } catch { /* sem armazenamento: só não lembra a aba */ }
   };
 
-  const [telaAtual, rotulo, , Pagina, sub] = MENU.find(([id]) => id === tela) ?? MENU[0];
+  // A tela de uma cultura ("cultura:<id>") ou uma das telas da fazenda toda.
+  const culturas = culturasAtivas(dados);
+  const idCultura = culturaDaTela(tela);
+  const cultura = idCultura ? (dados.culturas ?? []).find((c) => c.id === idCultura) : null;
+  const [telaAtual, rotulo, , Pagina, sub] = idCultura
+    ? [tela, cultura ? `${emojiDaCultura(cultura)} ${cultura.nome}` : "Cultura", null, Cultura, cultura ? `Tudo de ${cultura.nome}: talhões, atividades, colheita, vendas, custos e planejamento` : null]
+    : MENU.find(([id]) => id === tela) ?? MENU[0];
+  // Na tela de uma cultura, as listas mostram só ela e todo lançamento novo já vem com ela.
+  const culturaAtiva = useMemo(() => ({ cultura: idCultura ?? "", setCultura: () => {} }), [idCultura]);
+  const dadosCultura = useMemo(() => (idCultura ? dadosDaCultura(dados, idCultura) : null), [dados, idCultura]);
 
   return (
     <CulturaAtiva.Provider value={culturaAtiva}>
@@ -393,7 +407,28 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
           <div><b>Fazenda</b><small>Carvalho Cruz</small></div>
         </div>
         <nav>
-          {GRUPOS.map(([grupo, itens]) => (
+          {GRUPOS.slice(0, 1).map(([, itens]) => (
+            <div key="inicio" className="menu-grupo">
+              {itens.map(([id, r, icone]) => (
+                <button key={id} className={telaAtual === id ? "ativo" : ""} onClick={() => irPara(id)}>
+                  <Icone nome={icone} /> <span>{r}</span>
+                  {id === "avisos" && naoLidos > 0 && <span className="qtd-avisos">{naoLidos}</span>}
+                </button>
+              ))}
+            </div>
+          ))}
+          <div className="menu-grupo menu-culturas">
+            <div className="menu-grupo-titulo">Culturas</div>
+            {culturas.map((c) => (
+              <button key={c.id} className={idCultura === c.id ? "ativo" : ""} onClick={() => irPara(telaDaCultura(c.id))}>
+                <i className="emoji">{emojiDaCultura(c)}</i> <span>{c.nome}</span>
+              </button>
+            ))}
+            <button className="nova-cultura" onClick={() => irPara("cadastros", { aba: "culturas", novo: true })}>
+              <Icone nome="mais" /> <span>Nova cultura</span>
+            </button>
+          </div>
+          {GRUPOS.slice(1).map(([grupo, itens]) => (
             <div key={grupo ?? "inicio"} className="menu-grupo">
               {grupo && <div className="menu-grupo-titulo">{grupo}</div>}
               {itens.map(([id, r, icone]) => (
@@ -422,7 +457,6 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
             <h1>{rotulo}</h1>
             {sub && <small>{sub}</small>}
           </div>
-          {pronto && <SeletorCultura culturas={dados.culturas} cultura={cultura} setCultura={setCultura} />}
           <button className="btn icone sininho" onClick={() => irPara("avisos")}
             title={naoLidos ? `${naoLidos} aviso(s) novo(s) do campo` : "Avisos do campo"} aria-label="Avisos do campo">
             <Icone nome="sino" />
@@ -438,14 +472,15 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
             <div className="aviso">{atalho} <button className="btn" onClick={() => setAtalho(null)}>Fechar</button></div>
           )}
           {!pronto ? <div className="vazio">Carregando…</div> : (
-            <Pagina key={`${telaAtual}-${destino.vez}`} abaInicial={destino.aba} abrirNovo={destino.novo} dados={dados} salvar={salvar} salvarVarios={salvarVarios} remover={remover} irPara={irPara} email={email}
+            <Pagina key={`${telaAtual}-${destino.vez}`} tela={telaAtual} abaInicial={destino.aba} subInicial={destino.sub} abrirNovo={destino.novo}
+              cultura={cultura} dadosCultura={dadosCultura} lancar={() => setLancarAberto(true)} dados={dados} salvar={salvar} salvarVarios={salvarVarios} remover={remover} irPara={irPara} email={email}
               sincronizarAgora={sincronizarAgora} recarregarDaNuvem={recarregarDaNuvem} abrirCampo={abrirCampo} />
           )}
         </div>
       </main>
       {/* No celular: barra de baixo com o principal e o "+" no meio, como nos apps de campo. */}
       <nav className="barra-baixo">
-        {[["inicio", "Início", "casa"], ["atividades", "Atividades", "atividade"]].map(([id, r, icone]) => (
+        {[["inicio", "Início", "casa"], ["comercial", "Vendas", "venda"]].map(([id, r, icone]) => (
           <button key={id} className={telaAtual === id ? "ativo" : ""} onClick={() => irPara(id)}><Icone nome={icone} /><span>{r}</span></button>
         ))}
         <button className="mais" onClick={() => setLancarAberto(true)} aria-label="Lançar"><Icone nome="mais" tamanho={26} /></button>
@@ -453,7 +488,7 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
         <button onClick={() => setMenuAberto(true)}><Icone nome="menu" /><span>Menu</span></button>
       </nav>
       {lancarAberto && (
-        <MenuLancar aoFechar={fecharLancar} aoEscolher={(id, aba) => irPara(id, { aba, novo: Boolean(aba) })} />
+        <MenuLancar culturas={culturas} culturaAtual={idCultura} aoFechar={fecharLancar} aoEscolher={irPara} />
       )}
       {pronto && compartilhado && (
         <LancarComprovante compartilhado={compartilhado} dados={dados} salvar={salvar}

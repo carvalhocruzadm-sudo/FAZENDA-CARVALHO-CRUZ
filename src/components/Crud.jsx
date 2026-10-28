@@ -62,7 +62,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   const [salvando, setSalvando] = useState(false);
 
   const colunas = colunasProp ?? def.colunas;
-  const { cultura, setCultura } = useCulturaAtiva();
+  const { cultura } = useCulturaAtiva();
   // A coleção tem cultura? Então segue a cultura escolhida no topo.
   const porCultura = Boolean(def.campos.cultura_id || def.campos.culturas?.tipo === "refs");
   const nomeCultura = cultura && porCultura ? dados.culturas?.find((c) => c.id === cultura)?.nome : null;
@@ -178,11 +178,6 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
           </select>
         ))}
         {temFiltro && <button className="btn" onClick={() => setEscolhas({})}>Limpar filtros</button>}
-        {nomeCultura && colecao !== "culturas" && (
-          <button className="btn cultura-ativa ativo" onClick={() => setCultura("")} title="Mostrar todas as culturas">
-            Só {nomeCultura} ✕
-          </button>
-        )}
         <span className="espaco" />
         {acoes}
         <button className="btn" onClick={() => exportarCSV(colecao, colunas, campos, valorDe, linhas, dados)} disabled={!linhas.length} title="Baixar planilha (CSV)">

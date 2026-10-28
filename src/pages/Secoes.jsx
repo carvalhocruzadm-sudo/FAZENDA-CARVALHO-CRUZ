@@ -24,22 +24,23 @@ import TurmasSemana from "./TurmasSemana";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
- * cadastro) ou um relatório próprio.
+ * cadastro) ou um relatório próprio — que pode ter as suas próprias abas
+ * (`sub`: abas menores, dentro da tela de uma cultura).
  */
-export function Secao({ abas, props }) {
-  // `abaInicial` e `abrirNovo` vêm do "+ Lançar" e dos avisos do Início.
-  const { abaInicial, abrirNovo, ...resto } = props;
+export function Secao({ abas, props, sub }) {
+  // `abaInicial`, `subInicial` e `abrirNovo` vêm do "+ Lançar" e dos avisos.
+  const { abaInicial, subInicial, abrirNovo, ...resto } = props;
   const [atual, setAtual] = useState(() => (abas.some(([i]) => i === abaInicial) ? abaInicial : abas[0][0]));
-  // O formulário em branco só abre na aba de chegada, uma vez.
-  const [novoPendente, setNovoPendente] = useState(Boolean(abrirNovo));
+  // Na aba de chegada: abre o formulário em branco (uma vez) e passa a sub-aba adiante.
+  const [naChegada, setNaChegada] = useState(true);
   const aba = abas.find(([id]) => id === atual) ?? abas[0];
   const [id, , conteudo] = aba;
   const Relatorio = typeof conteudo === "function" ? conteudo : null;
-  const trocar = (i) => { setAtual(i); setNovoPendente(false); };
-  const p = { ...resto, abrirNovo: novoPendente };
+  const trocar = (i) => { setAtual(i); setNaChegada(false); };
+  const p = { ...resto, abrirNovo: naChegada && abrirNovo, abaInicial: naChegada ? subInicial : undefined };
   return (
     <>
-      <Abas abas={abas.map(([i, rotulo]) => [i, rotulo])} atual={id} aoTrocar={trocar} />
+      <Abas abas={abas.map(([i, rotulo]) => [i, rotulo])} atual={id} aoTrocar={trocar} className={sub ? "sub" : ""} />
       {Relatorio
         ? <Relatorio key={id} {...p} />
         : <Crud key={id} colecao={conteudo?.colecao ?? id} {...p} {...(conteudo ?? {})} />}
@@ -75,7 +76,7 @@ const TIPOS_LANCAMENTO = ["Despesa", "Aplicação", "Diesel", "Operação", "Col
  * Tudo de uma fazenda ou de um talhão num lugar só: receita, custo,
  * resultado, cada talhão com seus números e a lista de lançamentos com data.
  */
-function PorFazenda({ dados }) {
+export function PorFazenda({ dados }) {
   const [periodo, setPeriodo] = useState("ano");
   const [fazendaId, setFazendaId] = useState("");
   const [talhaoId, setTalhaoId] = useState("");
@@ -204,7 +205,7 @@ function PorFazenda({ dados }) {
   );
 }
 
-function Planejamento(props) {
+export function Planejamento(props) {
   const { dados } = props;
   const resumos = useMemo(() => resumoPlanejamento(dados).sort((a, b) => b.safra.localeCompare(a.safra)), [dados]);
   const [escolhida, setEscolhida] = useState(null);
@@ -269,18 +270,6 @@ function Planejamento(props) {
   );
 }
 
-export function Lavoura(props) {
-  return (
-    <Secao props={props} abas={[
-      ["porfazenda", "Por fazenda / talhão", PorFazenda],
-      ["talhoes", "Talhões / sítios"],
-      ["safras", "Safras"],
-      ["colheitas", "Colheitas"],
-      ["planejamento", "Planejamento da safra", Planejamento],
-    ]} />
-  );
-}
-
 // ─── Máquinas ───────────────────────────────────────────────────────────────
 
 function SituacaoMaquinas({ dados }) {
@@ -322,19 +311,7 @@ export function Maquinas(props) {
     <Secao props={props} abas={[
       ["situacao", "Situação e revisões", SituacaoMaquinas],
       ["revisoes", "Revisões feitas"],
-    ]} />
-  );
-}
-
-// ─── Atividades de campo ────────────────────────────────────────────────────
-
-/** Tudo o que se faz nos talhões, num lugar só (como as "Atividades" do Aegro). */
-export function Atividades(props) {
-  return (
-    <Secao props={props} abas={[
-      ["aplicacoes", "Aplicações de produto"],
-      ["operacoes", "Horímetro / serviços de máquina"],
-      ["ordens", "Ordens de pulverização", OrdensPulverizacao],
+      ["operacoes", "Horímetro (todas as culturas)"],
     ]} />
   );
 }
@@ -429,6 +406,11 @@ const ABAST_CALCULADAS = {
   calcular: detalhesAbastecimentos,
 };
 const ABAST_COLUNAS = ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "horas", "talhao_id", "cultura", "servico", "custo"];
+
+/** Lista de abastecimentos com horas, serviço e custo calculados (usada também na tela da cultura). */
+export function Abastecimentos(props) {
+  return <Crud colecao="abastecimentos" calculadas={ABAST_CALCULADAS} colunas={ABAST_COLUNAS} {...props} />;
+}
 
 export function Diesel(props) {
   const d = diesel(props.dados);
@@ -695,6 +677,8 @@ export function Quimicos(props) {
       ...(aprovar ? [abaAprovar] : []),
       ["estoque", "Estoque", EstoqueQuimicos],
       ["insumo_entradas", "Entradas / compras"],
+      ["aplicacoes", "Saídas (aplicações)"],
+      ["ordens", "Ordens de pulverização", OrdensPulverizacao],
       ["agronomo", `Aplicações do agrônomo${novas ? ` (${novas} ${novas === 1 ? "nova" : "novas"})` : ""}`, AplicacoesAgronomo],
       ["link", "Link do agrônomo", LinkAgronomo],
       ["balanco", "Balanço / conferência", BalancoEstoque],
@@ -832,10 +816,10 @@ function Compradores(props) {
   );
 }
 
-export function Vendas(props) {
+/** O comercial da fazenda toda: as vendas de cada cultura ficam na tela dela. */
+export function Comercial(props) {
   return (
     <Secao props={props} abas={[
-      ["vendas", "Cargas vendidas"],
       ["tickets", "Tickets por dia", TicketsPorDia],
       ["recebimentos", "Recebimentos"],
       ["areceber", "A receber", AReceber],
@@ -947,7 +931,7 @@ function ResumoFinanceiro({ dados }) {
   );
 }
 
-function Custos({ dados }) {
+export function Custos({ dados }) {
   const [periodo, setPeriodo] = useState("ano");
   const c = custos(dados, periodo);
   return (

@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 
 import { Abas, Icone } from "../components/ui";
-import { TELA_DA_COLECAO, nomeDaColecao, textoDoAviso } from "../lib/avisos";
+import { nomeDaColecao, textoDoAviso } from "../lib/avisos";
+import { destinoDoRegistro } from "../lib/porCultura";
 import { enderecoNtfy, ntfyConfigurado, TOPICO_NTFY } from "../lib/ntfy";
 
 const quando = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
@@ -24,7 +25,10 @@ export default function Avisos({ dados, salvar, salvarVarios, irPara }) {
   const marcarTodos = () => salvarVarios("avisos", naoLidos.map((a) => ({ ...a, lido: true })));
   const ver = (a) => {
     if (!a.lido) marcar(a);
-    irPara(TELA_DA_COLECAO[a.colecao] ?? "painel");
+    // Leva para onde o lançamento está: a tela da cultura dele ou a tela geral.
+    const reg = (dados[a.colecao] ?? []).find((x) => x.id === a.registro_id);
+    const { tela, aba, sub } = destinoDoRegistro(a.colecao, reg);
+    irPara(tela, { aba, sub });
   };
 
   const pedirPermissao = async () => setPermissao(await Notification.requestPermission());

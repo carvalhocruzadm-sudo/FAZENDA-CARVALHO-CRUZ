@@ -12,16 +12,6 @@ import { ESQUEMA } from "./esquema";
 import { exibir } from "./formato";
 import { notificarNtfy } from "./ntfy";
 
-/** Em que tela do escritório cada coleção aparece (para o botão "Ver"). */
-export const TELA_DA_COLECAO = {
-  vendas: "ticket",
-  operacoes: "atividades", revisoes: "maquinas", maquinas: "maquinas",
-  abastecimentos: "diesel", diesel_entradas: "diesel",
-  aplicacoes: "atividades", insumo_entradas: "quimicos", pulverizacoes: "atividades", insumos: "cadastros",
-  fretes: "fretes", recebimentos: "vendas", colheitas: "lavoura", talhoes: "lavoura",
-  despesas: "financeiro", entradas: "financeiro", funcionarios: "equipe", chuvas: "pluviometro",
-};
-
 const VERBO = { novo: "lançou", editado: "alterou", apagado: "apagou" };
 
 const ehTicket = (colecao) => colecao === "vendas";
