@@ -3,8 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import Formulario from "../components/Formulario";
 import LeitorBoleto from "../components/LeitorBoleto";
 import { Icone, Modal, Stat, TabelaSimples } from "../components/ui";
-import { formatarLinha, lerCodigoBoleto } from "../lib/boleto";
+import { boletoJaLancado, formatarLinha, lerCodigoBoleto } from "../lib/boleto";
 import { lerBeneficiarioDoBoleto } from "../lib/arquivos";
+import { lerBoletosDoPdf } from "../lib/boletoPdf";
 import { soma } from "../lib/calculos";
 import { CATEGORIAS_DESPESA, prepararRegistro, registroNovo } from "../lib/esquema";
 import { brl, data } from "../lib/formato";
@@ -370,11 +371,198 @@ function Calendario({ dados, abrir, pagar }) {
   );
 }
 
+// ─── Boletos em PDF: vários de uma vez ─────────────────────────────────────
+
+/**
+ * Lê os PDFs escolhidos (cada um pode ter um ou mais boletos), mostra tudo
+ * numa lista para conferir e lança de uma vez os marcados. O nome do
+ * beneficiário vem da IA (o código não traz); sem internet, digita na lista.
+ */
+function BoletosEmPdf({ arquivos, dados, salvar, aoFechar }) {
+  const [itens, setItens] = useState([]);
+  const [lendo, setLendo] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  useEffect(() => {
+    let ativo = true;
+    const lista = [];
+    // A pessoa pode ir corrigindo a lista enquanto a leitura continua:
+    // aqui só se acrescenta linha ou se preenche o que ainda está vazio.
+    const atualizar = (chave, preencher) => ativo && setItens((atual) => atual.map((i) => (i.chave === chave ? preencher(i) : i)));
+
+    (async () => {
+      // 1º o código de todos (rápido, no aparelho)…
+      for (const arquivo of arquivos) {
+        const novos = [];
+        let achados = [];
+        try {
+          achados = await lerBoletosDoPdf(arquivo);
+          if (!achados.length) {
+            novos.push({ chave: `${arquivo.name}-nada`, arquivo: arquivo.name, erro: "Não achei o código do boleto neste arquivo. Use “Ler boleto” e digite os números." });
+          }
+        } catch (e) {
+          novos.push({ chave: `${arquivo.name}-erro`, arquivo: arquivo.name, erro: `Não deu para ler: ${e.message}.` });
+        }
+        for (const { lido, pagina, imagem } of achados) {
+          const linha = formatarLinha(lido.linha_digitavel);
+          const digitos = soDigitos(linha);
+          const naLista = [...lista, ...novos].find((i) => i.reg && soDigitos(i.reg.linha_digitavel) === digitos);
+          const repetido = naLista ? `está duas vezes nos arquivos escolhidos (também em ${naLista.arquivo}).` : boletoJaLancado(dados, linha);
+          novos.push({
+            chave: `${arquivo.name}-${pagina}-${digitos}`,
+            arquivo: achados.length > 1 ? `${arquivo.name} (pág. ${pagina})` : arquivo.name,
+            imagem,
+            repetido,
+            incluir: !repetido,
+            lendoNome: true,
+            reg: {
+              ...registroNovo("boletos"), ...empresaJaConhecida(dados.boletos, lido),
+              linha_digitavel: linha, banco: lido.banco, valor: lido.valor, vencimento: lido.vencimento,
+            },
+          });
+        }
+        lista.push(...novos);
+        if (ativo) setItens((atual) => [...atual, ...novos]);
+      }
+      // …depois a foto da página e o nome do beneficiário (IA, um por vez).
+      for (const item of lista) {
+        if (!ativo) return;
+        if (!item.reg) continue;
+        const foto = await comprimir(item.imagem, 1000, 0.7).then(paraDataUrl).catch(() => null);
+        let lido = {};
+        let avisoNome = null;
+        if (!item.reg.empresa) {
+          try {
+            lido = await lerBeneficiarioDoBoleto(item.imagem);
+            if (!lido.nome) avisoNome = "Não achei o beneficiário no PDF: digite a empresa.";
+          } catch (e) {
+            avisoNome = `Não li o beneficiário (${e.message}): digite a empresa.`;
+          }
+        }
+        const empresa = lido.nome ? empresaDoBeneficiario(dados, lido) : null;
+        atualizar(item.chave, (i) => ({
+          ...i, lendoNome: false, avisoNome,
+          reg: {
+            ...i.reg,
+            ...(foto ? { fotos: [foto] } : {}),
+            ...(empresa && !i.reg.empresa ? { empresa } : {}),
+            ...(lido.vencimento && !i.reg.vencimento ? { vencimento: lido.vencimento } : {}),
+          },
+        }));
+      }
+      if (ativo) setLendo(false);
+    })();
+
+    return () => { ativo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const mudar = (chave, mudanca) => setItens((atual) => atual.map((i) => (i.chave === chave
+    ? { ...i, ...mudanca, reg: { ...i.reg, ...mudanca.reg } } : i)));
+
+  const marcados = itens.filter((i) => i.reg && i.incluir);
+  const empresas = useMemo(() => [...new Set([
+    ...dados.boletos.map((b) => b.empresa),
+    ...(dados.contatos ?? []).filter((c) => c.tipo !== "cliente").map((c) => c.fantasia || c.nome),
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b)), [dados.boletos, dados.contatos]);
+
+  const lancar = async () => {
+    setErro(null);
+    // Confere todos antes: ou lança tudo, ou diz o que falta.
+    const prontos = [];
+    for (const item of marcados) {
+      const { reg, erro: e } = prepararRegistro("boletos", item.reg, dados);
+      if (e) { setErro(`${item.arquivo}: ${e}`); return; }
+      prontos.push([item.chave, reg]);
+    }
+    setSalvando(true);
+    for (const [chave, reg] of prontos) {
+      try {
+        await salvar("boletos", reg);
+        setItens((atual) => atual.filter((i) => i.chave !== chave));
+      } catch (err) {
+        setErro(String(err?.message ?? err));
+        setSalvando(false);
+        return;
+      }
+    }
+    aoFechar();
+  };
+
+  const lidos = itens.filter((i) => i.reg).length;
+  return (
+    <Modal
+      titulo="Boletos em PDF"
+      aoFechar={aoFechar}
+      rodape={
+        <>
+          <span className="espaco" />
+          <button className="btn" onClick={aoFechar}>Cancelar</button>
+          <button className="btn primario" onClick={lancar} disabled={salvando || lendo || !marcados.length}>
+            <Icone nome="check" /> {salvando ? "Lançando…" : `Lançar ${marcados.length} ${marcados.length === 1 ? "boleto" : "boletos"} (${brl(soma(marcados, (i) => i.reg.valor))})`}
+          </button>
+        </>
+      }
+    >
+      <p className="descricao">
+        {lendo
+          ? `Lendo os arquivos… ${lidos} ${lidos === 1 ? "boleto achado" : "boletos achados"} até agora.`
+          : "Confira a empresa, o valor e o vencimento de cada um. Os marcados entram na programação; repetido vem desmarcado."}
+      </p>
+      {erro && <div className="aviso">{erro}</div>}
+      <datalist id="pdf-empresas">{empresas.map((e) => <option key={e} value={e} />)}</datalist>
+      <div className="boletos-pdf">
+      <TabelaSimples
+        vazio="Lendo os arquivos…"
+        linhas={itens.map((i) => ({ ...i, id: i.chave }))}
+        colunas={[
+          {
+            rotulo: "Lançar", valor: (i) => (i.reg
+              ? <input type="checkbox" checked={i.incluir} onChange={(e) => mudar(i.chave, { incluir: e.target.checked })} aria-label="Lançar este boleto" />
+              : <span className="selo ruim">Erro</span>),
+          },
+          { rotulo: "Arquivo", valor: (i) => <small>{i.arquivo}</small> },
+          {
+            rotulo: "Empresa", valor: (i) => (i.reg ? (
+              <>
+                <input className="entrada" list="pdf-empresas" value={i.reg.empresa ?? ""}
+                  placeholder={i.lendoNome ? "Lendo o beneficiário…" : "Quem recebe"}
+                  onChange={(e) => mudar(i.chave, { reg: { empresa: e.target.value } })} />
+                {i.avisoNome && !i.reg.empresa && <small className="descricao">{i.avisoNome}</small>}
+              </>
+            ) : i.erro),
+          },
+          {
+            rotulo: "Valor", num: true, valor: (i) => (i.reg ? (
+              <input className="entrada valor" type="number" step="0.01" min="0" value={i.reg.valor ?? ""}
+                onChange={(e) => mudar(i.chave, { reg: { valor: e.target.value === "" ? null : Number(e.target.value) } })} />
+            ) : ""),
+          },
+          {
+            rotulo: "Vencimento", valor: (i) => (i.reg ? (
+              <input className="entrada" type="date" value={i.reg.vencimento ?? ""}
+                onChange={(e) => mudar(i.chave, { reg: { vencimento: e.target.value || null } })} />
+            ) : ""),
+          },
+          {
+            rotulo: "Situação", valor: (i) => (!i.reg ? "" : i.repetido
+              ? <span className="selo atencao">Repetido: {i.repetido}</span>
+              : <span className="selo ok">Novo</span>),
+          },
+        ]}
+      />
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Tela ───────────────────────────────────────────────────────────────────
 
 /**
- * Programação de pagamentos: boleto (lê o código pela câmera, foto ou
- * digitado) ou qualquer outra forma (PIX, transferência, cartão…). Guarda
+ * Programação de pagamentos: boleto (lê o código pela câmera, foto, PDF —
+ * vários de uma vez — ou digitado) ou qualquer outra forma (PIX,
+ * transferência, cartão…). Guarda
  * empresa, valor e vencimento e mostra tudo num calendário do mês.
  */
 export default function Boletos(props) {
@@ -382,6 +570,7 @@ export default function Boletos(props) {
   const [lendo, setLendo] = useState(false);
   const [editando, setEditando] = useState(null);
   const [pagando, setPagando] = useState(null);
+  const [pdfs, setPdfs] = useState(null);
 
   const hojeIso = diaLocal();
   const em7 = diaLocal(7);
@@ -417,6 +606,14 @@ export default function Boletos(props) {
     <>
       <div className="barra">
         <button className="btn primario" onClick={() => setLendo(true)}><Icone nome="barras" /> Ler boleto</button>
+        <label className="btn" title="Escolha um ou mais PDFs de boleto: o código, o valor e o vencimento são lidos de cada um">
+          <Icone nome="importar" /> Boletos em PDF
+          <input type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => {
+            const escolhidos = [...(e.target.files ?? [])];
+            e.target.value = "";
+            if (escolhidos.length) setPdfs(escolhidos);
+          }} />
+        </label>
         <button className="btn" onClick={novo}><Icone nome="mais" /> Outro pagamento (PIX, transferência…)</button>
       </div>
 
@@ -444,6 +641,7 @@ export default function Boletos(props) {
           salvar={salvar} remover={remover} aoFechar={() => setEditando(null)}
           aoPagar={(b) => { setEditando(null); setPagando(b); }} />
       )}
+      {pdfs && <BoletosEmPdf arquivos={pdfs} dados={dados} salvar={salvar} aoFechar={() => setPdfs(null)} />}
       {pagando && <PagarBoleto boleto={pagando} dados={dados} salvar={salvar} aoFechar={() => setPagando(null)} />}
     </>
   );

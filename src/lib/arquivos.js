@@ -199,7 +199,7 @@ async function lerComIA(origem) {
 /**
  * Quem recebe o boleto (beneficiário), lido da foto pela IA do Google — o
  * código de barras não traz o nome. Usa a mesma função ler-comprovante.
- * Devolve { nome, documento }; dá erro sem internet ou se a IA falhar.
+ * Devolve { nome, documento, vencimento }; dá erro sem internet ou se a IA falhar.
  */
 export async function lerBeneficiarioDoBoleto(blob) {
   if (!supabaseConfigurado) throw new Error("precisa do Supabase configurado");
@@ -214,7 +214,12 @@ export async function lerBeneficiarioDoBoleto(blob) {
   }
   if (data?.erro) throw new Error(data.erro);
   const c = data?.comprovante ?? {};
-  return { nome: String(c.favorecido ?? "").trim() || null, documento: String(c.documento ?? "").replace(/\D/g, "") || null };
+  return {
+    nome: String(c.favorecido ?? "").trim() || null,
+    documento: String(c.documento ?? "").replace(/\D/g, "") || null,
+    // Conta de luz, água, imposto: o vencimento não vem no código, só no papel.
+    vencimento: /^\d{4}-\d{2}-\d{2}$/.test(String(c.data ?? "")) ? c.data : null,
+  };
 }
 
 /**
