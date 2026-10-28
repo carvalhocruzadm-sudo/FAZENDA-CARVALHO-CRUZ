@@ -962,10 +962,16 @@ export const ESQUEMA = {
       frete_cobrado: { opcional: "Frete cobrado do comprador", tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
       frete: { opcional: "Frete pago", tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
       comissao: { opcional: "Comissão", tipo: "dinheiro", rotulo: "Comissão" },
-      juros: { opcional: "Juros / antecipação", tipo: "dinheiro", rotulo: "Juros / antecipação" },
+      juros_pct: { opcional: "Juros / antecipação", tipo: "numero", rotulo: "Juros / antecipação do banco (%)", casas: 2, dica: "Em % sobre o valor bruto da venda" },
+      juros: { opcional: "Juros / antecipação", tipo: "dinheiro", rotulo: "Valor descontado de juros / antecipação", somenteLeitura: true },
       valor: { tipo: "dinheiro", rotulo: "Valor líquido", somenteLeitura: true },
       motorista_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "funcionarios", rotulo: "Motorista" },
-      caminhao_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio", filtro: (m) => m.categoria === "caminhao" },
+      caminhao_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio (se o frete foi no nosso caminhão)", filtro: (m) => m.categoria === "caminhao" },
+      frete_caminhao: {
+        opcional: "Motorista e caminhão próprio", tipo: "dinheiro", rotulo: "Valor do frete para o caminhão", mostrarSe: (r) => !!r.caminhao_id,
+        dica: "Entra como receita do caminhão em Caminhões e fretes (não muda o valor da venda)",
+      },
+      km_caminhao: { opcional: "Motorista e caminhão próprio", tipo: "numero", rotulo: "Km rodado pelo caminhão", casas: 1, mostrarSe: (r) => !!r.caminhao_id },
       vencimento: { opcional: "Vencimento", tipo: "data", rotulo: "Vencimento" },
       nota_fiscal: { opcional: "Nota fiscal", tipo: "texto", rotulo: "Nº da nota fiscal" },
       a_conferir: { tipo: "booleano", rotulo: "Aguardando aprovação (ticket lançado por funcionário)" },
@@ -996,12 +1002,14 @@ export const ESQUEMA = {
       const desconto = kgUn ? (num(r.desconto_kg) / kgUn) * num(r.preco_unitario) : 0;
       const custo = (num(liquido) / 1000) * num(r.custo_ton);
       const beneficiamento = (num(liquido) / 1000) * num(r.beneficiamento_ton);
-      const liquidoR = bruto + num(r.frete_cobrado) - desconto - custo - beneficiamento - num(r.frete) - num(r.comissao) - num(r.juros);
+      // Juros em % sobre o valor bruto; vendas antigas sem % mantêm o valor em R$ que já tinham.
+      const juros = r.juros_pct != null && r.juros_pct !== "" ? (bruto * num(r.juros_pct)) / 100 : num(r.juros);
+      const liquidoR = bruto + num(r.frete_cobrado) - desconto - custo - beneficiamento - num(r.frete) - num(r.comissao) - juros;
       return {
         peso_liquido: liquido,
         quantidade: quantidade == null || quantidade === "" ? null : +Number(quantidade).toFixed(3),
         valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2),
-        valor_beneficiamento: +beneficiamento.toFixed(2), valor: +liquidoR.toFixed(2),
+        valor_beneficiamento: +beneficiamento.toFixed(2), juros: +juros.toFixed(2), valor: +liquidoR.toFixed(2),
         // Só informativo: o custo da compra entra pela despesa "Compra de laranja" (não desconta aqui para não contar duas vezes).
         valor_compra: r.preco_compra_ton == null || r.preco_compra_ton === "" || liquido == null ? null : +((num(liquido) / 1000) * num(r.preco_compra_ton)).toFixed(2),
       };
