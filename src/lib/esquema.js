@@ -960,7 +960,12 @@ export const ESQUEMA = {
       juros: { opcional: "Juros / antecipação", tipo: "dinheiro", rotulo: "Valor descontado de juros / antecipação", somenteLeitura: true },
       valor: { tipo: "dinheiro", rotulo: "Valor líquido", somenteLeitura: true },
       motorista_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "funcionarios", rotulo: "Motorista" },
-      caminhao_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio", filtro: (m) => m.categoria === "caminhao" },
+      caminhao_id: { opcional: "Motorista e caminhão próprio", tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio (se o frete foi no nosso caminhão)", filtro: (m) => m.categoria === "caminhao" },
+      frete_caminhao: {
+        opcional: "Motorista e caminhão próprio", tipo: "dinheiro", rotulo: "Valor do frete para o caminhão", mostrarSe: (r) => !!r.caminhao_id,
+        dica: "Entra como receita do caminhão em Caminhões e fretes (não muda o valor da venda)",
+      },
+      km_caminhao: { opcional: "Motorista e caminhão próprio", tipo: "numero", rotulo: "Km rodado pelo caminhão", casas: 1, mostrarSe: (r) => !!r.caminhao_id },
       vencimento: { opcional: "Vencimento", tipo: "data", rotulo: "Vencimento" },
       nota_fiscal: { opcional: "Nota fiscal", tipo: "texto", rotulo: "Nº da nota fiscal" },
       a_conferir: { tipo: "booleano", rotulo: "Aguardando aprovação (ticket lançado por funcionário)" },
