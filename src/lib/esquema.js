@@ -953,6 +953,12 @@ export const ESQUEMA = {
         paraCultura: (c) => Boolean(c.turma_colheita),
       },
       custo_ton: { opcional: "Custo de colheita / carregamento", tipo: "dinheiro", rotulo: "Custo por tonelada (colheita/carregamento)" },
+      // Beneficiamento (lavar, classificar, encerar…) cobrado por tonelada: desconta do bruto.
+      beneficiamento_ton: {
+        opcional: "Beneficiamento", tipo: "dinheiro", rotulo: "Beneficiamento (R$ por tonelada)", paraCultura: soGrupos("citros"),
+        dica: "Desconta do bruto: peso líquido em toneladas × este valor",
+      },
+      valor_beneficiamento: { opcional: "Beneficiamento", tipo: "dinheiro", rotulo: "Valor do beneficiamento", somenteLeitura: true, paraCultura: soGrupos("citros") },
       frete_cobrado: { opcional: "Frete cobrado do comprador", tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
       frete: { opcional: "Frete pago", tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
       comissao: { opcional: "Comissão", tipo: "dinheiro", rotulo: "Comissão" },
@@ -995,13 +1001,15 @@ export const ESQUEMA = {
       const bruto = num(quantidade) * num(r.preco_unitario);
       const desconto = kgUn ? (num(r.desconto_kg) / kgUn) * num(r.preco_unitario) : 0;
       const custo = (num(liquido) / 1000) * num(r.custo_ton);
+      const beneficiamento = (num(liquido) / 1000) * num(r.beneficiamento_ton);
       // Juros em % sobre o valor bruto; vendas antigas sem % mantêm o valor em R$ que já tinham.
       const juros = r.juros_pct != null && r.juros_pct !== "" ? (bruto * num(r.juros_pct)) / 100 : num(r.juros);
-      const liquidoR = bruto + num(r.frete_cobrado) - desconto - custo - num(r.frete) - num(r.comissao) - juros;
+      const liquidoR = bruto + num(r.frete_cobrado) - desconto - custo - beneficiamento - num(r.frete) - num(r.comissao) - juros;
       return {
         peso_liquido: liquido,
         quantidade: quantidade == null || quantidade === "" ? null : +Number(quantidade).toFixed(3),
-        valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2), juros: +juros.toFixed(2), valor: +liquidoR.toFixed(2),
+        valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2),
+        valor_beneficiamento: +beneficiamento.toFixed(2), juros: +juros.toFixed(2), valor: +liquidoR.toFixed(2),
         // Só informativo: o custo da compra entra pela despesa "Compra de laranja" (não desconta aqui para não contar duas vezes).
         valor_compra: r.preco_compra_ton == null || r.preco_compra_ton === "" || liquido == null ? null : +((num(liquido) / 1000) * num(r.preco_compra_ton)).toFixed(2),
       };

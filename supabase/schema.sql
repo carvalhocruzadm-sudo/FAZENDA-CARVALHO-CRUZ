@@ -792,6 +792,8 @@ alter table public.vendas add column if not exists valor_bruto numeric;
 alter table public.vendas add column if not exists valor_desconto numeric;
 alter table public.vendas add column if not exists turma text;
 alter table public.vendas add column if not exists custo_ton numeric;
+alter table public.vendas add column if not exists beneficiamento_ton numeric;
+alter table public.vendas add column if not exists valor_beneficiamento numeric;
 alter table public.vendas add column if not exists frete_cobrado numeric;
 alter table public.vendas add column if not exists frete numeric;
 alter table public.vendas add column if not exists comissao numeric;
