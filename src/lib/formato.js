@@ -6,6 +6,10 @@ export const brl = (v) => moeda.format(Number(v) || 0);
 export const numero = (v, casas = 2) =>
   v == null || v === "" ? "—" : new Intl.NumberFormat("pt-BR", { maximumFractionDigits: casas }).format(Number(v));
 
+/** Horímetro/km sempre com uma casa depois da vírgula: 5.894,6. */
+export const leitura = (v) =>
+  v == null || v === "" ? "" : new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(v));
+
 export const data = (iso) => {
   if (!iso) return "—";
   const [a, m, d] = String(iso).slice(0, 10).split("-");
@@ -26,12 +30,15 @@ export function exibir(campo, valor, dados) {
     case "dinheiro": return campo.casas > 2
       ? `R$ ${new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: campo.casas }).format(valor)}`
       : brl(valor);
-    case "numero": return numero(valor, campo.casas ?? 2);
+    case "numero": return campo.leituraMedidor ? leitura(valor) : numero(valor, campo.casas ?? 2);
     case "data": return data(valor);
     case "fotos": return `${valor.length} ${valor.length === 1 ? "foto" : "fotos"}`;
     case "booleano": return valor ? "Sim" : "Não";
+    case "foto": return "📷";
     case "opcoes": return campo.opcoes.find(([v]) => v === valor)?.[1] ?? valor;
     case "ref": return nomeRef(dados, campo.colecao, valor);
+    case "refs": return valor.length ? valor.map((id) => nomeRef(dados, campo.colecao, id)).join(", ") : "—";
+    case "arquivo": return "📎 Anexado";
     default: return String(valor);
   }
 }
