@@ -1,32 +1,48 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import CaixaComprovantes from "../components/CaixaComprovantes";
 import Crud from "../components/Crud";
+import LancarComprovante from "../components/LancarComprovante";
+import NotasFiscais from "../components/NotasFiscais";
+import OrdensPulverizacao from "../components/OrdensPulverizacao";
+import PainelTickets from "../components/PainelTickets";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
-  PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
-  noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
+  PERIODOS, aPagarProprietarios, aReceber, consumoPorMaquina, custos, detalhesAbastecimentos, diesel, entradasDoPeriodo, estoqueInsumos,
+  GRUPOS_PLANEJAMENTO, lancamentosPorLocal, noPeriodo, resumoChuva, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma, totaisLocal,
 } from "../lib/calculos";
-import { ESQUEMA, hoje } from "../lib/esquema";
-import { brl, data, nomeRef, numero } from "../lib/formato";
-import { contatosDoBling, textoDoArquivo } from "../lib/importarContatos";
+import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
+import { baixarCSV, brl, data, exibir, leitura, nomeRef, numero } from "../lib/formato";
+import { compradoresDoBling, textoDoArquivo } from "../lib/importarCompradores";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
+import { principioDe } from "../lib/principiosAtivos";
+import { contarNovas } from "../lib/recomendacoes";
+import { supabase } from "../lib/supabase";
 import AprovarEntradas from "./AprovarEntradas";
+import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
+import TurmasSemana from "./TurmasSemana";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
  * cadastro) ou um relatório próprio.
  */
-function Secao({ abas, props }) {
-  const [atual, setAtual] = useState(abas[0][0]);
+export function Secao({ abas, props }) {
+  // `abaInicial` e `abrirNovo` vêm do "+ Lançar" e dos avisos do Início.
+  const { abaInicial, abrirNovo, ...resto } = props;
+  const [atual, setAtual] = useState(() => (abas.some(([i]) => i === abaInicial) ? abaInicial : abas[0][0]));
+  // O formulário em branco só abre na aba de chegada, uma vez.
+  const [novoPendente, setNovoPendente] = useState(Boolean(abrirNovo));
   const aba = abas.find(([id]) => id === atual) ?? abas[0];
   const [id, , conteudo] = aba;
   const Relatorio = typeof conteudo === "function" ? conteudo : null;
+  const trocar = (i) => { setAtual(i); setNovoPendente(false); };
+  const p = { ...resto, abrirNovo: novoPendente };
   return (
     <>
-      <Abas abas={abas.map(([i, rotulo]) => [i, rotulo])} atual={id} aoTrocar={setAtual} />
+      <Abas abas={abas.map(([i, rotulo]) => [i, rotulo])} atual={id} aoTrocar={trocar} />
       {Relatorio
-        ? <Relatorio key={id} {...props} />
-        : <Crud key={id} colecao={conteudo?.colecao ?? id} {...props} {...(conteudo ?? {})} />}
+        ? <Relatorio key={id} {...p} />
+        : <Crud key={id} colecao={conteudo?.colecao ?? id} {...p} {...(conteudo ?? {})} />}
     </>
   );
 }
@@ -35,20 +51,220 @@ const unidadeDe = (m) => (m.medidor === "km" ? "km" : "h");
 
 // ─── Lavoura ────────────────────────────────────────────────────────────────
 
-function Planejamento(props) {
-  const { dados } = props;
-  const resumo = resumoPlanejamento(dados);
+/** Texto de uma linha de `lancamentosPorLocal` para a lista. */
+function descreverLancamento(l, dados) {
+  const r = l.reg;
+  const un = (colecao, v) => exibir(ESQUEMA[colecao].campos.unidade, v, dados);
+  switch (l.colecao) {
+    case "despesas": return [r.categoria, r.descricao, r.favorecido].filter(Boolean).join(" · ");
+    case "aplicacoes": {
+      const i = dados.insumos.find((x) => x.id === r.insumo_id);
+      return `${nomeRef(dados, "insumos", r.insumo_id)} · ${numero(r.quantidade)} ${i?.unidade ?? ""}${r.dose_ha ? ` (${numero(r.dose_ha, 3)}/ha)` : ""}`;
+    }
+    case "abastecimentos": return `${nomeRef(dados, "maquinas", r.maquina_id)} · ${numero(r.litros, 1)} L (${r.origem === "posto" ? "posto" : "tanque"})`;
+    case "operacoes": return [r.operacao, nomeRef(dados, "maquinas", r.maquina_id), r.operador_id && nomeRef(dados, "funcionarios", r.operador_id), r.trabalhado != null && `${numero(r.trabalhado, 1)} h/km`].filter(Boolean).join(" · ");
+    case "colheitas": return `${numero(r.quantidade)} ${un("colheitas", r.unidade)} de ${nomeRef(dados, "culturas", r.cultura_id)}`;
+    case "vendas": return [r.comprador, nomeRef(dados, "culturas", r.cultura_id), r.quantidade != null && `${numero(r.quantidade, 1)} ${un("vendas", r.unidade)}`].filter(Boolean).join(" · ");
+    default: return "";
+  }
+}
+
+const TIPOS_LANCAMENTO = ["Despesa", "Aplicação", "Diesel", "Operação", "Colheita", "Venda"];
+
+/**
+ * Tudo de uma fazenda ou de um talhão num lugar só: receita, custo,
+ * resultado, cada talhão com seus números e a lista de lançamentos com data.
+ */
+function PorFazenda({ dados }) {
+  const [periodo, setPeriodo] = useState("ano");
+  const [fazendaId, setFazendaId] = useState("");
+  const [talhaoId, setTalhaoId] = useState("");
+  const [tipo, setTipo] = useState("");
+
+  const todas = useMemo(() => lancamentosPorLocal(dados, periodo), [dados, periodo]);
+  const fazendas = [...dados.fazendas].sort((a, b) => a.nome.localeCompare(b.nome));
+  const talhoesDaFazenda = dados.talhoes
+    .filter((t) => !fazendaId || t.fazenda_id === fazendaId)
+    .sort(ESQUEMA.talhoes.ordem);
+  const talhao = dados.talhoes.find((t) => t.id === talhaoId);
+  const fazenda = dados.fazendas.find((f) => f.id === (talhao?.fazenda_id ?? fazendaId));
+
+  const doLocal = todas.filter((l) => (talhaoId ? l.talhao_id === talhaoId : !fazendaId || l.fazenda_id === fazendaId));
+  const t = totaisLocal(doLocal);
+  const area = talhao ? Number(talhao.area_ha) || 0
+    : fazendaId ? Number(fazenda?.area_ha) || soma(talhoesDaFazenda, (x) => x.area_ha)
+      : soma(dados.talhoes, (x) => x.area_ha);
+  const lista = tipo ? doLocal.filter((l) => l.tipo === tipo) : doLocal;
+
+  // Uma linha por talhão (e uma para o que é da fazenda sem talhão).
+  const porTalhao = talhaoId ? [] : [
+    ...talhoesDaFazenda.map((x) => ({ id: x.id, talhao: x, ...totaisLocal(doLocal.filter((l) => l.talhao_id === x.id)) })),
+    { id: "sem", talhao: null, ...totaisLocal(doLocal.filter((l) => !l.talhao_id)) },
+  ].filter((x) => (x.talhao && x.talhao.ativo !== false) || x.custo || x.receita || x.operacoes);
+
+  const trocarFazenda = (id) => { setFazendaId(id); setTalhaoId(""); };
+  const titulo = talhao ? `Talhão ${talhao.nome}` : fazenda ? fazenda.nome : "Todas as fazendas";
+
+  const exportar = () => baixarCSV(`lancamentos-${titulo.toLowerCase().replace(/\s+/g, "-")}-${hoje()}.csv`, [
+    ["Data", "Tipo", "Fazenda", "Talhão", "Descrição", "Custo", "Receita"],
+    ...lista.map((l) => [data(l.data), l.tipo, nomeRef(dados, "fazendas", l.fazenda_id), nomeRef(dados, "talhoes", l.talhao_id), descreverLancamento(l, dados), l.custo || "", l.receita || ""]),
+  ]);
+
   return (
     <>
-      {resumo.length > 0 && (
-        <div className="grade">
-          {resumo.map((s) => (
-            <Stat key={s.safra} rotulo={s.safra} valor={brl(s.total)}
-              sub={s.porHa ? `${numero(s.hectares)} ha · ${brl(s.porHa)}/ha` : `${s.itens} itens`} />
-          ))}
+      <div className="barra">
+        <select className="entrada" style={{ width: "auto" }} value={fazendaId} onChange={(e) => trocarFazenda(e.target.value)} aria-label="Fazenda">
+          <option value="">Todas as fazendas</option>
+          {fazendas.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+        </select>
+        <select className="entrada" style={{ width: "auto" }} value={talhaoId} onChange={(e) => setTalhaoId(e.target.value)} aria-label="Talhão">
+          <option value="">Todos os talhões</option>
+          {talhoesDaFazenda.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
+        </select>
+        <SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} />
+      </div>
+
+      {(fazenda || talhao) && (
+        <p className="descricao">
+          <b>{titulo}</b>
+          {talhao && fazenda && ` · ${fazenda.nome}`}
+          {area ? ` · ${numero(area)} ha` : ""}
+          {talhao?.cultura_id && ` · ${nomeRef(dados, "culturas", talhao.cultura_id)}`}
+          {talhao?.variedade && ` (${talhao.variedade})`}
+          {talhao?.safra && ` · safra ${talhao.safra}`}
+          {talhao?.data_plantio && ` · plantio ${data(talhao.data_plantio)}`}
+          {talhao?.previsao_colheita && ` · colheita prevista ${data(talhao.previsao_colheita)}`}
+          {!talhao && fazenda?.posse && ` · ${exibir(ESQUEMA.fazendas.campos.posse, fazenda.posse)}`}
+          {!talhao && fazenda?.socio && ` (${fazenda.socio})`}
+        </p>
+      )}
+
+      <div className="grade">
+        <Stat rotulo="Receita (vendas)" valor={brl(t.receita)} />
+        <Stat rotulo="Custos" valor={brl(t.custo)} cor="vermelho" sub={area ? `${brl(t.custo / area)}/ha` : undefined} />
+        <Stat rotulo="Resultado" valor={brl(t.resultado)} cor={t.resultado < 0 ? "vermelho" : ""} sub={area ? `${brl(t.resultado / area)}/ha` : undefined} />
+        <Stat rotulo="Operações de máquina" valor={t.operacoes} cor="cinza" sub={t.horas ? `${leitura(t.horas)} h/km trabalhados` : undefined} />
+        <Stat rotulo="Colhido" valor={t.producao ? `${numero(t.producao)} ${exibir(ESQUEMA.colheitas.campos.unidade, t.unidade)}` : "—"} cor="cinza"
+          sub={t.producao && area ? `${numero(t.producao / area)} por ha` : undefined} />
+      </div>
+
+      {porTalhao.length > 0 && (
+        <div className="cartao">
+          <h2>Por talhão</h2>
+          <TabelaSimples
+            vazio="Nenhum talhão cadastrado nesta fazenda."
+            linhas={porTalhao}
+            colunas={[
+              { rotulo: "Talhão", valor: (x) => (x.talhao ? <button className="link" onClick={() => setTalhaoId(x.talhao.id)}>{x.talhao.nome}</button> : "Geral (sem talhão)") },
+              ...(fazendaId ? [] : [{ rotulo: "Fazenda", valor: (x) => (x.talhao ? nomeRef(dados, "fazendas", x.talhao.fazenda_id) : "—") }]),
+              { rotulo: "Cultura", valor: (x) => (x.talhao ? nomeRef(dados, "culturas", x.talhao.cultura_id) : "—") },
+              { rotulo: "Área", num: true, valor: (x) => (x.talhao?.area_ha ? `${numero(x.talhao.area_ha)} ha` : "—") },
+              { rotulo: "Custo", num: true, valor: (x) => brl(x.custo) },
+              { rotulo: "Custo/ha", num: true, valor: (x) => (x.talhao?.area_ha ? brl(x.custo / x.talhao.area_ha) : "—") },
+              { rotulo: "Receita", num: true, valor: (x) => brl(x.receita) },
+              { rotulo: "Resultado", num: true, valor: (x) => <b className={x.resultado < 0 ? "negativo" : "positivo"}>{brl(x.resultado)}</b> },
+              { rotulo: "Colhido", num: true, valor: (x) => (x.producao ? numero(x.producao) : "—") },
+              { rotulo: "Último lançamento", valor: (x) => data(x.ultima) },
+            ]}
+            rodape={["Total", ...(fazendaId ? [] : [""]), "", area ? `${numero(area)} ha` : "", brl(t.custo), area ? brl(t.custo / area) : "", brl(t.receita), brl(t.resultado), "", ""]}
+          />
         </div>
       )}
-      <Crud colecao="planejamento" {...props} />
+
+      <div className="cartao">
+        <div className="barra">
+          <h2 style={{ margin: 0 }}>Lançamentos — {titulo}</h2>
+          <span className="espaco" />
+          <select className="entrada" style={{ width: "auto" }} value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Tipo de lançamento">
+            <option value="">Tudo</option>
+            {TIPOS_LANCAMENTO.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+          <button className="btn" onClick={exportar} disabled={!lista.length} title="Baixar planilha (CSV)"><Icone nome="exportar" /> Planilha</button>
+        </div>
+        <TabelaSimples
+          vazio="Nenhum lançamento com esta fazenda/talhão no período."
+          linhas={lista.slice(0, 500)}
+          colunas={[
+            { rotulo: "Data", valor: (l) => data(l.data) },
+            { rotulo: "Tipo", valor: (l) => l.tipo },
+            ...(talhaoId ? [] : [{ rotulo: "Talhão", valor: (l) => (l.talhao_id ? nomeRef(dados, "talhoes", l.talhao_id) : "Geral") }]),
+            ...(fazendaId || talhaoId ? [] : [{ rotulo: "Fazenda", valor: (l) => nomeRef(dados, "fazendas", l.fazenda_id) }]),
+            { rotulo: "Descrição", valor: (l) => descreverLancamento(l, dados) || "—" },
+            { rotulo: "Custo", num: true, valor: (l) => (l.custo ? <span className="negativo">{brl(l.custo)}</span> : "—") },
+            { rotulo: "Receita", num: true, valor: (l) => (l.receita ? <span className="positivo">{brl(l.receita)}</span> : "—") },
+          ]}
+        />
+        {lista.length > 500 && <p className="descricao" style={{ marginTop: 10 }}>Mostrando os 500 mais recentes de {lista.length}. A planilha traz todos.</p>}
+      </div>
+      <p className="descricao">
+        Custos: despesas lançadas com a fazenda ou o talhão, químicos aplicados (a custo médio) e diesel dos abastecimentos
+        com talhão. Receita: vendas com talhão. Revisões de máquina e despesas gerais sem fazenda ficam só no Financeiro.
+      </p>
+    </>
+  );
+}
+
+function Planejamento(props) {
+  const { dados } = props;
+  const resumos = useMemo(() => resumoPlanejamento(dados).sort((a, b) => b.safra.localeCompare(a.safra)), [dados]);
+  const [escolhida, setEscolhida] = useState(null);
+  const r = resumos.find((x) => x.safra === escolhida) ?? resumos[0];
+  if (!r) return <Crud colecao="planejamento" {...props} />;
+
+  const nomeArea = (a) => (a.talhao_id ? `${nomeRef(dados, "fazendas", a.fazenda_id)} › ${nomeRef(dados, "talhoes", a.talhao_id)}` : nomeRef(dados, "fazendas", a.fazenda_id));
+  const areas = [...r.areas].sort((a, b) => b.total - a.total);
+  const grupos = [...GRUPOS_PLANEJAMENTO, ...Object.keys(r.realizado).filter((g) => !GRUPOS_PLANEJAMENTO.includes(g))]
+    .map((g) => ({ id: g, g, plan: r.porGrupo[g] ?? 0, real: r.realizado[g] ?? 0 }))
+    .filter((x) => x.plan || x.real);
+  return (
+    <>
+      <div className="barra">
+        <select className="entrada" style={{ width: "auto" }} value={r.safra} onChange={(e) => setEscolhida(e.target.value)} aria-label="Safra">
+          {resumos.map((x) => <option key={x.safra} value={x.safra}>{x.safra}</option>)}
+        </select>
+      </div>
+      <div className="grade">
+        <Stat rotulo="Planejado" valor={brl(r.total)} sub={`${r.itens} itens`} />
+        <Stat rotulo="Área" valor={`${numero(r.hectares, 1)} ha`} sub={`${r.areas.length} ${r.areas.length === 1 ? "área" : "áreas"}`} />
+        <Stat rotulo="Planejado por hectare" valor={r.porHa ? brl(r.porHa) : "—"} />
+        <Stat rotulo={`Lançado na cultura em ${r.ano ?? "—"}`} valor={brl(r.totalRealizado)} sub="despesas com centro de custo na cultura + químicos aplicados" cor="laranja" />
+      </div>
+      <div className="cartao">
+        <h2>{r.safra}: por fazenda / área</h2>
+        <TabelaSimples
+          linhas={areas}
+          colunas={[
+            { rotulo: "Fazenda / área", valor: nomeArea },
+            { rotulo: "Hectares", num: true, valor: (a) => numero(a.hectares, 1) },
+            ...GRUPOS_PLANEJAMENTO.filter((g) => r.porGrupo[g]).map((g) => ({ rotulo: g, num: true, valor: (a) => (a.porGrupo[g] ? brl(a.porGrupo[g]) : "—") })),
+            { rotulo: "Total", num: true, valor: (a) => brl(a.total) },
+            { rotulo: "R$/ha", num: true, valor: (a) => (a.porHa ? brl(a.porHa) : "—") },
+          ]}
+          rodape={["Total", numero(r.hectares, 1), ...GRUPOS_PLANEJAMENTO.filter((g) => r.porGrupo[g]).map((g) => brl(r.porGrupo[g])), brl(r.total), r.porHa ? brl(r.porHa) : "—"]}
+        />
+      </div>
+      <div className="cartao">
+        <h2>Planejado × lançado</h2>
+        <p className="descricao">
+          Lançado = despesas de {r.ano} com centro de custo na cultura (ou num talhão dela) + químicos aplicados nos talhões dela.
+          Despesa lançada como “Geral da fazenda” não entra aqui: para o comparativo ficar completo, lance as compras da safra com a cultura.
+        </p>
+        <TabelaSimples
+          linhas={grupos}
+          colunas={[
+            { rotulo: "Grupo", valor: (x) => x.g },
+            { rotulo: "Planejado", num: true, valor: (x) => brl(x.plan) },
+            { rotulo: "Planejado/ha", num: true, valor: (x) => (r.hectares ? brl(x.plan / r.hectares) : "—") },
+            { rotulo: "Lançado", num: true, valor: (x) => brl(x.real) },
+            { rotulo: "Falta / passou", num: true, valor: (x) => <span className={x.real > x.plan ? "negativo" : ""}>{brl(x.plan - x.real)}</span> },
+            { rotulo: "% usado", num: true, valor: (x) => (x.plan ? `${numero((x.real / x.plan) * 100, 1)}%` : "—") },
+          ]}
+          rodape={["Total", brl(r.total), r.hectares ? brl(r.total / r.hectares) : "—", brl(r.totalRealizado), brl(r.total - r.totalRealizado), r.total ? `${numero((r.totalRealizado / r.total) * 100, 1)}%` : "—"]}
+        />
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <Crud key={r.safra} colecao="planejamento" {...props} filtro={(p) => (p.safra || "(sem safra)") === r.safra} padrao={{ safra: r.safra, cultura_id: r.cultura_id }} />
+      </div>
     </>
   );
 }
@@ -56,11 +272,11 @@ function Planejamento(props) {
 export function Lavoura(props) {
   return (
     <Secao props={props} abas={[
+      ["porfazenda", "Por fazenda / talhão", PorFazenda],
       ["talhoes", "Talhões / sítios"],
+      ["safras", "Safras"],
       ["colheitas", "Colheitas"],
       ["planejamento", "Planejamento da safra", Planejamento],
-      ["fazendas", "Fazendas"],
-      ["culturas", "Culturas"],
     ]} />
   );
 }
@@ -79,7 +295,8 @@ function SituacaoMaquinas({ dados }) {
     <div className="cartao">
       <p className="descricao">
         Leitura atual = a maior entre cadastro, operações, abastecimentos e revisões. A próxima revisão é a última
-        revisão/troca de óleo + o intervalo do cadastro.
+        revisão/troca de óleo + o intervalo do cadastro. Máquina de horímetro sem revisão lançada: considera que a
+        última foi 400 h antes da leitura atual.
       </p>
       <div className="barra"><span>Consumo no período:</span><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
       <TabelaSimples
@@ -87,11 +304,11 @@ function SituacaoMaquinas({ dados }) {
         linhas={linhas.map((l) => ({ ...l, id: l.m.id }))}
         colunas={[
           { rotulo: "Máquina", valor: (l) => l.m.nome },
-          { rotulo: "Leitura atual", num: true, valor: (l) => `${numero(l.s.atual, 1)} ${unidadeDe(l.m)}` },
-          { rotulo: "Próxima revisão", num: true, valor: (l) => (l.s.proxima ? `${numero(l.s.proxima, 0)} ${unidadeDe(l.m)}` : "—") },
-          { rotulo: "Faltam", num: true, valor: (l) => (l.s.faltam == null ? "—" : `${numero(l.s.faltam, 0)} ${unidadeDe(l.m)}`) },
+          { rotulo: "Leitura atual", num: true, valor: (l) => `${leitura(l.s.atual)} ${unidadeDe(l.m)}` },
+          { rotulo: "Próxima revisão", num: true, valor: (l) => (l.s.proxima ? `${leitura(l.s.proxima)} ${unidadeDe(l.m)}` : "—") },
+          { rotulo: "Faltam", num: true, valor: (l) => (l.s.faltam == null ? "—" : `${leitura(l.s.faltam)} ${unidadeDe(l.m)}`) },
           { rotulo: "Revisão", valor: (l) => <span className={`selo ${selo[l.s.estado][0]}`}>{selo[l.s.estado][1]}</span> },
-          { rotulo: "Trabalhado", num: true, valor: (l) => (l.c ? `${numero(l.c.trabalhado, 1)} ${unidadeDe(l.m)}` : "—") },
+          { rotulo: "Trabalhado", num: true, valor: (l) => (l.c ? `${leitura(l.c.trabalhado)} ${unidadeDe(l.m)}` : "—") },
           { rotulo: "Diesel", num: true, valor: (l) => (l.c ? `${numero(l.c.litros, 0)} L` : "—") },
           { rotulo: "Consumo", num: true, valor: (l) => (l.c?.media ? (l.m.medidor === "km" ? `${numero(l.c.media, 2)} km/L` : `${numero(l.c.media, 2)} L/h`) : "—") },
         ]}
@@ -104,10 +321,77 @@ export function Maquinas(props) {
   return (
     <Secao props={props} abas={[
       ["situacao", "Situação e revisões", SituacaoMaquinas],
-      ["operacoes", "Horímetro / operações"],
       ["revisoes", "Revisões feitas"],
-      ["maquinas", "Inventário"],
     ]} />
+  );
+}
+
+// ─── Atividades de campo ────────────────────────────────────────────────────
+
+/** Tudo o que se faz nos talhões, num lugar só (como as "Atividades" do Aegro). */
+export function Atividades(props) {
+  return (
+    <Secao props={props} abas={[
+      ["aplicacoes", "Aplicações de produto"],
+      ["operacoes", "Horímetro / serviços de máquina"],
+      ["ordens", "Ordens de pulverização", OrdensPulverizacao],
+    ]} />
+  );
+}
+
+// ─── Cadastros ──────────────────────────────────────────────────────────────
+
+/** O que quase não muda fica fora das telas do dia a dia. */
+export function Cadastros(props) {
+  return (
+    <Secao props={props} abas={[
+      ["fazendas", "Fazendas"],
+      ["culturas", "Culturas"],
+      ["insumos", "Produtos / insumos", ProdutosQuimicos],
+      ["maquinas", "Máquinas e veículos"],
+      ["compradores", "Compradores", Compradores],
+    ]} />
+  );
+}
+
+// ─── Modo Campo (cadastros) ─────────────────────────────────────────────────
+
+/**
+ * Tudo o que aparece nas telas dos tratoristas, num lugar só: os serviços, a
+ * foto de cada operador, de cada trator, de cada talhão e dos produtos.
+ */
+export function CadastrosCampo(props) {
+  const { dados, abrirCampo } = props;
+  const semFoto = (lista) => lista.filter((x) => x.ativo !== false && !x.foto && !x.fotos_rotulo?.length).length;
+  const tratoristas = dados.funcionarios.filter((f) => /tratorista|operador|motorista/i.test(f.funcao ?? ""));
+  const tratores = dados.maquinas.filter((m) => m.medidor === "horas");
+  const produtos = dados.insumos.filter((i) => i.ativo !== false);
+  return (
+    <>
+      <div className="cartao" style={{ marginBottom: 16 }}>
+        <div className="barra" style={{ marginBottom: 0 }}>
+          <p className="descricao" style={{ margin: 0, flex: 1, minWidth: 240 }}>
+            Aqui se cadastra tudo o que o tratorista vê no celular. Quem não tem foto aparece com a primeira letra do
+            nome num quadrado colorido. Cadastrou ou mudou algo? Aparece no celular deles na próxima sincronização.
+          </p>
+          <button className="btn primario" onClick={abrirCampo}>🚜 Abrir o Modo Campo</button>
+        </div>
+      </div>
+      <div className="grade">
+        <Stat rotulo="Tratoristas sem foto" valor={semFoto(tratoristas)} cor={semFoto(tratoristas) ? "laranja" : ""} sub={`de ${tratoristas.length}`} />
+        <Stat rotulo="Tratores sem foto" valor={semFoto(tratores)} cor={semFoto(tratores) ? "laranja" : ""} sub={`de ${tratores.length}`} />
+        <Stat rotulo="Produtos sem foto" valor={semFoto(produtos)} cor={semFoto(produtos) ? "laranja" : ""} sub={`de ${produtos.length}`} />
+        <Stat rotulo="Serviços ativos" valor={dados.servicos.filter((s) => s.ativo !== false).length} cor="cinza" />
+        <Stat rotulo="Talhões ativos" valor={dados.talhoes.filter((t) => t.ativo !== false).length} cor="cinza" />
+      </div>
+      <Secao props={props} abas={[
+        ["servicos", "Serviços"],
+        ["funcionarios", "Operadores (fotos)", { colecao: "funcionarios", padrao: { funcao: "Tratorista" } }],
+        ["maquinas", "Tratores (fotos)", { colecao: "maquinas" }],
+        ["talhoes", "Talhões", { colecao: "talhoes" }],
+        ["insumos", "Produtos do depósito (fotos)", { colecao: "insumos" }],
+      ]} />
+    </>
   );
 }
 
@@ -134,6 +418,18 @@ function ConsumoDiesel({ dados }) {
   );
 }
 
+/** Colunas a mais na lista de abastecimentos, tiradas dos outros lançamentos (não vão para o banco). */
+const ABAST_CALCULADAS = {
+  campos: {
+    cultura: { tipo: "ref", colecao: "culturas", rotulo: "Cultura" },
+    servico: { tipo: "texto", rotulo: "Serviço (operações do dia)" },
+    horas: { tipo: "numero", rotulo: "Horas / km trabalhados", leituraMedidor: true },
+    custo: { tipo: "dinheiro", rotulo: "Custo do diesel" },
+  },
+  calcular: detalhesAbastecimentos,
+};
+const ABAST_COLUNAS = ["data", "origem", "maquina_id", "operador_id", "litros", "leitura", "horas", "talhao_id", "cultura", "servico", "custo"];
+
 export function Diesel(props) {
   const d = diesel(props.dados);
   return (
@@ -145,7 +441,7 @@ export function Diesel(props) {
         <Stat rotulo="Total abastecido do tanque" valor={`${numero(d.litrosSaida, 0)} L`} cor="cinza" />
       </div>
       <Secao props={props} abas={[
-        ["abastecimentos", "Abastecimentos"],
+        ["abastecimentos", "Abastecimentos", { calculadas: ABAST_CALCULADAS, colunas: ABAST_COLUNAS }],
         ["diesel_entradas", "Compras (entrada no tanque)"],
         ["consumo", "Consumo por máquina", ConsumoDiesel],
       ]} />
@@ -155,17 +451,38 @@ export function Diesel(props) {
 
 // ─── Químicos ───────────────────────────────────────────────────────────────
 
+/** Selo de validade: vencido, vencendo (60 dias) ou em dia. */
+function SeloValidade({ validade }) {
+  if (!validade) return "—";
+  const dias = Math.ceil((new Date(`${String(validade).slice(0, 10)}T12:00:00`) - new Date()) / 86400000);
+  const cls = dias < 0 ? "ruim" : dias <= 60 ? "atencao" : "ok";
+  const txt = dias < 0 ? "Vencido" : dias <= 60 ? `Vence em ${dias} d` : null;
+  return <span><span className={`selo ${cls}`}>{txt ?? "Em dia"}</span> {data(validade)}</span>;
+}
+
+/** Campo de busca por produto, fabricante, tipo ou princípio ativo. */
+function CampoBuscaProduto({ valor, aoMudar }) {
+  return <input className="entrada busca" placeholder="Buscar produto ou fabricante…" value={valor} onChange={(e) => aoMudar(e.target.value)} aria-label="Buscar" />;
+}
+
+const achaProduto = (insumo, termo) => {
+  const t = termo.trim().toLowerCase();
+  return !t || [insumo.nome, insumo.fabricante, insumo.tipo, insumo.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(t));
+};
+
 function EstoqueQuimicos({ dados }) {
-  const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false || x.saldo);
+  const [busca, setBusca] = useState("");
+  const lista = estoqueInsumos(dados).filter((x) => (x.insumo.ativo !== false || x.saldo) && achaProduto(x.insumo, busca));
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
+  const aConferir = dados.insumo_entradas.filter((e) => e.a_conferir).length;
   const [exportando, setExportando] = useState(false);
   const exportar = async () => {
     setExportando(true);
     try {
       const linhas = [...lista].sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({
         produto: x.insumo.nome, fabricante: x.insumo.fabricante ?? "", tipo: tipos[x.insumo.tipo] ?? "", principio: x.insumo.principio_ativo ?? "",
-        unidade: x.insumo.unidade, entrou: x.entrada, aplicado: x.saida, saldo: x.saldo,
-        minimo: x.insumo.estoque_minimo ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
+        unidade: x.insumo.unidade, entrou: x.entrada + x.ajuste, aplicado: x.saida, saldo: x.saldo,
+        minimo: x.insumo.estoque_minimo ?? "", validade: x.insumo.validade ?? "", situacao: x.negativo ? "Negativo" : x.baixo ? "Baixo" : "OK",
         custo: Number(x.custoMedio.toFixed(2)), valor: Number(x.valorEstoque.toFixed(2)),
         observacao: x.insumo.observacao ?? "", fotos: x.insumo.fotos_rotulo ?? [],
       }));
@@ -177,12 +494,19 @@ function EstoqueQuimicos({ dados }) {
   return (
     <div className="cartao">
       <div className="barra">
-        <p className="descricao" style={{ margin: 0 }}>Saldo = entradas − aplicações. O custo médio vem das entradas.</p>
+        <CampoBuscaProduto valor={busca} aoMudar={setBusca} />
+        <p className="descricao" style={{ margin: 0 }}>Saldo = quantidade inicial + entradas − aplicações (a sobra que voltou da pulverização conta como aplicação negativa). O custo médio vem das entradas com preço.</p>
         <span className="espaco" />
         <button className="btn" onClick={exportar} disabled={!lista.length || exportando} title="Baixar planilha do estoque para o agrônomo">
           <Icone nome="exportar" /> {exportando ? "Gerando…" : "Planilha para o agrônomo"}
         </button>
       </div>
+      {aConferir > 0 && (
+        <div className="aviso info">
+          {aConferir} entrada(s) lançada(s) no depósito pelo Modo Campo esperando aprovação. Abra a aba Aprovar entradas,
+          confira as fotos e complete o valor e a nota.
+        </div>
+      )}
       <TabelaSimples
         vazio="Cadastre os produtos na aba Produtos e lance as entradas."
         linhas={lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({ ...x, id: x.insumo.id }))}
@@ -191,29 +515,193 @@ function EstoqueQuimicos({ dados }) {
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
           { rotulo: "Tipo", valor: (x) => tipos[x.insumo.tipo] ?? "—" },
           { rotulo: "Entrou", num: true, valor: (x) => numero(x.entrada) },
+          { rotulo: "Inicial / balanço", num: true, valor: (x) => (x.ajuste ? numero(x.ajuste) : "—") },
           { rotulo: "Aplicado", num: true, valor: (x) => numero(x.saida) },
           { rotulo: "Saldo", num: true, valor: (x) => <b className={x.saldo < 0 ? "negativo" : ""}>{numero(x.saldo)} {x.insumo.unidade}</b> },
+          { rotulo: "Validade", valor: (x) => <SeloValidade validade={x.insumo.validade} /> },
           { rotulo: "Situação", valor: (x) => (x.negativo ? <span className="selo ruim">Negativo</span> : x.baixo ? <span className="selo atencao">Baixo</span> : <span className="selo ok">OK</span>) },
           { rotulo: "Custo médio", num: true, valor: (x) => (x.custoMedio ? `${brl(x.custoMedio)}/${x.insumo.unidade}` : "—") },
           { rotulo: "Valor em estoque", num: true, valor: (x) => brl(x.valorEstoque) },
         ]}
-        rodape={["Total", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
+        rodape={["Total", "", "", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
       />
     </div>
   );
 }
 
+const lerNumero = (t) => {
+  const v = Number(String(t).trim().replace(",", "."));
+  return String(t).trim() === "" || Number.isNaN(v) ? null : v;
+};
+
+/** Conferência: o usuário informa quanto TEM de cada produto; o sistema grava a diferença. */
+function BalancoEstoque({ dados, salvar }) {
+  const [busca, setBusca] = useState("");
+  const lista = estoqueInsumos(dados).filter((x) => x.insumo.ativo !== false && achaProduto(x.insumo, busca))
+    .sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome));
+  const [dataBalanco, setDataBalanco] = useState(hoje());
+  const [contagem, setContagem] = useState({});
+  const [custos, setCustos] = useState({});
+  const [gravando, setGravando] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const linhas = lista.map((x) => {
+    const contado = lerNumero(contagem[x.insumo.id] ?? "");
+    const dif = contado == null ? null : +(contado - x.saldo).toFixed(3);
+    return { ...x, id: x.insumo.id, contado, dif };
+  });
+  const pendentes = linhas.filter((x) => x.dif);
+
+  const gravar = async () => {
+    setGravando(true);
+    setMsg(null);
+    try {
+      for (const x of pendentes) {
+        const { reg, erro } = prepararRegistro("insumo_ajustes", {
+          data: dataBalanco, insumo_id: x.insumo.id, contado: x.contado, quantidade: x.dif,
+          custo_unitario: x.dif > 0 ? lerNumero(custos[x.insumo.id] ?? "") : null,
+          observacao: "Balanço de estoque",
+        });
+        if (erro) { setMsg(erro); return; }
+        await salvar("insumo_ajustes", reg);
+      }
+      setContagem({});
+      setCustos({});
+      setMsg(`Balanço gravado: ${pendentes.length} produto(s) ajustado(s).`);
+    } finally {
+      setGravando(false);
+    }
+  };
+
+  return (
+    <div className="cartao">
+      <p className="descricao">
+        Digite em “Contagem” quanto você tem hoje de cada produto. Deixe em branco o que não quiser mexer.
+        Use esta aba para conferir o estoque depois (a quantidade inicial já se informa ao cadastrar o produto). O sistema grava só a diferença — isso não conta como compra nem como despesa.
+        As próximas compras entram pela aba “Entradas / compras”.
+      </p>
+      <div className="barra">
+        <CampoBuscaProduto valor={busca} aoMudar={setBusca} />
+        <label className="campo" style={{ maxWidth: 180 }}><span>Data do balanço</span>
+          <input type="date" value={dataBalanco} onChange={(e) => setDataBalanco(e.target.value)} />
+        </label>
+        <span className="espaco" />
+        <button className="btn primario" onClick={gravar} disabled={!pendentes.length || gravando || !dataBalanco}>
+          {gravando ? "Gravando…" : `Gravar balanço (${pendentes.length})`}
+        </button>
+      </div>
+      {msg && <div className="aviso">{msg}</div>}
+      <TabelaSimples
+        vazio="Cadastre os produtos na aba Produtos primeiro."
+        linhas={linhas}
+        colunas={[
+          { rotulo: "Produto", valor: (x) => x.insumo.nome },
+          { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
+          { rotulo: "No sistema", num: true, valor: (x) => `${numero(x.saldo)} ${x.insumo.unidade}` },
+          { rotulo: "Contagem", valor: (x) => (
+            <input inputMode="decimal" style={{ width: 110 }} placeholder={x.insumo.unidade}
+              value={contagem[x.insumo.id] ?? ""} onChange={(e) => setContagem((c) => ({ ...c, [x.insumo.id]: e.target.value }))} />
+          ) },
+          { rotulo: "Diferença", num: true, valor: (x) => (x.dif == null ? "—" : <b className={x.dif < 0 ? "negativo" : ""}>{x.dif > 0 ? "+" : ""}{numero(x.dif)}</b>) },
+          { rotulo: "Custo por unidade (opcional)", valor: (x) => (x.dif > 0 ? (
+            <input inputMode="decimal" style={{ width: 110 }} placeholder="R$"
+              value={custos[x.insumo.id] ?? ""} onChange={(e) => setCustos((c) => ({ ...c, [x.insumo.id]: e.target.value }))} />
+          ) : "—") },
+        ]}
+      />
+    </div>
+  );
+}
+
+/** Pergunta à IA (função consultar-produto) só o princípio ativo de um produto. */
+async function principioPelaIA(p, tentativa = 1) {
+  const { data, error } = await supabase.functions.invoke("consultar-produto", {
+    body: { modo: "principio", nome: p.nome, fabricante: p.fabricante, tipo: p.tipo },
+  });
+  if (error) {
+    // A função devolve { erro } mesmo quando falha: mostra essa mensagem, que é a que explica.
+    const status = error.context?.status;
+    const corpo = await error.context?.json?.().catch(() => null);
+    // Limite por minuto do Gemini gratuito ou IA sobrecarregada: espera um pouco e tenta de novo.
+    if ((status === 429 || status === 503) && tentativa < 4) {
+      await new Promise((r) => setTimeout(r, 30000));
+      return principioPelaIA(p, tentativa + 1);
+    }
+    if (status === 404) throw new Error("a função consultar-produto ainda não foi publicada no Supabase");
+    throw new Error(corpo?.erro ?? corpo?.message ?? (status ? `${error.message} (${status})` : error.message));
+  }
+  if (data?.erro) throw new Error(data.erro);
+  // Função antiga (sem o modo "principio") devolve o texto longo: não serve aqui.
+  if (!("principio_ativo" in (data ?? {}))) throw new Error("Atualize a função consultar-produto no Supabase.");
+  return data.principio_ativo;
+}
+
+/** Aba Produtos: o cadastro normal + botão que preenche os princípios ativos em branco. */
+function ProdutosQuimicos(props) {
+  const { dados, salvarVarios } = props;
+  const [aviso, setAviso] = useState(null);
+  const [andamento, setAndamento] = useState(null);
+  // Sementes e ração não têm princípio ativo.
+  const vazios = dados.insumos.filter((p) => !p.principio_ativo?.trim() && !["semente", "racao"].includes(p.tipo));
+
+  const preencher = async () => {
+    setAviso(null);
+    const pelaTabela = vazios.map((p) => ({ ...p, principio_ativo: principioDe(p.nome) })).filter((p) => p.principio_ativo);
+    if (pelaTabela.length) await salvarVarios("insumos", pelaTabela);
+    const faltam = vazios.filter((p) => !pelaTabela.some((x) => x.id === p.id));
+    let pelaIA = 0;
+    let falha = null;
+    if (faltam.length && supabase && navigator.onLine
+      && window.confirm(`${pelaTabela.length} preenchido(s) pela tabela. Faltam ${faltam.length}: pesquisar na internet com a IA? Demora uns segundos por produto.`)) {
+      for (const [i, p] of faltam.entries()) {
+        setAndamento(`Pesquisando ${i + 1} de ${faltam.length}: ${p.nome}…`);
+        try {
+          const principio = (await principioPelaIA(p))?.trim();
+          if (principio) { await salvarVarios("insumos", [{ ...p, principio_ativo: principio }]); pelaIA += 1; }
+        } catch (e) {
+          falha = String(e?.message ?? e);
+          break;
+        }
+      }
+      setAndamento(null);
+    }
+    const resto = faltam.length - pelaIA;
+    setAviso([falha ? "" : "ok", `${pelaTabela.length + pelaIA} produto(s) ganharam princípio ativo`
+      + (pelaIA ? ` (${pelaIA} pela pesquisa da IA — confira com o rótulo)` : "")
+      + (resto ? `. ${resto} ficaram em branco: preencha à mão pelo rótulo.` : ".")
+      + (falha ? ` A pesquisa parou: ${falha}` : "")]);
+  };
+
+  return (
+    <>
+      {aviso && <div className={`aviso ${aviso[0]}`}>{aviso[1]}</div>}
+      <Crud colecao="insumos" {...props} acoes={
+        <button className="btn" onClick={preencher} disabled={!vazios.length || Boolean(andamento)}
+          title={vazios.length ? `${vazios.length} produto(s) sem princípio ativo` : "Todos os produtos já têm princípio ativo"}>
+          <Icone nome="busca" /> {andamento ?? `Preencher princípios ativos${vazios.length ? ` (${vazios.length})` : ""}`}
+        </button>
+      } />
+    </>
+  );
+}
+
 export function Quimicos(props) {
-  // Com produto esperando aprovação, a aba de aprovar vem primeiro.
-  const pendentes = props.dados.solicitacoes_produto.filter((s) => s.situacao === "pendente").length;
-  const aprovar = ["aprovar", pendentes ? `Aprovar entradas (${pendentes})` : "Aprovar entradas", AprovarEntradas];
-  const abas = [
-    ["estoque", "Estoque", EstoqueQuimicos],
-    ["aplicacoes", "Aplicações / saídas"],
-    ["insumo_entradas", "Entradas / compras"],
-    ["insumos", "Produtos"],
-  ];
-  return <Secao props={props} abas={pendentes ? [aprovar, ...abas] : [...abas, aprovar]} />;
+  const novas = contarNovas(props.dados.recomendacoes);
+  // Com entrada do depósito esperando, a aba de aprovar vem primeiro.
+  const aprovar = props.dados.insumo_entradas.filter((e) => e.a_conferir).length;
+  const abaAprovar = ["aprovar", aprovar ? `Aprovar entradas (${aprovar})` : "Aprovar entradas", AprovarEntradas];
+  return (
+    <Secao props={props} abas={[
+      ...(aprovar ? [abaAprovar] : []),
+      ["estoque", "Estoque", EstoqueQuimicos],
+      ["insumo_entradas", "Entradas / compras"],
+      ["agronomo", `Aplicações do agrônomo${novas ? ` (${novas} ${novas === 1 ? "nova" : "novas"})` : ""}`, AplicacoesAgronomo],
+      ["link", "Link do agrônomo", LinkAgronomo],
+      ["balanco", "Balanço / conferência", BalancoEstoque],
+      ["insumo_ajustes", "Histórico de balanços"],
+      ...(aprovar ? [] : [abaAprovar]),
+    ]} />
+  );
 }
 
 // ─── Vendas ─────────────────────────────────────────────────────────────────
@@ -234,6 +722,36 @@ function AReceber({ dados }) {
           { rotulo: "Falta receber", num: true, valor: (x) => <b className={x.saldo > 0.009 ? "negativo" : "positivo"}>{brl(x.saldo)}</b> },
         ]}
         rodape={["Total", soma(lista, (x) => x.cargas), brl(soma(lista, (x) => x.vendido)), brl(soma(lista, (x) => x.recebido)), brl(soma(lista, (x) => x.saldo))]}
+      />
+    </div>
+  );
+}
+
+function APagarProprietarios({ dados }) {
+  const lista = aPagarProprietarios(dados);
+  const semPreco = soma(lista, (x) => x.semPreco);
+  return (
+    <div className="cartao">
+      <p className="descricao">
+        Laranja de terceiros, por proprietário: o valor da compra das cargas (peso × valor pago por tonelada) menos
+        o que já foi pago em Despesas → Compra de laranja. A carga não entra nas despesas; só o pagamento entra.
+        Para o pagamento abater aqui, o Favorecido tem que ter o mesmo nome do proprietário da carga.
+      </p>
+      {semPreco > 0 && (
+        <div className="aviso info">{semPreco} carga(s) sem o valor pago por tonelada: abra em Cargas vendidas e preencha para entrar na conta.</div>
+      )}
+      <TabelaSimples
+        vazio="Nenhuma carga de laranja de terceiros lançada."
+        linhas={lista.map((x) => ({ ...x, id: x.proprietario }))}
+        colunas={[
+          { rotulo: "Proprietário", valor: (x) => x.proprietario || "— (sem proprietário na carga)" },
+          { rotulo: "Cargas", num: true, valor: (x) => x.cargas },
+          { rotulo: "Peso (t)", num: true, valor: (x) => numero(x.peso / 1000, 2) },
+          { rotulo: "Comprado", num: true, valor: (x) => brl(x.comprado) },
+          { rotulo: "Pago", num: true, valor: (x) => brl(x.pago) },
+          { rotulo: "Falta pagar", num: true, valor: (x) => <b className={x.saldo > 0.009 ? "negativo" : "positivo"}>{brl(x.saldo)}</b> },
+        ]}
+        rodape={["Total", soma(lista, (x) => x.cargas), numero(soma(lista, (x) => x.peso) / 1000, 2), brl(soma(lista, (x) => x.comprado)), brl(soma(lista, (x) => x.pago)), brl(soma(lista, (x) => x.saldo))]}
       />
     </div>
   );
@@ -273,8 +791,10 @@ function VendasPorCultura({ dados }) {
   );
 }
 
-/** Cadastro de clientes e fornecedores, com a importação da planilha do Bling. */
-function Contatos(props) {
+const TicketsPorDia = (props) => <PainelTickets periodoInicial="mes" {...props} />;
+
+/** Cadastro dos compradores, com a importação dos clientes da planilha do Bling. */
+function Compradores(props) {
   const { dados, salvarVarios } = props;
   const [aviso, setAviso] = useState(null);
   const [importando, setImportando] = useState(false);
@@ -286,11 +806,12 @@ function Contatos(props) {
     setImportando(true);
     setAviso(null);
     try {
-      const { registros, ignorados } = contatosDoBling(await textoDoArquivo(arquivo), dados.contatos);
+      const { registros, ignorados, fornecedores } = compradoresDoBling(await textoDoArquivo(arquivo), dados.compradores);
       const atualizados = registros.filter((r) => r.id).length;
-      await salvarVarios("contatos", registros);
-      setAviso(["ok", `${registros.length - atualizados} contatos novos e ${atualizados} atualizados`
-        + (ignorados.length ? ` (deixei de fora: ${ignorados.join(", ")})` : "") + "."]);
+      await salvarVarios("compradores", registros);
+      setAviso(["ok", `${registros.length - atualizados} clientes novos e ${atualizados} atualizados.`
+        + (fornecedores ? ` ${fornecedores} fornecedores e outros contatos ficaram de fora.` : "")
+        + (ignorados.length ? ` Sem CNPJ/CPF, não entraram: ${ignorados.join(", ")}.` : "")]);
     } catch (erro) {
       setAviso(["", `Não consegui importar: ${erro.message}`]);
     } finally {
@@ -301,8 +822,8 @@ function Contatos(props) {
   return (
     <>
       {aviso && <div className={`aviso ${aviso[0]}`}>{aviso[1]}</div>}
-      <Crud colecao="contatos" {...props} acoes={
-        <label className="btn" title="Trazer a planilha de contatos exportada do Bling (CSV)">
+      <Crud colecao="compradores" {...props} acoes={
+        <label className="btn" title="Trazer os clientes da planilha de contatos exportada do Bling (CSV)">
           <Icone nome="importar" /> {importando ? "Importando…" : "Importar do Bling"}
           <input type="file" accept=".csv,text/csv" hidden onChange={importar} disabled={importando} />
         </label>
@@ -313,16 +834,27 @@ function Contatos(props) {
 
 export function Vendas(props) {
   return (
-    <>
-      <div className="aviso info">A emissão de NF-e pelo sistema é a próxima etapa. Por enquanto, anote o número da nota em cada venda.</div>
-      <Secao props={props} abas={[
-        ["vendas", "Cargas vendidas"],
-        ["recebimentos", "Recebimentos"],
-        ["areceber", "A receber", AReceber],
-        ["resumo", "Resumo por cultura", VendasPorCultura],
-        ["contatos", "Clientes e fornecedores", Contatos],
-      ]} />
-    </>
+    <Secao props={props} abas={[
+      ["vendas", "Cargas vendidas"],
+      ["tickets", "Tickets por dia", TicketsPorDia],
+      ["recebimentos", "Recebimentos"],
+      ["areceber", "A receber", AReceber],
+      ["apagar", "A pagar (laranja de terceiros)", APagarProprietarios],
+      ["resumo", "Resumo por cultura", VendasPorCultura],
+      ["notas", "Notas fiscais (Bling)", NotasFiscais],
+    ]} />
+  );
+}
+
+// ─── Turmas de colheita ─────────────────────────────────────────────────────
+
+export function Turmas(props) {
+  return (
+    <Secao props={props} abas={[
+      ["semana", "A pagar por semana", TurmasSemana],
+      ["turmas", "Cadastro"],
+      ["pagamentos_turmas", "Pagamentos"],
+    ]} />
   );
 }
 
@@ -360,7 +892,7 @@ export function Fretes(props) {
     <Secao props={props} abas={[
       ["resumo", "Resumo", ResumoFretes],
       ["fretes", "Fretes"],
-      ["abast", "Abastecimentos", { colecao: "abastecimentos", filtro: soCaminhao, padrao: { origem: "posto" } }],
+      ["abast", "Abastecimentos", { colecao: "abastecimentos", filtro: soCaminhao, padrao: { origem: "posto" }, calculadas: ABAST_CALCULADAS, colunas: ABAST_COLUNAS }],
       ["custos", "Custos do caminhão", { colecao: "despesas", filtro: (d) => caminhoes.has(d.maquina_id) }],
     ]} />
   );
@@ -423,7 +955,9 @@ function Custos({ dados }) {
       <div className="barra"><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
       <p className="descricao">
         Custo pelo que foi consumido: despesas com centro de custo + químicos aplicados (a custo médio) + diesel
-        dos abastecimentos com talhão/cultura. O que não tem cultura fica em "Geral da fazenda".
+        dos abastecimentos com talhão/cultura. O que não tem cultura fica em "Geral da fazenda". A produtividade
+        usa a medida do cadastro da cultura (t/ha, sc/ha, kg/pé…) e sai das colheitas do talhão ou, sem elas,
+        do peso das cargas vendidas.
       </p>
       <div className="grade">
         <Stat rotulo="Receita de vendas (líquida)" valor={brl(c.receitaTotal)} />
@@ -446,7 +980,7 @@ function Custos({ dados }) {
       <div className="cartao">
         <h2>Por talhão</h2>
         <TabelaSimples
-          linhas={c.porTalhao.filter((x) => x.custo || x.receita || x.producao).map((x) => ({ ...x, id: x.talhao.id }))}
+          linhas={c.porTalhao.filter((x) => x.custo || x.receita || x.kg).map((x) => ({ ...x, id: x.talhao.id }))}
           vazio="Nenhum custo, venda ou colheita lançado com talhão no período."
           colunas={[
             { rotulo: "Talhão", valor: (x) => x.talhao.nome },
@@ -454,7 +988,8 @@ function Custos({ dados }) {
             { rotulo: "Área", num: true, valor: (x) => (x.talhao.area_ha ? `${numero(x.talhao.area_ha)} ha` : "—") },
             { rotulo: "Custo", num: true, valor: (x) => brl(x.custo) },
             { rotulo: "Custo/ha", num: true, valor: (x) => (x.custoHa != null ? brl(x.custoHa) : "—") },
-            { rotulo: "Colhido", num: true, valor: (x) => (x.producao ? numero(x.producao) : "—") },
+            { rotulo: "Colhido (t)", num: true, valor: (x) => (x.kg ? numero(x.kg / 1000, 2) : "—") },
+            { rotulo: "Produtividade", num: true, valor: (x) => (x.produtividade ? `${numero(x.produtividade.valor, 2)} ${x.produtividade.sigla}` : "—") },
             { rotulo: "Receita", num: true, valor: (x) => brl(x.receita) },
           ]}
         />
@@ -463,17 +998,135 @@ function Custos({ dados }) {
   );
 }
 
+/** Despesas com a caixa de entrada dos comprovantes do Atalho do iPhone em cima. */
+function Despesas(props) {
+  return (
+    <>
+      <CaixaComprovantes dados={props.dados} salvar={props.salvar} />
+      <Crud colecao="despesas" {...props} />
+    </>
+  );
+}
+
+/**
+ * Pix feito pelo computador: o banco gera um PDF. Aqui se anexa esse PDF —
+ * ou se cola (Ctrl+V) a imagem do comprovante copiada do WhatsApp — e abre a
+ * mesma tela do comprovante compartilhado (lê valor, data e favorecido; a
+ * pessoa diz do que é a despesa). Embaixo, as despesas que já têm comprovante.
+ */
+function PixComprovante(props) {
+  const [lancando, setLancando] = useState(null);
+  const escolher = (e) => {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (arquivo) setLancando({ arquivo, texto: "" });
+  };
+  // Ctrl+V em qualquer lugar da aba: se o que foi copiado é imagem ou PDF, vira comprovante.
+  useEffect(() => {
+    if (lancando) return undefined;
+    const colar = (e) => {
+      const arquivo = [...(e.clipboardData?.files ?? [])].find((a) => a.type.startsWith("image/") || a.type === "application/pdf");
+      if (!arquivo) return;
+      e.preventDefault();
+      setLancando({ arquivo, texto: "" });
+    };
+    window.addEventListener("paste", colar);
+    return () => window.removeEventListener("paste", colar);
+  }, [lancando]);
+  const anexar = (
+    <label className="btn primario">
+      <Icone nome="mais" /> Anexar PDF ou imagem do Pix
+      <input type="file" accept="application/pdf,.pdf,image/*" hidden onChange={escolher} />
+    </label>
+  );
+  return (
+    <>
+      <div className="cartao" style={{ marginBottom: 16 }}>
+        <h2>Pix feito pelo computador</h2>
+        <p className="descricao">
+          Anexe o PDF que o banco gera — ou copie a imagem do comprovante (no WhatsApp: botão direito na imagem →
+          Copiar imagem) e aperte <b>Ctrl+V</b> aqui nesta tela. O valor, a data e o favorecido são lidos do
+          comprovante; você escolhe a categoria e escreve do que é a despesa. Ela entra junto com as outras
+          despesas, com o comprovante guardado.
+        </p>
+        {anexar}
+      </div>
+      <Crud colecao="despesas" {...props} filtro={(d) => Boolean(d.comprovante)} padrao={{ forma_pagamento: "PIX" }}
+        colunas={["data", "categoria", "descricao", "favorecido", "cultura_id", "valor", "comprovante"]} />
+      {lancando && (
+        <LancarComprovante compartilhado={lancando} dados={props.dados} salvar={props.salvar}
+          aoFechar={() => setLancando(null)} aoSalvar={() => setLancando(null)} />
+      )}
+    </>
+  );
+}
+
 export function Financeiro(props) {
   return (
     <Secao props={props} abas={[
       ["resumo", "Resumo do mês", ResumoFinanceiro],
-      ["despesas", "Despesas"],
+      ["despesas", "Despesas", Despesas],
+      ["pix", "Pix com comprovante", PixComprovante],
       ["entradas", "Outras entradas"],
       ["custos", "Custo por cultura e talhão", Custos],
     ]} />
   );
 }
 
-export function Equipe(props) {
-  return <Crud colecao="funcionarios" {...props} />;
+export function Usuarios(props) {
+  return <Crud colecao="usuarios" {...props} />;
+}
+
+// ─── Pluviômetro ────────────────────────────────────────────────────────────
+
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const mm = (v) => `${numero(v, 1)} mm`;
+
+function ChuvaPorMes({ dados }) {
+  const anoAtual = new Date().getFullYear();
+  const [ano, setAno] = useState(anoAtual);
+  const r = resumoChuva(dados, ano);
+  const anos = [...new Set([anoAtual, ...r.anos])].sort((a, b) => b - a);
+  const max = Math.max(...r.meses.map((m) => m.mm), 1);
+  return (
+    <div className="cartao">
+      <p className="descricao">
+        Chuva de cada mês. Se no mesmo dia mais de um pluviômetro foi lido, conta a média entre eles.
+      </p>
+      <div className="barra">
+        <select className="entrada" style={{ width: "auto" }} value={ano} onChange={(e) => setAno(Number(e.target.value))} aria-label="Ano">
+          {anos.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+      <TabelaSimples
+        linhas={r.meses.map((m) => ({ ...m, id: m.chave }))}
+        colunas={[
+          { rotulo: "Mês", valor: (m) => MESES[m.mes] },
+          { rotulo: "Chuva", num: true, valor: (m) => (m.mm ? mm(m.mm) : "—") },
+          { rotulo: "Dias de chuva", num: true, valor: (m) => m.diasDeChuva || "—" },
+          { rotulo: " ", valor: (m) => <div className="barra-h" style={{ minWidth: 120 }}><div style={{ width: `${(m.mm / max) * 100}%`, background: "#4a90c2" }} /></div> },
+        ]}
+        rodape={["Total do ano", mm(r.ano), soma(r.meses, (m) => m.diasDeChuva), ""]}
+      />
+    </div>
+  );
+}
+
+export function Pluviometro(props) {
+  const r = resumoChuva(props.dados);
+  return (
+    <>
+      <div className="grade">
+        <Stat rotulo="Hoje" valor={r.hoje == null ? "Sem leitura" : mm(r.hoje)} cor={r.hoje == null ? "cinza" : ""} />
+        <Stat rotulo="Últimos 7 dias" valor={mm(r.seteDias)} />
+        <Stat rotulo="Este mês" valor={mm(r.mes)} />
+        <Stat rotulo="Este ano" valor={mm(r.ano)} />
+        <Stat rotulo="Última chuva" valor={r.ultimaChuva ? data(r.ultimaChuva.data) : "—"} sub={r.ultimaChuva ? mm(r.ultimaChuva.mm) : undefined} cor="cinza" />
+      </div>
+      <Secao props={props} abas={[
+        ["chuvas", "Leituras"],
+        ["meses", "Chuva por mês", ChuvaPorMes],
+      ]} />
+    </>
+  );
 }
