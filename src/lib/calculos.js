@@ -3,6 +3,8 @@
  * Assim um lançamento corrigido corrige na hora o saldo, o custo e o alerta.
  */
 
+import { CATEGORIA_LARANJA } from "./esquema.js";
+
 const n = (v) => Number(v) || 0;
 const soma = (lista, f) => lista.reduce((t, x) => t + n(f(x)), 0);
 
@@ -235,6 +237,34 @@ export function aReceber(dados) {
   for (const v of dados.vendas) { const x = obter(v.comprador); x.vendido += n(v.valor); x.cargas++; }
   for (const r of dados.recebimentos) obter(r.comprador).recebido += n(r.valor);
   return [...mapa.values()].map((x) => ({ ...x, saldo: x.vendido - x.recebido })).sort((a, b) => b.saldo - a.saldo);
+}
+
+/**
+ * Laranja comprada de terceiros: quanto cada produtor tem a receber da fazenda.
+ * Comprado = cargas lançadas; pago = despesas "Compra de laranja" já pagas com
+ * esse produtor. Pagamentos sem produtor ficam à parte (não dá para abater de ninguém).
+ */
+export function aPagarLaranja(dados) {
+  const mapa = new Map();
+  const chave = (nome) => String(nome || "").trim().toUpperCase();
+  const obter = (nome) => {
+    const k = chave(nome);
+    if (!mapa.has(k)) mapa.set(k, { produtor: String(nome || "").trim(), comprado: 0, pago: 0, cargas: 0, kg: 0, ultimoPagamento: null });
+    return mapa.get(k);
+  };
+  for (const c of dados.compras_laranja) {
+    const x = obter(c.produtor);
+    x.comprado += n(c.valor); x.kg += n(c.peso_kg); x.cargas++;
+  }
+  let semProdutor = 0;
+  for (const d of dados.despesas.filter((x) => x.categoria === CATEGORIA_LARANJA && x.pago !== false)) {
+    if (!chave(d.produtor)) { semProdutor += n(d.valor); continue; }
+    const x = obter(d.produtor);
+    x.pago += n(d.valor);
+    if (d.data && (!x.ultimoPagamento || d.data > x.ultimoPagamento)) x.ultimoPagamento = d.data;
+  }
+  const lista = [...mapa.values()].map((x) => ({ ...x, saldo: x.comprado - x.pago })).sort((a, b) => b.saldo - a.saldo);
+  return { lista, semProdutor };
 }
 
 /** Fretes do caminhão: faturamento, diesel e custos por caminhão. */

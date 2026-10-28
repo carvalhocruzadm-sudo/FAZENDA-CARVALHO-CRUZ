@@ -3,10 +3,10 @@ import { useMemo, useState } from "react";
 import Crud from "../components/Crud";
 import { Abas, Icone, SeletorPeriodo, Stat, TabelaSimples } from "../components/ui";
 import {
-  PERIODOS, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
+  PERIODOS, aPagarLaranja, aReceber, consumoPorMaquina, custos, diesel, entradasDoPeriodo, estoqueInsumos,
   noPeriodo, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma,
 } from "../lib/calculos";
-import { ESQUEMA, hoje } from "../lib/esquema";
+import { CATEGORIA_LARANJA, ESQUEMA, hoje } from "../lib/esquema";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 import { contatosDoBling, textoDoArquivo } from "../lib/importarContatos";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
@@ -323,6 +323,61 @@ export function Vendas(props) {
         ["contatos", "Clientes e fornecedores", Contatos],
       ]} />
     </>
+  );
+}
+
+// ─── Laranja de terceiros ───────────────────────────────────────────────────
+
+function APagarLaranja({ dados }) {
+  const { lista, semProdutor } = aPagarLaranja(dados);
+  const devendo = soma(lista.filter((x) => x.saldo > 0.009), (x) => x.saldo);
+  return (
+    <>
+      <div className="grade">
+        <Stat rotulo="Falta pagar" valor={brl(devendo)} sub="somando todos os produtores" cor={devendo > 0.009 ? "vermelho" : ""} />
+        <Stat rotulo="Já pago" valor={brl(soma(lista, (x) => x.pago))} sub="pagamentos com produtor" />
+        <Stat rotulo="Total comprado" valor={brl(soma(lista, (x) => x.comprado))} sub={`${soma(lista, (x) => x.cargas)} cargas`} cor="laranja" />
+      </div>
+      {semProdutor > 0.009 && (
+        <div className="aviso">
+          {brl(semProdutor)} em pagamentos de laranja estão sem o nome do produtor e não entram na conta de ninguém.
+          Abra cada um em Pagamentos e preencha &quot;Produtor da laranja&quot;.
+        </div>
+      )}
+      <div className="cartao">
+        <p className="descricao">Por produtor: tudo o que foi comprado dele menos tudo o que já foi pago. Valor negativo quer dizer que foi pago a mais (adiantamento).</p>
+        <TabelaSimples
+          vazio="Nenhuma compra de laranja lançada."
+          linhas={lista.map((x) => ({ ...x, id: x.produtor }))}
+          colunas={[
+            { rotulo: "Produtor", valor: (x) => x.produtor || "—" },
+            { rotulo: "Cargas", num: true, valor: (x) => x.cargas },
+            { rotulo: "Kg", num: true, valor: (x) => numero(x.kg, 0) },
+            { rotulo: "Comprado", num: true, valor: (x) => brl(x.comprado) },
+            { rotulo: "Já pago", num: true, valor: (x) => brl(x.pago) },
+            { rotulo: "Último pagamento", valor: (x) => (x.ultimoPagamento ? data(x.ultimoPagamento) : "—") },
+            { rotulo: "Falta pagar", num: true, valor: (x) => <b className={x.saldo > 0.009 ? "negativo" : "positivo"}>{brl(x.saldo)}</b> },
+          ]}
+          rodape={["Total", soma(lista, (x) => x.cargas), numero(soma(lista, (x) => x.kg), 0), brl(soma(lista, (x) => x.comprado)), brl(soma(lista, (x) => x.pago)), "", brl(soma(lista, (x) => x.saldo))]}
+        />
+      </div>
+    </>
+  );
+}
+
+export function Laranja(props) {
+  const laranja = props.dados.culturas.find((c) => /laranja/i.test(c.nome ?? ""));
+  return (
+    <Secao props={props} abas={[
+      ["apagar", "A pagar", APagarLaranja],
+      ["compras_laranja", "Cargas compradas"],
+      ["pagamentos", "Pagamentos", {
+        colecao: "despesas",
+        filtro: (d) => d.categoria === CATEGORIA_LARANJA,
+        padrao: { categoria: CATEGORIA_LARANJA, descricao: "Compra de laranja", centro: laranja ? "cultura" : "geral", cultura_id: laranja?.id ?? null },
+        colunas: ["data", "produtor", "favorecido", "forma_pagamento", "valor", "pago"],
+      }],
+    ]} />
   );
 }
 

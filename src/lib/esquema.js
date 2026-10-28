@@ -36,11 +36,15 @@ export const FUNCOES = [
   "Operador de máquinas", "Vaqueiro", "Mecânico",
 ];
 
+/** Pagamento de laranja comprada de terceiros: entra como despesa e abate o saldo do produtor. */
+export const CATEGORIA_LARANJA = "Compra de laranja";
+const ehCompraDeLaranja = (r) => r.categoria === CATEGORIA_LARANJA;
+
 /** As mesmas colunas da planilha FINANCEIRO. */
 export const CATEGORIAS_DESPESA = [
   "Alimentação", "Produtos químicos", "Adubos", "Sementes", "Peças", "Serviços",
   "Combustíveis", "Salários", "Taxas", "Benfeitorias", "Investimentos",
-  "Arrendamentos", "Empréstimos", "Retirada / dividendos", "Fretes", "Compra de laranja", "Cartão de crédito", "Outros",
+  "Arrendamentos", "Empréstimos", "Retirada / dividendos", "Fretes", CATEGORIA_LARANJA, "Cartão de crédito", "Outros",
 ];
 
 export const FORMAS_PAGAMENTO = ["PIX", "Boleto", "Cartão", "Dinheiro", "Transferência", "Cheque"];
@@ -432,6 +436,7 @@ export const ESQUEMA = {
       valor: { tipo: "dinheiro", rotulo: "Valor", obrigatorio: true },
       forma_pagamento: { tipo: "sugestao", rotulo: "Forma de pagamento", sugestoes: FORMAS_PAGAMENTO, padrao: "PIX" },
       favorecido: { tipo: "sugestao", rotulo: "Favorecido", sugestoesDe: [["despesas", "favorecido"], ["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
+      produtor: { tipo: "sugestao", rotulo: "Produtor da laranja", mostrarSe: ehCompraDeLaranja, obrigatorio: ehCompraDeLaranja, dica: "De quem é a laranja (pode ser outro nome no PIX)", sugestoesDe: [["compras_laranja", "produtor"], ["despesas", "produtor"]] },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
       centro: { tipo: "opcoes", rotulo: "Centro de custo", padrao: "geral", opcoes: [["geral", "Geral da fazenda"], ["cultura", "Cultura"], ["talhao", "Talhão"]] },
       cultura_id: { ...refCultura, mostrarSe: (r) => r.centro !== "geral", obrigatorio: (r) => r.centro === "cultura" },
@@ -561,6 +566,35 @@ export const ESQUEMA = {
       observacao: { tipo: "texto", rotulo: "Observação" },
     },
     colunas: ["data", "comprador", "cultura_id", "forma_pagamento", "valor", "observacao"],
+  },
+
+  compras_laranja: {
+    titulo: "Compras de laranja de terceiros", singular: "compra de laranja", icone: "cesto", lancamento: true,
+    descricao: "Laranja comprada de outros produtores, uma linha por carga. O que já foi pago se lança em Pagamentos; quanto falta pagar a cada um aparece em A pagar.",
+    campos: {
+      data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
+      produtor: { tipo: "sugestao", rotulo: "Produtor (de quem comprou)", obrigatorio: true, sugestoesDe: [["compras_laranja", "produtor"], ["despesas", "produtor"], ["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
+      local: { tipo: "sugestao", rotulo: "Sítio / pomar", sugestoesDe: ["compras_laranja", "local"] },
+      classificacao: { tipo: "sugestao", rotulo: "Tipo / classificação", sugestoes: ["BOA", "SUKITA", "CASQUINOL"], sugestoesDe: ["compras_laranja", "classificacao"] },
+      peso_kg: { tipo: "numero", rotulo: "Peso líquido (kg)", casas: 1 },
+      unidade: { tipo: "opcoes", rotulo: "Preço por", opcoes: UNIDADES_VENDA.filter(([v]) => ["kg", "t", "caixa"].includes(v)).map(([v, r]) => [v, r]), padrao: "kg" },
+      quantidade: { tipo: "numero", rotulo: "Quantidade", casas: 3, dica: "Calculada pelo peso quando o preço é por kg ou tonelada" },
+      preco_unitario: { tipo: "dinheiro", rotulo: "Preço", casas: 4, obrigatorio: true },
+      desconto: { tipo: "dinheiro", rotulo: "Desconto (R$)" },
+      valor: { tipo: "dinheiro", rotulo: "Valor a pagar", somenteLeitura: true },
+      vencimento: { tipo: "data", rotulo: "Combinado para pagar em" },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+    },
+    calcular: (r) => {
+      const kgUn = KG_POR_UNIDADE[r.unidade];
+      const quantidade = kgUn && r.peso_kg != null ? num(r.peso_kg) / kgUn : r.quantidade;
+      return {
+        quantidade: quantidade == null || quantidade === "" ? null : +Number(quantidade).toFixed(3),
+        valor: +(num(quantidade) * num(r.preco_unitario) - num(r.desconto)).toFixed(2),
+      };
+    },
+    validar: (r) => (r.quantidade == null ? "Informe o peso ou a quantidade." : null),
+    colunas: ["data", "produtor", "local", "classificacao", "peso_kg", "quantidade", "preco_unitario", "valor", "vencimento"],
   },
 
   fretes: {

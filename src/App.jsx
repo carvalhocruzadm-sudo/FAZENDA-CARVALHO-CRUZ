@@ -9,13 +9,14 @@ import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Campo from "./pages/Campo";
 import Login from "./pages/Login";
 import Painel from "./pages/Painel";
-import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
+import { Diesel, Equipe, Financeiro, Fretes, Laranja, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
 import Sincronizacao from "./pages/Sincronizacao";
 
 const MENU = [
   ["painel", "Painel", "painel", Painel],
   ["lavoura", "Lavoura e talhões", "cultura", Lavoura],
   ["vendas", "Vendas", "venda", Vendas],
+  ["laranja", "Laranja de terceiros", "cesto", Laranja],
   ["financeiro", "Financeiro", "dinheiro", Financeiro],
   ["maquinas", "Máquinas e horímetro", "trator", Maquinas],
   ["diesel", "Diesel", "combustivel", Diesel],

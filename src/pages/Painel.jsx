@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { Icone, SeletorPeriodo, Stat } from "../components/ui";
-import { PERIODOS, aReceber, diesel, entradasDoPeriodo, estoqueInsumos, noPeriodo, saidasDoPeriodo, situacaoRevisao, soma } from "../lib/calculos";
+import { PERIODOS, aPagarLaranja, aReceber, diesel, entradasDoPeriodo, estoqueInsumos, noPeriodo, saidasDoPeriodo, situacaoRevisao, soma } from "../lib/calculos";
 import { brl, data, nomeRef, numero } from "../lib/formato";
 
 /** Data ISO daqui a `dias` (fora do componente: o painel se refaz quando os dados mudam). */
@@ -73,6 +73,7 @@ export default function Painel({ dados, irPara }) {
     return {
       vendido: soma(vendas, (v) => v.valor), cargas: vendas.length, saidas, entradas,
       aReceber: soma(receber.filter((x) => x.saldo > 0), (x) => x.saldo), tanque, alertas,
+      aPagarLaranja: soma(aPagarLaranja(dados).lista.filter((x) => x.saldo > 0), (x) => x.saldo),
       porCultura: Object.entries(porCultura).map(([rotulo, valor]) => ({ rotulo, valor, cor: "var(--laranja)" })).sort((a, b) => b.valor - a.valor),
       porCategoria: Object.entries(saidas.porCategoria).map(([rotulo, valor]) => ({ rotulo, valor })).sort((a, b) => b.valor - a.valor),
     };
@@ -91,6 +92,7 @@ export default function Painel({ dados, irPara }) {
         <Stat rotulo="Saiu do caixa" valor={brl(r.saidas.total)} sub="despesas + diesel + insumos + peças" cor="vermelho" />
         <Stat rotulo="Resultado de caixa" valor={brl(resultado)} cor={resultado < 0 ? "vermelho" : ""} />
         <Stat rotulo="A receber (total)" valor={brl(r.aReceber)} sub="vendas − recebimentos" cor="laranja" />
+        <Stat rotulo="Laranja a pagar" valor={brl(r.aPagarLaranja)} sub="compras de terceiros − pagamentos" cor={r.aPagarLaranja > 0.009 ? "vermelho" : "cinza"} />
         <Stat rotulo="Diesel no tanque" valor={`${numero(r.tanque.saldo, 0)} L`} sub={r.tanque.precoMedio ? `preço médio ${brl(r.tanque.precoMedio)}/L` : "sem compras lançadas"} cor="cinza" />
       </div>
 

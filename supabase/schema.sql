@@ -327,6 +327,7 @@ alter table public.despesas add column if not exists descricao text;
 alter table public.despesas add column if not exists valor numeric;
 alter table public.despesas add column if not exists forma_pagamento text;
 alter table public.despesas add column if not exists favorecido text;
+alter table public.despesas add column if not exists produtor text;
 alter table public.despesas add column if not exists fazenda_id uuid;
 alter table public.despesas add column if not exists centro text;
 alter table public.despesas add column if not exists cultura_id uuid;
@@ -436,6 +437,30 @@ create index if not exists recebimentos_data_idx on public.recebimentos (data);
 alter table public.recebimentos enable row level security;
 drop policy if exists "equipe acessa recebimentos" on public.recebimentos;
 create policy "equipe acessa recebimentos" on public.recebimentos
+  for all to authenticated using (true) with check (true);
+
+-- Compras de laranja de terceiros
+create table if not exists public.compras_laranja (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.compras_laranja add column if not exists data date;
+alter table public.compras_laranja add column if not exists produtor text;
+alter table public.compras_laranja add column if not exists local text;
+alter table public.compras_laranja add column if not exists classificacao text;
+alter table public.compras_laranja add column if not exists peso_kg numeric;
+alter table public.compras_laranja add column if not exists unidade text;
+alter table public.compras_laranja add column if not exists quantidade numeric;
+alter table public.compras_laranja add column if not exists preco_unitario numeric;
+alter table public.compras_laranja add column if not exists desconto numeric;
+alter table public.compras_laranja add column if not exists valor numeric;
+alter table public.compras_laranja add column if not exists vencimento date;
+alter table public.compras_laranja add column if not exists observacao text;
+create index if not exists compras_laranja_data_idx on public.compras_laranja (data);
+alter table public.compras_laranja enable row level security;
+drop policy if exists "equipe acessa compras_laranja" on public.compras_laranja;
+create policy "equipe acessa compras_laranja" on public.compras_laranja
   for all to authenticated using (true) with check (true);
 
 -- Fretes do caminhão
