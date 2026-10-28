@@ -511,7 +511,8 @@ export const ESQUEMA = {
       frete_cobrado: { tipo: "dinheiro", rotulo: "Frete cobrado do comprador (soma)" },
       frete: { tipo: "dinheiro", rotulo: "Frete pago (desconta)" },
       comissao: { tipo: "dinheiro", rotulo: "Comissão" },
-      juros: { tipo: "dinheiro", rotulo: "Juros / antecipação" },
+      juros_pct: { tipo: "numero", rotulo: "Juros / antecipação do banco (%)", casas: 2, dica: "Em % sobre o valor bruto da venda" },
+      juros: { tipo: "dinheiro", rotulo: "Valor descontado de juros / antecipação", somenteLeitura: true },
       valor: { tipo: "dinheiro", rotulo: "Valor líquido", somenteLeitura: true },
       motorista_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Motorista" },
       caminhao_id: { tipo: "ref", colecao: "maquinas", rotulo: "Caminhão próprio", filtro: (m) => m.categoria === "caminhao" },
@@ -538,11 +539,13 @@ export const ESQUEMA = {
       const bruto = num(quantidade) * num(r.preco_unitario);
       const desconto = kgUn ? (num(r.desconto_kg) / kgUn) * num(r.preco_unitario) : 0;
       const custo = (num(liquido) / 1000) * num(r.custo_ton);
-      const liquidoR = bruto + num(r.frete_cobrado) - desconto - custo - num(r.frete) - num(r.comissao) - num(r.juros);
+      // Juros em % sobre o valor bruto; vendas antigas sem % mantêm o valor em R$ que já tinham.
+      const juros = r.juros_pct != null && r.juros_pct !== "" ? (bruto * num(r.juros_pct)) / 100 : num(r.juros);
+      const liquidoR = bruto + num(r.frete_cobrado) - desconto - custo - num(r.frete) - num(r.comissao) - juros;
       return {
         peso_liquido: liquido,
         quantidade: quantidade == null || quantidade === "" ? null : +Number(quantidade).toFixed(3),
-        valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2), valor: +liquidoR.toFixed(2),
+        valor_bruto: +bruto.toFixed(2), valor_desconto: +desconto.toFixed(2), juros: +juros.toFixed(2), valor: +liquidoR.toFixed(2),
       };
     },
     validar: (r) => (r.quantidade == null ? "Informe os pesos ou a quantidade." : null),
