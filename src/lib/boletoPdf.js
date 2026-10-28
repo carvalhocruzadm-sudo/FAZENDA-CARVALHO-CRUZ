@@ -7,6 +7,7 @@
  *   2. se não achou (PDF escaneado) → desenha a página e procura o código
  *      de barras na imagem, como na foto.
  * Um PDF com várias páginas (carnê, parcelas) pode trazer vários boletos.
+ * Um .zip é aberto e os PDFs de dentro são lidos do mesmo jeito.
  * Os dígitos verificadores barram números que só parecem um código.
  */
 
@@ -115,4 +116,33 @@ export async function lerBoletosDoPdf(arquivo) {
     carregando.destroy();
   }
   return boletos;
+}
+
+const ehZip = (arquivo) => /\.zip$/i.test(arquivo.name ?? "") || /zip/.test(arquivo.type ?? "");
+const ehPdf = (nome) => /\.pdf$/i.test(nome) && !/(^|\/)(__MACOSX|\.)/.test(nome);
+
+/**
+ * Troca cada .zip pelos PDFs de dentro (o WhatsApp Web baixa vários arquivos
+ * juntos num .zip, e o Windows não deixa escolher vários lá de dentro).
+ * Devolve `{ pdfs, problemas }`; `problemas` já no formato da linha de erro
+ * da lista ({ chave, arquivo, erro }).
+ */
+export async function abrirZips(arquivos) {
+  const pdfs = [];
+  const problemas = [];
+  for (const arquivo of arquivos) {
+    if (!ehZip(arquivo)) { pdfs.push(arquivo); continue; }
+    try {
+      const { unzipSync } = await import("fflate");
+      const conteudo = unzipSync(new Uint8Array(await arquivo.arrayBuffer()), { filter: (f) => ehPdf(f.name) });
+      const nomes = Object.keys(conteudo).sort();
+      if (!nomes.length) problemas.push({ chave: `${arquivo.name}-vazio`, arquivo: arquivo.name, erro: "Não tem nenhum PDF dentro deste .zip." });
+      for (const nome of nomes) {
+        pdfs.push(new File([conteudo[nome]], nome.split("/").pop(), { type: "application/pdf" }));
+      }
+    } catch (e) {
+      problemas.push({ chave: `${arquivo.name}-erro`, arquivo: arquivo.name, erro: `Não consegui abrir este .zip (${e.message}).` });
+    }
+  }
+  return { pdfs, problemas };
 }
