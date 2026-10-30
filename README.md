@@ -257,20 +257,34 @@ Toda despesa nova guarda **quem lançou** (o login), que aparece na lista e no f
 vira um aviso no **sininho** de quem está no escritório e uma notificação no **ntfy**, igual aos
 lançamentos do campo (veja "Notificação no celular" abaixo).
 
-## 📲 Agente de comprovantes pelo WhatsApp
+## 📲 Assessor pelo WhatsApp
 
-Mande a **foto ou o PDF do comprovante** (PIX, boleto, transferência) para o número do agente. A IA lê
-valor, data e favorecido, escolhe a categoria olhando como a fazenda já lançou aquele favorecido antes,
-**lança em Despesas** com o arquivo no campo **Comprovante** e responde no WhatsApp dizendo o que lançou.
-Escreva na legenda para que foi ("diária João", "adubo milho") que ele classifica certinho. Se errar,
-corrija no app — em **Lançado por** aparece "WhatsApp · nome de quem mandou".
+Um número de WhatsApp que conversa com o sistema todo. Só atende os números autorizados.
 
-- O mesmo comprovante mandado duas vezes não duplica (ele reconhece o ID da transação).
-- Só lança o que vem dos números autorizados; mensagem de qualquer outro número é ignorada.
-- Responder a quem mandou mensagem é grátis na Meta. Só a leitura pela IA é paga, na conta da Anthropic:
-  com o modelo padrão (Haiku) dá uns R$ 1 por mês para ~130 comprovantes. Para trocar pelo Sonnet (lê
-  melhor, uns R$ 15 a 20 por mês): segredo `MODELO_AGENTE_WHATSAPP=claude-sonnet-5-5`.
-- Para apagar só o que veio dele: `delete from public.despesas where lancado_por like 'WhatsApp%';`
+**Comprovante** — mande a **foto ou o PDF** (PIX, boleto, transferência). A IA lê valor, data e
+favorecido, escolhe a categoria olhando como a fazenda já lançou aquele favorecido, **lança em Despesas na
+hora** com o arquivo no campo **Comprovante** e responde o que lançou. Para dizer para que foi, escreva na
+legenda da foto ou numa mensagem logo antes ("almoço jhun", "1620", "diária João"). O mesmo comprovante
+mandado duas vezes não duplica.
+
+**Perguntas** — "quanto gastei com diesel em outubro?", "quantas horas o trator 02 trabalhou essa
+semana?", "quais boletos vencem até sexta?". Ele busca nos dados antes de responder (nunca chuta).
+
+**Lançar ou corrigir qualquer coisa** — abastecimento, horímetro, aplicação, colheita, chuva, venda/carga,
+recebimento, boleto da programação de pagamentos, despesa… ("abasteci 100 litros no trator 02, operador
+João"; "boleto da Agro Insumos, 3.200, vence dia 10"; "muda a categoria dessa despesa para Peças"). Ele
+monta o lançamento **com as mesmas regras do app** (campos obrigatórios, contas automáticas, conferência
+de repetido), mostra o resumo e **só grava quando você responde SIM**. Apagar continua sendo só no app.
+
+- As regras vêm do próprio `src/lib/esquema.js`, baixado do GitHub no **Deploy** da função: quando o app
+  ganhar campos ou telas novas, faça o Deploy da função de novo para o assessor aprender.
+- Ele lembra da conversa das últimas 12 horas, então dá para continuar o assunto ("e em setembro?").
+- Em **Lançado por** aparece "WhatsApp · nome de quem mandou". Para apagar só as despesas de comprovante
+  que vieram dele: `delete from public.despesas where lancado_por like 'WhatsApp%';`
+- Custo: responder a quem mandou mensagem é grátis na Meta; a IA (Haiku) custa alguns centavos por
+  mensagem na conta da Anthropic. Para uma IA que entende melhor pedidos complicados (custa umas 20 vezes
+  mais): segredo `MODELO_AGENTE_WHATSAPP=claude-sonnet-5-5`.
+- Nos **Logs** da função aparece cada mensagem recebida, cada ferramenta que ele usou e a resposta que mandou.
 
 ### Como ligar (uma vez só)
 
@@ -282,7 +296,9 @@ Anote a **chave secreta do app** (Configurações do app → Básico). Gere um *
 (Administrador) → Atribuir ativos (o app, controle total) → Gerar token sem validade, com
 `whatsapp_business_messaging` e `whatsapp_business_management`.
 
-**2. Supabase** — **Edge Functions → Secrets**:
+**2. Supabase** — no **SQL Editor**, rode o [`supabase/schema.sql`](supabase/schema.sql) (cria as tabelas
+`whatsapp_conversa`, `whatsapp_recados` e `whatsapp_pendentes`, que só a função usa). Depois, em
+**Edge Functions → Secrets**:
 
 | Segredo | Valor |
 |---|---|
