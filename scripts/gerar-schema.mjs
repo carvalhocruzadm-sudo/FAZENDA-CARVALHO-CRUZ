@@ -129,8 +129,18 @@ create table if not exists public.bling_conexao (
 );
 alter table public.bling_conexao enable row level security;
 
--- Recados do agente de comprovantes pelo WhatsApp: texto mandado antes da foto
--- ("almoço 1620"), que vira a legenda do próximo comprovante. Só a função usa.
+-- Assessor pelo WhatsApp (só a função whatsapp-comprovantes usa; RLS sem regras).
+-- Conversa: as últimas mensagens de cada número, para ele lembrar do assunto.
+create table if not exists public.whatsapp_conversa (
+  id bigint generated always as identity primary key,
+  numero text not null,
+  papel text not null,
+  texto text not null,
+  criado_em timestamptz not null default now()
+);
+create index if not exists whatsapp_conversa_numero_idx on public.whatsapp_conversa (numero, criado_em);
+alter table public.whatsapp_conversa enable row level security;
+-- Legenda mandada antes do comprovante ("almoço 1620"), usada no próximo que chegar.
 create table if not exists public.whatsapp_recados (
   id bigint generated always as identity primary key,
   numero text not null,
@@ -138,6 +148,16 @@ create table if not exists public.whatsapp_recados (
   criado_em timestamptz not null default now()
 );
 alter table public.whatsapp_recados enable row level security;
+-- Lançamento ou correção que espera a pessoa responder SIM (um por número).
+create table if not exists public.whatsapp_pendentes (
+  numero text primary key,
+  acao text not null,
+  tabela text not null,
+  registro jsonb not null,
+  resumo text,
+  criado_em timestamptz not null default now()
+);
+alter table public.whatsapp_pendentes enable row level security;
 create unique index if not exists notas_fiscais_venda_idx on public.notas_fiscais (venda_id);
 
 `;
