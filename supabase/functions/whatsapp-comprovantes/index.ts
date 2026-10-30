@@ -75,6 +75,8 @@ function autorizado(numero: string) {
 // ─── WhatsApp ─────────────────────────────────────────────────────────────
 
 async function responder(telefoneId: string, para: string, texto: string, mensagemId?: string) {
+  // Fica nos Logs mesmo quando a Meta não entrega (ex.: número de teste), para dar para ver o que houve.
+  console.log(`Resposta para ${para}: ${texto.replace(/\n+/g, " | ")}`);
   const r = await fetch(`${GRAPH}/${telefoneId}/messages`, {
     method: "POST",
     headers: { Authorization: `Bearer ${segredo("WHATSAPP_TOKEN")}`, "Content-Type": "application/json" },
