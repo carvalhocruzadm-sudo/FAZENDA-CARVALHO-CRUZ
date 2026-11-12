@@ -341,14 +341,14 @@ export function aReceber(dados) {
  * Quanto se deve a cada proprietário de laranja de terceiros: o valor da
  * compra das cargas (peso × valor pago por tonelada, só informativo na venda)
  * menos os pagamentos lançados em Despesas → Compra de laranja com ele no
- * Favorecido. O custo entra no caixa uma vez só, pelo pagamento.
+ * Proprietário (ou, em branco, no Favorecido). O custo entra no caixa uma vez só, pelo pagamento.
  */
 export function aPagarProprietarios(dados) {
   const mapa = new Map();
   const chave = (nome) => String(nome || "").trim().toUpperCase();
   const obter = (nome) => {
     const k = chave(nome);
-    if (!mapa.has(k)) mapa.set(k, { proprietario: String(nome || "").trim(), comprado: 0, pago: 0, cargas: 0, peso: 0, semPreco: 0 });
+    if (!mapa.has(k)) mapa.set(k, { proprietario: String(nome || "").trim(), comprado: 0, pago: 0, cargas: 0, peso: 0, semPreco: 0, ultimoPagamento: null });
     return mapa.get(k);
   };
   for (const v of dados.vendas.filter((x) => x.cultura_id === LARANJA_TERCEIROS)) {
@@ -356,7 +356,11 @@ export function aPagarProprietarios(dados) {
     x.comprado += n(v.valor_compra); x.peso += n(v.peso_liquido); x.cargas++;
     if (v.valor_compra == null) x.semPreco++;
   }
-  for (const d of dados.despesas.filter((x) => x.categoria === "Compra de laranja" && x.pago !== false)) obter(d.favorecido).pago += n(d.valor);
+  for (const d of dados.despesas.filter((x) => x.categoria === "Compra de laranja" && x.pago !== false)) {
+    const x = obter(d.proprietario || d.favorecido);
+    x.pago += n(d.valor);
+    if (d.data && !(x.ultimoPagamento >= d.data)) x.ultimoPagamento = d.data;
+  }
   return [...mapa.values()].map((x) => ({ ...x, saldo: x.comprado - x.pago })).sort((a, b) => b.saldo - a.saldo);
 }
 
