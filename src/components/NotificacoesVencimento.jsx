@@ -28,12 +28,12 @@ export default function NotificacoesVencimento() {
   };
 
   return (
-    <div className="cartao">
+    <div className="cartao" style={{ marginTop: 16 }}>
       <h2>Notificações de contas a pagar</h2>
       <p className="descricao">
         Este aparelho recebe, de manhã, um aviso <b>toda segunda-feira</b> com as contas que vencem na semana
-        e outro <b>no dia do vencimento</b> de cada conta — mesmo com o app fechado. Valem as despesas e os
-        boletos de insumo lançados com vencimento e ainda não marcados como pagos.
+        e outro <b>no dia do vencimento</b> de cada conta — mesmo com o app fechado. Valem os pagamentos
+        desta tela e as despesas com vencimento que ainda não foram marcados como pagos.
       </p>
       {recado && <div className={`aviso ${recado.tipo}`}>{recado.texto}</div>}
       {situacao === "sem-suporte" && (
@@ -48,7 +48,7 @@ export default function NotificacoesVencimento() {
       )}
       {situacao === "desligado" && (
         <button className="btn primario" disabled={ocupado} onClick={fazer(ligarNotificacoes, "Pronto! Este aparelho vai receber os avisos.")}>
-          <Icone nome="alerta" /> Ativar notificações neste aparelho
+          <Icone nome="sino" /> Ativar notificações neste aparelho
         </button>
       )}
       {situacao === "ligado" && (

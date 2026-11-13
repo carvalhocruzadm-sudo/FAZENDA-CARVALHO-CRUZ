@@ -1,9 +1,10 @@
 /**
  * Lê a planilha de contatos exportada do Bling (Contatos → Exportar, CSV
- * separado por ";") e transforma em registros da coleção `contatos`.
+ * separado por ";") e transforma os clientes em registros de `compradores`.
+ * Fornecedores e outros contatos (contador…) ficam de fora.
  *
  * Quem já está cadastrado é atualizado em vez de duplicado: procura pelo
- * código do Bling, depois pelo CNPJ/CPF e, sem documento, pelo nome.
+ * CNPJ/CPF e, sem documento, pelo nome.
  */
 
 /** Separa o CSV em linhas e colunas, respeitando aspas ("a;b" é uma coluna só). */
@@ -42,15 +43,10 @@ export async function textoDoArquivo(arquivo) {
 
 const limpo = (v) => (v ?? "").trim() || null;
 const soDigitos = (v) => (v ?? "").replace(/\D/g, "");
-const chaveNome = (v) => (v ?? "").trim().toUpperCase();
+const chaveNome = (v) => (v ?? "").trim().toLowerCase();
 
-function tipoDoBling(tipo) {
-  const t = (tipo ?? "").toLowerCase();
-  if (t.includes("fornecedor")) return "fornecedor";
-  // Sem tipo no Bling são os clientes antigos (com código e e-mail da NF-e).
-  if (!t || t.includes("cliente")) return "cliente";
-  return "outro";
-}
+/** Sem tipo no Bling são os clientes antigos (com código e e-mail da NF-e). */
+const ehCliente = (tipo) => !tipo || /cliente/i.test(tipo);
 
 function cepFormatado(v) {
   const d = soDigitos(v);
@@ -58,10 +54,11 @@ function cepFormatado(v) {
 }
 
 /**
- * Devolve { registros, ignorados }: `registros` já vêm com o `id` de quem
- * existia (para atualizar) e `ignorados` lista o que não deu para importar.
+ * Devolve { registros, ignorados, fornecedores }: `registros` já vêm com o
+ * `id` de quem existia (para atualizar), `ignorados` lista o que não deu para
+ * importar e `fornecedores` conta os contatos que não são clientes.
  */
-export function contatosDoBling(texto, existentes) {
+export function compradoresDoBling(texto, existentes) {
   const [cab, ...linhas] = lerCSV(texto);
   if (!cab) throw new Error("A planilha está vazia.");
   const col = Object.fromEntries(cab.map((nome, i) => [nome.trim(), i]));
@@ -70,53 +67,49 @@ export function contatosDoBling(texto, existentes) {
   }
   const v = (l, nome) => limpo(l[col[nome]]);
 
-  const porBling = new Map(existentes.filter((c) => c.id_bling).map((c) => [c.id_bling, c]));
   const porDoc = new Map(existentes.filter((c) => soDigitos(c.documento)).map((c) => [soDigitos(c.documento), c]));
   const porNome = new Map(existentes.map((c) => [chaveNome(c.nome), c]));
 
   const registros = [], ignorados = [];
+  let fornecedores = 0;
   for (const l of linhas) {
-    const nome = v(l, "Nome");
+    const razao = v(l, "Nome");
+    if (!razao) continue;
+    if (!ehCliente(v(l, "Tipo contato"))) { fornecedores++; continue; }
     const documento = v(l, "CNPJ / CPF");
-    if (!nome) continue;
-    if (!documento && /consumidor final/i.test(nome)) { ignorados.push(nome); continue; }
+    if (!documento) { ignorados.push(razao); continue; }
 
-    const tipoBling = v(l, "Tipo contato");
-    const tipo = tipoDoBling(tipoBling);
-    const fones = [...new Set([v(l, "Fone"), v(l, "Celular")].filter(Boolean))];
-    const endereco = [
-      [v(l, "Endereço"), v(l, "Número")].filter(Boolean).join(", "),
-      v(l, "Complemento"), v(l, "Bairro"),
-    ].filter(Boolean).join(" · ");
-    const obs = [
-      tipo === "outro" ? [...new Set(tipoBling.split(";"))].join(", ") : null,
-      v(l, "Observações"),
-    ].filter(Boolean).join(" · ");
+    const atual = porDoc.get(soDigitos(documento)) || porNome.get(chaveNome(razao));
+    // O nome é o que se escreve no campo Comprador da venda: quem já existe
+    // mantém o dele; o novo usa o nome fantasia (mais curto) ou a razão social.
+    let nome = atual?.nome ?? v(l, "Fantasia") ?? razao;
+    // Duas filiais com o mesmo nome fantasia: o bairro diferencia.
+    if (!atual && registros.some((r) => chaveNome(r.nome) === chaveNome(nome))) nome = `${nome} (${v(l, "Bairro") ?? v(l, "Cidade")})`;
+
     const ie = v(l, "IE / RG");
-
-    const idBling = v(l, "ID");
-    const atual = (idBling && porBling.get(idBling))
-      || (soDigitos(documento) && porDoc.get(soDigitos(documento)))
-      || (!documento && porNome.get(chaveNome(nome)));
+    const fisica = /f[ií]sica/i.test(v(l, "Tipo pessoa") ?? "");
+    const contribuinte = ie && !fisica ? "1" : v(l, "IE isento") === "S" ? "2" : fisica ? "9" : atual?.contribuinte ?? "9";
 
     registros.push({
       ...(atual ?? {}),
       nome,
-      fantasia: v(l, "Fantasia") && v(l, "Fantasia") !== nome ? v(l, "Fantasia") : atual?.fantasia ?? null,
-      tipo,
-      pessoa: /f[ií]sica/i.test(v(l, "Tipo pessoa") ?? "") ? "fisica" : "juridica",
+      razao_social: razao !== nome ? razao : null,
+      tipo_pessoa: fisica ? "F" : "J",
       documento,
-      inscricao_estadual: ie ?? (v(l, "IE isento") === "S" ? "ISENTO" : null),
-      telefone: fones.join(" / ") || null,
-      email: v(l, "E-mail") ?? v(l, "E-mail para envio NFe"),
-      endereco: endereco || null,
-      cidade: v(l, "Cidade"),
-      uf: v(l, "UF"),
+      contribuinte,
+      ie: contribuinte === "1" ? ie : null,
+      email: v(l, "E-mail para envio NFe") ?? v(l, "E-mail") ?? atual?.email ?? null,
+      telefone: [...new Set([v(l, "Fone"), v(l, "Celular")].filter(Boolean))].join(" / ") || atual?.telefone || null,
       cep: cepFormatado(v(l, "CEP")),
+      endereco: v(l, "Endereço"),
+      numero: v(l, "Número") ?? "S/N",
+      complemento: v(l, "Complemento"),
+      bairro: v(l, "Bairro"),
+      municipio: v(l, "Cidade"),
+      uf: v(l, "UF"),
       ativo: !/inativo|exclu/i.test(v(l, "Situação") ?? ""),
-      observacao: obs || atual?.observacao || null,
-      id_bling: idBling,
+      observacao: atual?.observacao ?? null,
     });
   }
-  return { registros, ignorados };
+  return { registros, ignorados, fornecedores };
 }

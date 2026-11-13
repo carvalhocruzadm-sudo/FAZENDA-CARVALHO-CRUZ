@@ -7,13 +7,13 @@ self.addEventListener("push", (evento) => {
     icon: "/fazenda-192.png",
     badge: "/fazenda-192.png",
     tag: aviso.tag,
-    data: { tela: aviso.tela || "painel" },
+    data: { tela: aviso.tela || "boletos" },
   }));
 });
 
 self.addEventListener("notificationclick", (evento) => {
   evento.notification.close();
-  const tela = (evento.notification.data && evento.notification.data.tela) || "painel";
+  const tela = (evento.notification.data && evento.notification.data.tela) || "boletos";
   evento.waitUntil((async () => {
     const janelas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const j of janelas) {

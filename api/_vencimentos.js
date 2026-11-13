@@ -32,11 +32,11 @@ export function segundaDaSemana(iso) {
 const diaCurto = (iso) => `${DIAS[diaDaSemana(iso)]} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 /**
- * Junta despesas e boletos de insumo ainda não pagos, com vencimento, numa
- * lista só: { vencimento, valor, texto, tela }. Mesma regra do Painel.
+ * Junta as despesas não pagas e a programação de pagamentos (boletos, PIX…)
+ * em aberto, com vencimento, numa lista só: { vencimento, valor, texto, tela }.
+ * Mesma regra de contasAPagar em src/lib/pendencias.js.
  */
-export function contasEmAberto({ despesas = [], insumo_entradas = [], insumos = [] }) {
-  const nomeInsumo = Object.fromEntries(insumos.map((i) => [i.id, i.nome]));
+export function contasEmAberto({ despesas = [], boletos = [] }) {
   const contas = [];
   for (const d of despesas) {
     if (d.pago || !d.vencimento) continue;
@@ -45,11 +45,11 @@ export function contasEmAberto({ despesas = [], insumo_entradas = [], insumos = 
       texto: `${d.descricao || d.tipo || d.categoria || "Despesa"}${d.favorecido ? ` (${d.favorecido})` : ""}`,
     });
   }
-  for (const e of insumo_entradas) {
-    if (e.pago !== false || !e.vencimento) continue;
+  for (const b of boletos) {
+    if (b.pago || !b.vencimento) continue;
     contas.push({
-      vencimento: e.vencimento, valor: Number(e.valor) || 0, tela: "quimicos",
-      texto: `Boleto de ${nomeInsumo[e.insumo_id] ?? "insumo"}${e.fornecedor ? ` (${e.fornecedor})` : ""}`,
+      vencimento: b.vencimento, valor: Number(b.valor) || 0, tela: "boletos",
+      texto: `${b.empresa || b.descricao || "Pagamento"} (${b.forma_pagamento || "Boleto"})`,
     });
   }
   return contas.sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor);
@@ -72,7 +72,7 @@ export function avisoDoDia(contas, hoje) {
     titulo: `Vence hoje: ${plural(lista.length, "conta", "contas")} — ${brl(total(lista))}`,
     corpo: linhas(lista, false).join("\n"),
     tag: `vence-hoje-${hoje}`,
-    tela: lista.every((c) => c.tela === lista[0].tela) ? lista[0].tela : "painel",
+    tela: lista.every((c) => c.tela === lista[0].tela) ? lista[0].tela : "boletos",
   };
 }
 
@@ -93,6 +93,6 @@ export function avisoDaSemana(contas, hoje, { sempre = false } = {}) {
       : "Nenhuma conta vence esta semana",
     corpo: corpo.join("\n"),
     tag: `semana-${segundaDaSemana(hoje)}`,
-    tela: "painel",
+    tela: "boletos",
   };
 }

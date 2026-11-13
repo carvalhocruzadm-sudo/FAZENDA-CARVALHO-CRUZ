@@ -48,10 +48,14 @@ contagem = {}
 registros = []  # (tabela, registro) — para a conferência no fim
 
 
+class SemPlanilha(Exception):
+    pass
+
+
 def arquivo(chave):
     achados = sorted(PASTA.glob(f"*{chave}*.xlsx"))
     if not achados:
-        sys.exit(f"Não achei a planilha {chave} em {PASTA}")
+        raise SemPlanilha(chave)
     return achados[0]
 
 
@@ -381,15 +385,16 @@ def fretes():
 
 # ─── Geração ────────────────────────────────────────────────────────────────
 
-vendas_milho(2025, "VENDAS MILHO")
-vendas_milho(2026, "VENDAS")
-silagem(2025)
-silagem(2026)
-laranja(2025)
-laranja(2026)
-financeiro(2025)
-financeiro(2026)
-fretes()
+# Planilha que não está na pasta fica de fora (dá para mandar só as atualizadas):
+# o SQL não apaga nada, então o que já foi importado dela continua no banco.
+for passo, *args in [
+    (vendas_milho, 2025, "VENDAS MILHO"), (vendas_milho, 2026, "VENDAS"), (silagem, 2025), (silagem, 2026),
+    (laranja, 2025), (laranja, 2026), (financeiro, 2025), (financeiro, 2026), (fretes,),
+]:
+    try:
+        passo(*args)
+    except SemPlanilha as e:
+        avisos.append(f"Planilha {e} não está na pasta — ficou de fora desta importação")
 
 schema = (RAIZ / "supabase/schema.sql").read_text()
 tabelas = ["vendas", "recebimentos", "despesas", "entradas", "fretes", "abastecimentos", "maquinas", "talhoes"]

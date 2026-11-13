@@ -7,7 +7,7 @@
  *    vence até domingo e o que já está vencido.
  * Chamar de novo no mesmo dia não repete o aviso.
  *
- * O botão "Enviar um aviso de teste" do Painel também cai aqui (POST com o
+ * O botão "Enviar um aviso de teste" da Programação de pagamentos também cai aqui (POST com o
  * login de quem clicou): manda o aviso da semana só para aquele aparelho.
  */
 import { FALTA_CONFIGURAR, banco, enviar } from "./_push.js";
@@ -15,14 +15,15 @@ import { avisoDaSemana, avisoDoDia, contasEmAberto, hojeEmBrasilia, horaEmBrasil
 
 async function lerContas(db, hoje) {
   const ate = somarDias(segundaDaSemana(hoje), 6);
-  const [despesas, entradas, insumos] = await Promise.all([
-    db.from("despesas").select("descricao, tipo, categoria, favorecido, valor, vencimento, pago").not("vencimento", "is", null).lte("vencimento", ate).or("pago.is.null,pago.eq.false"),
-    db.from("insumo_entradas").select("insumo_id, fornecedor, valor, vencimento, pago").not("vencimento", "is", null).lte("vencimento", ate).eq("pago", false),
-    db.from("insumos").select("id, nome"),
+  const emAberto = (tabela, colunas) => db.from(tabela).select(colunas)
+    .not("vencimento", "is", null).lte("vencimento", ate).or("pago.is.null,pago.eq.false");
+  const [despesas, boletos] = await Promise.all([
+    emAberto("despesas", "descricao, tipo, categoria, favorecido, valor, vencimento, pago"),
+    emAberto("boletos", "empresa, descricao, forma_pagamento, valor, vencimento, pago"),
   ]);
-  const erro = despesas.error ?? entradas.error ?? insumos.error;
+  const erro = despesas.error ?? boletos.error;
   if (erro) throw new Error(erro.message);
-  return contasEmAberto({ despesas: despesas.data, insumo_entradas: entradas.data, insumos: insumos.data });
+  return contasEmAberto({ despesas: despesas.data, boletos: boletos.data });
 }
 
 async function teste(req, res, db, hoje) {
