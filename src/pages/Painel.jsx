@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import NotificacoesVencimento from "../components/NotificacoesVencimento";
 import { Icone, SeletorPeriodo, Stat } from "../components/ui";
 import { PERIODOS, aReceber, diesel, entradasDoPeriodo, estoqueInsumos, noPeriodo, saidasDoPeriodo, situacaoRevisao, soma } from "../lib/calculos";
 import { brl, data, nomeRef, numero } from "../lib/formato";
@@ -117,6 +118,7 @@ export default function Painel({ dados, irPara }) {
           <h2>Vendas por cultura</h2>
           <Barras itens={r.porCultura} />
         </div>
+        <NotificacoesVencimento />
       </div>
     </>
   );

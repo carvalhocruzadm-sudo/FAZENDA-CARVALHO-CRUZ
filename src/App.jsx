@@ -52,6 +52,9 @@ function AvisoAtualizacao() {
 function Sistema({ sair, email, virarCampo }) {
   const { dados, pronto, erro, salvar, salvarVarios, remover, sincronizarAgora, recarregarDaNuvem } = useDados();
   const [tela, setTela] = useState(() => {
+    // Quem toca numa notificação chega com ?tela=financeiro (ver public/push-sw.js).
+    const pedida = new URLSearchParams(location.search).get("tela");
+    if (MENU.some(([id]) => id === pedida)) return pedida;
     try { return localStorage.getItem("fcc-tela") || "painel"; } catch { return "painel"; }
   });
   const [menuAberto, setMenuAberto] = useState(false);
@@ -62,6 +65,16 @@ function Sistema({ sair, email, virarCampo }) {
     window.scrollTo(0, 0);
     try { localStorage.setItem("fcc-tela", id); } catch { /* sem armazenamento: só não lembra a aba */ }
   };
+
+  // Tocar na notificação com o app já aberto: o service worker avisa qual tela abrir.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return undefined;
+    const ouvir = (e) => {
+      if (e.data?.tipo === "abrir-tela" && MENU.some(([id]) => id === e.data.tela)) setTela(e.data.tela);
+    };
+    navigator.serviceWorker.addEventListener("message", ouvir);
+    return () => navigator.serviceWorker.removeEventListener("message", ouvir);
+  }, []);
 
   const [, rotulo, , Pagina] = MENU.find(([id]) => id === tela) ?? MENU[0];
 

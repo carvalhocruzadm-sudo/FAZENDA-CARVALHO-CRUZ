@@ -483,6 +483,31 @@ drop policy if exists "equipe acessa planejamento" on public.planejamento;
 create policy "equipe acessa planejamento" on public.planejamento
   for all to authenticated using (true) with check (true);
 
+-- ─── Notificações de contas vencendo ───────────────────────────────────────
+-- Aparelhos que pediram para receber os avisos (um por linha).
+create table if not exists public.push_inscricoes (
+  endpoint text primary key,
+  chaves jsonb not null,
+  usuario_id uuid default auth.uid(),
+  aparelho text,
+  criado_em timestamptz not null default now()
+);
+alter table public.push_inscricoes enable row level security;
+drop policy if exists "equipe acessa push_inscricoes" on public.push_inscricoes;
+create policy "equipe acessa push_inscricoes" on public.push_inscricoes
+  for all to authenticated using (true) with check (true);
+
+-- Chaves do envio e o último dia avisado. Sem regra de acesso de propósito:
+-- só o servidor (chave de serviço) lê e grava aqui.
+create table if not exists public.push_config (
+  id int primary key default 1 check (id = 1),
+  chave_publica text,
+  chave_privada text,
+  ultimo_dia date,
+  ultima_semana date
+);
+alter table public.push_config enable row level security;
+
 -- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────
 insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000001', 'Milho', 'agricola', 'sc60', true, null) on conflict (id) do nothing;
 insert into public.culturas (id, nome, tipo, unidade, ativo, observacao) values ('00000000-0000-4000-8000-000000000002', 'Laranja', 'agricola', 't', true, null) on conflict (id) do nothing;

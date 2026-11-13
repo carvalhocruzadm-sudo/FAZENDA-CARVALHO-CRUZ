@@ -29,9 +29,12 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest,woff2}"],
+        globIgnores: ["push-sw.js"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
+        // Recebe as notificações de contas vencendo (public/push-sw.js).
+        importScripts: ["push-sw.js"],
         clientsClaim: true,
         runtimeCaching: [
           {

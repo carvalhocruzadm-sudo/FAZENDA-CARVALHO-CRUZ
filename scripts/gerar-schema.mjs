@@ -39,6 +39,33 @@ create policy "equipe acessa ${tabela}" on public.${tabela}
   for all to authenticated using (true) with check (true);\n\n`;
 }
 
+sql += `-- ─── Notificações de contas vencendo ───────────────────────────────────────
+-- Aparelhos que pediram para receber os avisos (um por linha).
+create table if not exists public.push_inscricoes (
+  endpoint text primary key,
+  chaves jsonb not null,
+  usuario_id uuid default auth.uid(),
+  aparelho text,
+  criado_em timestamptz not null default now()
+);
+alter table public.push_inscricoes enable row level security;
+drop policy if exists "equipe acessa push_inscricoes" on public.push_inscricoes;
+create policy "equipe acessa push_inscricoes" on public.push_inscricoes
+  for all to authenticated using (true) with check (true);
+
+-- Chaves do envio e o último dia avisado. Sem regra de acesso de propósito:
+-- só o servidor (chave de serviço) lê e grava aqui.
+create table if not exists public.push_config (
+  id int primary key default 1 check (id = 1),
+  chave_publica text,
+  chave_privada text,
+  ultimo_dia date,
+  ultima_semana date
+);
+alter table public.push_config enable row level security;
+
+`;
+
 sql += `-- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────\n`;
 for (const [tabela, itens] of Object.entries(SEED)) {
   for (const item of itens) {

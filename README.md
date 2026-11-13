@@ -12,7 +12,7 @@ banco próprio.
 
 | Menu | O que faz |
 |---|---|
-| **Painel** | Vendas, entrou/saiu do caixa, resultado, a receber, diesel no tanque e avisos: revisão vencendo, estoque baixo ou negativo, contas vencendo. |
+| **Painel** | Vendas, entrou/saiu do caixa, resultado, a receber, diesel no tanque e avisos: revisão vencendo, estoque baixo ou negativo, contas vencendo. **Notificação no celular** das contas da semana e do dia. |
 | **Lavoura e talhões** | Fazendas, talhões/sítios (área, cultura, nº de pés), culturas (dá para **adicionar culturas novas**), colheitas e **planejamento da safra** por fase (dessecação, plantio, coberturas, pulverizações), com dose/ha × hectares × preço, como na aba PLANEJAMENTO. |
 | **Vendas** | Uma linha por **carga**, como nas planilhas de milho, laranja e silagem: tara, peso bruto e líquido, placa, sítio, tipo (BOA/SUKITA/CASQUINOL), desconto em kg, preço por t, saca, arroba ou saco, custo/ton, frete, comissão e juros. **Recebimentos** separados e o **saldo a receber de cada comprador**. |
 | **Financeiro** | Despesas nas categorias da planilha FINANCEIRO (Alimentação, Produtos químicos, Adubos, Peças, Serviços, Combustíveis, Salários, Taxas, Benfeitorias, Investimentos, Arrendamentos, Empréstimos, Retiradas…), com forma de pagamento, favorecido e **centro de custo** (geral, cultura ou talhão). Outras entradas (aditivo dos sócios, empréstimos). **Custo por cultura e por talhão** (R$/ha). |
@@ -68,6 +68,27 @@ supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # chave de console.anthropic
 
 A chave fica guardada no Supabase (nunca no app) e só quem está logado consegue consultar. Cada consulta
 tem um pequeno custo na conta da Anthropic. O resultado é apoio: vale o rótulo/bula e o agrônomo.
+
+## 🔔 Notificações de contas a pagar
+
+O celular (ou computador) recebe uma notificação, mesmo com o app fechado:
+
+- **toda segunda-feira de manhã**: as contas que vencem na semana (e quanto já está vencido);
+- **no dia do vencimento**: as contas que vencem hoje.
+
+Valem as **despesas** e os **boletos de insumo** lançados com vencimento e não marcados como pagos.
+Para ligar, uma vez só:
+
+1. No Supabase, rode de novo o [`supabase/schema.sql`](supabase/schema.sql) (cria as duas tabelas do aviso).
+2. No Supabase, em **Project Settings → API Keys**, copie a chave **service_role** (secreta).
+3. No Vercel, em **Settings → Environment Variables**, crie `SUPABASE_SERVICE_ROLE_KEY` com essa chave e
+   faça um **Redeploy**. Ela fica só no servidor; nunca coloque em variável que começa com `VITE_`.
+4. Em cada aparelho que deve receber: abra o **Painel → Notificações de contas a pagar → Ativar** e use
+   **Enviar um aviso de teste** para conferir. No iPhone, o app precisa estar instalado na tela de início.
+
+O envio sai todo dia perto das 7h (horário de Brasília) — o horário está em `vercel.json` (`crons`, em UTC).
+Opcional: cadastrar também `CRON_SECRET` (qualquer senha comprida) no Vercel faz com que só o agendador
+do Vercel consiga disparar o envio.
 
 ## 📥 Histórico das planilhas
 
