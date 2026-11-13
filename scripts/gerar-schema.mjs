@@ -162,6 +162,33 @@ create unique index if not exists notas_fiscais_venda_idx on public.notas_fiscai
 
 `;
 
+sql += `-- ─── Notificações de contas vencendo ───────────────────────────────────────
+-- Aparelhos que pediram para receber os avisos (um por linha).
+create table if not exists public.push_inscricoes (
+  endpoint text primary key,
+  chaves jsonb not null,
+  usuario_id uuid default auth.uid(),
+  aparelho text,
+  criado_em timestamptz not null default now()
+);
+alter table public.push_inscricoes enable row level security;
+drop policy if exists "equipe acessa push_inscricoes" on public.push_inscricoes;
+create policy "equipe acessa push_inscricoes" on public.push_inscricoes
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+
+-- Chaves do envio e o último dia avisado. Sem regra de acesso de propósito:
+-- só o servidor (chave de serviço) lê e grava aqui.
+create table if not exists public.push_config (
+  id int primary key default 1 check (id = 1),
+  chave_publica text,
+  chave_privada text,
+  ultimo_dia date,
+  ultima_semana date
+);
+alter table public.push_config enable row level security;
+
+`;
+
 sql += `-- ─── Fotos (Storage) ──────────────────────────────────────────────────────
 -- Bucket privado: só quem tem login vê. O Modo Campo tira e vê fotos, mas não apaga.
 insert into storage.buckets (id, name, public) values ('fotos', 'fotos', false) on conflict (id) do nothing;

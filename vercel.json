@@ -3,6 +3,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "crons": [{ "path": "/api/avisar-vencimentos", "schedule": "0 10 * * *" }],
   "rewrites": [{ "source": "/((?!assets/|api/|.*\\.[a-zA-Z0-9]+$).*)", "destination": "/index.html" }],
   "headers": [
     { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }] },
