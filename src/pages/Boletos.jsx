@@ -581,6 +581,11 @@ export default function Boletos(props) {
   const abertos = dados.boletos.filter((b) => !b.pago);
   const vencidos = abertos.filter((b) => b.vencimento < hojeIso);
   const semana = abertos.filter((b) => b.vencimento >= hojeIso && b.vencimento <= em7);
+  // Semana do calendário (domingo a sábado) em que hoje cai.
+  const diaDaSemana = new Date().getDay();
+  const domingo = diaLocal(-diaDaSemana);
+  const sabado = diaLocal(6 - diaDaSemana);
+  const nestaSemana = abertos.filter((b) => b.vencimento >= domingo && b.vencimento <= sabado);
 
   const abrir = (b) => setEditando({ reg: { ...b } });
   const novo = () => setEditando({ reg: { ...registroNovo("boletos"), forma_pagamento: "PIX" } });
@@ -621,18 +626,18 @@ export default function Boletos(props) {
         <button className="btn" onClick={novo}><Icone nome="mais" /> Outro pagamento (PIX, transferência…)</button>
       </div>
 
-      {(vencidos.length > 0 || semana.length > 0) && (
-        <div className="grade">
-          {vencidos.length > 0 && (
-            <Stat rotulo="Vencidos sem pagar" valor={brl(soma(vencidos, (b) => b.valor))}
-              sub={`${vencidos.length} ${vencidos.length === 1 ? "pagamento" : "pagamentos"}`} cor="vermelho" />
-          )}
-          {semana.length > 0 && (
-            <Stat rotulo="Vencem nos próximos 7 dias" valor={brl(soma(semana, (b) => b.valor))}
-              sub={`${semana.length} ${semana.length === 1 ? "pagamento" : "pagamentos"}`} cor="laranja" />
-          )}
-        </div>
-      )}
+      <div className="grade">
+        <Stat rotulo={`A pagar nesta semana (${data(domingo).slice(0, 5)} a ${data(sabado).slice(0, 5)})`} valor={brl(soma(nestaSemana, (b) => b.valor))}
+          sub={`${nestaSemana.length} ${nestaSemana.length === 1 ? "pagamento" : "pagamentos"}`} cor="laranja" />
+        {vencidos.length > 0 && (
+          <Stat rotulo="Vencidos sem pagar" valor={brl(soma(vencidos, (b) => b.valor))}
+            sub={`${vencidos.length} ${vencidos.length === 1 ? "pagamento" : "pagamentos"}`} cor="vermelho" />
+        )}
+        {semana.length > 0 && (
+          <Stat rotulo="Vencem nos próximos 7 dias" valor={brl(soma(semana, (b) => b.valor))}
+            sub={`${semana.length} ${semana.length === 1 ? "pagamento" : "pagamentos"}`} cor="laranja" />
+        )}
+      </div>
 
       <Secao props={{ ...props, abrir, pagar: setPagando }} abas={[
         ["calendario", "Calendário", Calendario],
