@@ -1,3 +1,4 @@
+import NotificacoesVencimento from "../components/NotificacoesVencimento";
 import { useEffect, useMemo, useState } from "react";
 
 import Formulario from "../components/Formulario";
@@ -637,6 +638,8 @@ export default function Boletos(props) {
         ["calendario", "Calendário", Calendario],
         ["boletos", "Todos os pagamentos"],
       ]} />
+
+      <NotificacoesVencimento />
 
       {lendo && <LeitorBoleto dados={dados} aoLer={aoLer} aoFechar={() => setLendo(false)} />}
       {editando && (

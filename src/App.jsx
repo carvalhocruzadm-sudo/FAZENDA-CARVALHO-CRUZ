@@ -298,6 +298,9 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
   const [tela, setTela] = useState(() => {
     // O link fixado no grupo do WhatsApp (/ticket) abre direto no lançamento do ticket.
     if (location.pathname.replace(/\/+$/, "") === LINK_TICKET) return "ticket";
+    // Quem toca numa notificação de conta vencendo chega com ?tela=boletos (public/push-sw.js).
+    const pedida = new URLSearchParams(location.search).get("tela");
+    if (MENU.some(([id]) => id === pedida)) return pedida;
     try { return localStorage.getItem("fcc-tela") || "inicio"; } catch { return "inicio"; }
   });
   // Aba e "abrir formulário novo" de quem chamou (o "+ Lançar", um aviso do Início…).
@@ -385,6 +388,16 @@ function Sistema({ sair, email, abrirCampo, aoDescobrirCampo }) {
     if (location.pathname !== "/") history.replaceState(null, "", "/");
     try { localStorage.setItem("fcc-tela", id); } catch { /* sem armazenamento: só não lembra a aba */ }
   };
+
+  // Tocar na notificação com o app já aberto: o service worker avisa qual tela abrir.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return undefined;
+    const ouvir = (e) => {
+      if (e.data?.tipo === "abrir-tela" && MENU.some(([id]) => id === e.data.tela)) setTela(e.data.tela);
+    };
+    navigator.serviceWorker.addEventListener("message", ouvir);
+    return () => navigator.serviceWorker.removeEventListener("message", ouvir);
+  }, []);
 
   // A tela de uma cultura ("cultura:<id>") ou uma das telas da fazenda toda.
   const culturas = culturasAtivas(dados);
