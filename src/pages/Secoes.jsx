@@ -11,7 +11,7 @@ import {
   PERIODOS, aPagarProprietarios, aReceber, consumoPorMaquina, custos, detalhesAbastecimentos, diesel, entradasDoPeriodo, estoqueInsumos,
   GRUPOS_PLANEJAMENTO, lancamentosPorLocal, noPeriodo, resumoChuva, resumoFretes, resumoPlanejamento, saidasDoPeriodo, situacaoRevisao, soma, totaisLocal,
 } from "../lib/calculos";
-import { ESQUEMA, hoje, prepararRegistro } from "../lib/esquema";
+import { ESQUEMA, ESTADOS_CONSERVACAO, hoje, prepararRegistro } from "../lib/esquema";
 import { baixarCSV, brl, data, exibir, leitura, nomeRef, numero } from "../lib/formato";
 import { compradoresDoBling, textoDoArquivo } from "../lib/importarCompradores";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
@@ -306,12 +306,43 @@ function SituacaoMaquinas({ dados }) {
   );
 }
 
+/** Inventário: totais de aquisição, quitação e estado, e o cadastro embaixo. */
+function InventarioMaquinas(props) {
+  const ativas = props.dados.maquinas.filter((m) => m.ativo !== false);
+  const aquisicao = soma(ativas, (m) => Number(m.valor_aquisicao) || 0);
+  const quitacao = soma(ativas, (m) => Number(m.valor_quitacao) || 0);
+  const mercado = soma(ativas, (m) => Number(m.valor) || 0);
+  const financiadas = ativas.filter((m) => Number(m.valor_quitacao) > 0).length;
+  const porEstado = ESTADOS_CONSERVACAO
+    .map(([v, rotulo]) => [rotulo, ativas.filter((m) => m.estado_conservacao === v).length])
+    .filter(([, n]) => n > 0)
+    .map(([r, n]) => `${n} ${r.toLowerCase()}`)
+    .join(" · ");
+  const implementos = ativas.filter((m) => m.categoria === "implemento").length;
+  return (
+    <>
+      {ativas.length > 0 && (
+        <div className="grade">
+          <Stat rotulo="Itens no inventário" valor={numero(ativas.length, 0)}
+            sub={`${ativas.length - implementos} máquinas/veículos · ${implementos} implementos`} />
+          <Stat rotulo="Valor de aquisição" valor={brl(aquisicao)} sub={porEstado || "Informe o estado de conservação"} />
+          <Stat rotulo="Falta para quitar" valor={brl(quitacao)} cor={quitacao > 0 ? "laranja" : ""}
+            sub={financiadas ? `${financiadas} ainda financiada(s)` : "Tudo quitado"} />
+          {mercado > 0 && <Stat rotulo="Valor de mercado hoje" valor={brl(mercado)} sub={`Patrimônio livre: ${brl(mercado - quitacao)}`} />}
+        </div>
+      )}
+      <Crud colecao="maquinas" {...props} />
+    </>
+  );
+}
+
 export function Maquinas(props) {
   return (
     <Secao props={props} abas={[
       ["situacao", "Situação e revisões", SituacaoMaquinas],
       ["revisoes", "Revisões feitas"],
       ["operacoes", "Horímetro (todas as culturas)"],
+      ["inventario", "Inventário", InventarioMaquinas],
     ]} />
   );
 }
