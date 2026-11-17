@@ -1,0 +1,556 @@
+import { useEffect, useState } from "react";
+
+import {
+  Cartao, EscolherPessoa, FotoComprovante, FotoOuInicial, FotoProduto, Ouvir, Pergunta, Rodape, Teclado, Topo,
+} from "../components/CampoUI";
+import { Foto } from "../components/Foto";
+import LeitorBoleto from "../components/LeitorBoleto";
+import { falar, operadores, paraNumero, vibrar } from "../lib/campo";
+import {
+  emEmbalagens, itensDaOrdem, ordensAbertas, ordensSeparadas, saidaDaSeparacao, sobraDaOrdem,
+} from "../lib/deposito";
+import { hoje, prepararRegistro } from "../lib/esquema";
+import { nomesTalhoesDaOrdem, talhoesDaOrdem } from "../lib/talhoes";
+import { formatarLinha } from "../lib/boleto";
+import { brl, data as dataBR, nomeRef, numero } from "../lib/formato";
+
+/**
+ * Depósito de químicos no Modo Campo:
+ *   /campo/saida    → tirar do depósito: as pulverizações para separar, produto por produto
+ *   /campo/entrada  → guardar no depósito: produto novo (compra) ou sobra que voltou
+ *
+ * Na compra, o produto que ainda não tem cadastro também entra: o operador
+ * tira a foto, escreve o nome se souber e a unidade, fotografa a nota e o
+ * boleto (ou lê o código dele) e manda para o escritório aprovar.
+ */
+
+// ─── Peças ──────────────────────────────────────────────────────────────────
+
+/** As embalagens desenhadas: 3 galões = 3 fotos do produto, lado a lado. */
+function Embalagens({ insumo, quantidade }) {
+  const e = emEmbalagens(insumo, quantidade);
+  const desenhos = Math.min(e.cheias, 12);
+  return (
+    <div className="embalagens">
+      {e.cheias > 0 && (
+        <div className="embalagens-fotos">
+          {Array.from({ length: desenhos }, (_, i) => <FotoProduto key={i} insumo={insumo} className="mini" />)}
+          {e.cheias > 12 && <b>+{e.cheias - 12}</b>}
+          {e.resto > 0 && <span className="parcial"><FotoProduto insumo={insumo} className="mini" /></span>}
+        </div>
+      )}
+      <p className="embalagens-texto">{e.texto}</p>
+    </div>
+  );
+}
+
+function Tela({ figura = "📦", titulo, fala, passo, children, rodape }) {
+  useEffect(() => { if (fala) falar(fala); }, [passo]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="campo-app">
+      <Topo titulo={titulo} figura={figura} pergunta={fala} />
+      <div className="campo-corpo">{children}</div>
+      {rodape}
+    </div>
+  );
+}
+
+function Pronto({ texto, irPara }) {
+  return (
+    <>
+      <div className="pronto">
+        <div className="check">✅</div>
+        <h2>Pronto! <Ouvir texto={texto} className="na-pergunta" /></h2>
+        <p>{texto}</p>
+      </div>
+      <footer className="campo-rodape">
+        <button type="button" className="campo-btn verde" onClick={() => irPara("/campo")}>🏠 Início</button>
+      </footer>
+    </>
+  );
+}
+
+function CartaoOrdem({ dados, ordem, aoTocar }) {
+  const talhao = dados.talhoes.find((t) => t.id === ordem.talhao_id);
+  const nomes = nomesTalhoesDaOrdem(dados, ordem);
+  const varios = talhoesDaOrdem(dados, ordem).length > 1;
+  const itens = itensDaOrdem(dados, ordem.id);
+  const fala = `${ordem.titulo ? `${ordem.titulo}. ` : ""}Pulverização ${varios ? "nos talhões" : "no talhão"} ${nomes}, ${itens.length} produtos`;
+  return (
+    <div className="campo-item">
+      <button type="button" className="ordem-cartao" onClick={aoTocar}>
+        <div className="ordem-cabeca">
+          {talhao?.foto ? <FotoOuInicial caminho={talhao.foto} nome={talhao.nome} /> : <span className="figura">💦</span>}
+          <div>
+            {ordem.titulo && <b>{ordem.titulo}</b>}
+            {ordem.titulo ? <small>{nomes}</small> : <b>{nomes}</b>}
+            <small>{dataBR(ordem.data)} · {nomeRef(dados, "maquinas", ordem.maquina_id)}</small>
+          </div>
+        </div>
+        <div className="ordem-produtos">
+          {itens.map(({ insumo, separado }) => (
+            <span key={insumo.id} className={separado ? "feito" : ""}><FotoProduto insumo={insumo} className="mini" /></span>
+          ))}
+        </div>
+      </button>
+      <Ouvir texto={fala} />
+    </div>
+  );
+}
+
+// ─── Tirar do depósito (separar a pulverização) ──────────────────────────────────
+
+export function Saida({ dados, salvar, irPara }) {
+  const [passo, setPasso] = useState("ordem");
+  const [ordemId, setOrdemId] = useState(null);
+  const [operadorId, setOperadorId] = useState(null);
+  const [itemId, setItemId] = useState(null);
+  const [faltamDepois, setFaltamDepois] = useState(0);
+  const [erro, setErro] = useState(null);
+
+  const ordem = dados.pulverizacoes.find((o) => o.id === ordemId);
+  const itens = ordem ? itensDaOrdem(dados, ordem.id) : [];
+  const atual = itens.find((x) => x.item.id === itemId);
+  const ir = (p) => { setErro(null); setPasso(p); window.scrollTo(0, 0); };
+
+  /** "Peguei este": lança a saída do produto e, se era o último, marca a ordem como separada. */
+  const separar = async () => {
+    try {
+      const regs = saidaDaSeparacao(dados, ordem, atual.item, operadorId, hoje()).map((b) => prepararRegistro("aplicacoes", b));
+      const e = regs.find((x) => x.erro)?.erro;
+      if (e) throw new Error(e);
+      for (const { reg } of regs) await salvar("aplicacoes", reg);
+      const faltam = itens.filter((x) => !x.separado && x.item.id !== atual.item.id);
+      if (!faltam.length) {
+        await salvar("pulverizacoes", { ...ordem, situacao: "separada", operador_id: ordem.operador_id ?? operadorId });
+      }
+      vibrar([60, 40, 60]);
+      falar(faltam.length ? `Certo! ${atual.insumo.nome} separado.` : "Certo! Todos os produtos separados.");
+      setFaltamDepois(faltam.length);
+      ir("certo");
+    } catch (err) {
+      setErro(String(err?.message ?? err));
+    }
+  };
+
+  switch (passo) {
+    case "ordem": {
+      const abertas = ordensAbertas(dados);
+      return (
+        <Tela passo={passo} figura="📤" titulo="Tirar do depósito" fala={abertas.length ? "Qual pulverização você vai fazer? Toque nela." : "Nenhuma pulverização para separar agora. Fale com o gerente."}
+          rodape={<Rodape aoVoltar={() => irPara("/campo")} />}>
+          <Pergunta figura="💦">Qual pulverização?</Pergunta>
+          {!abertas.length && <div className="campo-aviso">Nenhuma pulverização para separar. Fale com o gerente.</div>}
+          <div className="ordens">
+            {abertas.map((o) => <CartaoOrdem key={o.id} dados={dados} ordem={o} aoTocar={() => { setOrdemId(o.id); vibrar(); ir("operador"); }} />)}
+          </div>
+        </Tela>
+      );
+    }
+
+    case "operador":
+      return (
+        <Tela passo={passo} figura="📤" titulo="Tirar do depósito" fala="Quem é você? Toque na sua foto."
+          rodape={<Rodape aoVoltar={() => ir("ordem")} />}>
+          <Pergunta figura="👤">Quem é você?</Pergunta>
+          <EscolherPessoa pessoas={operadores(dados)} marcado={operadorId} aoEscolher={(id) => { setOperadorId(id); ir("lista"); }} />
+        </Tela>
+      );
+
+    case "lista": {
+      const faltam = itens.filter((x) => !x.separado).length;
+      const fala = faltam
+        ? `Pegue estes produtos. Faltam ${faltam}. ${itens.filter((x) => !x.separado).map((x) => `${x.insumo.nome}: ${emEmbalagens(x.insumo, x.item.quantidade).fala}`).join(". ")}. Toque no produto para conferir.`
+        : "Todos os produtos já foram separados.";
+      return (
+        <Tela passo={passo} figura="📤" titulo={ordem ? nomesTalhoesDaOrdem(dados, ordem) : ""} fala={fala}
+          rodape={faltam ? <Rodape aoVoltar={() => ir("ordem")} /> : <footer className="campo-rodape"><button type="button" className="campo-btn verde" onClick={() => ir("pronto")}>✓ Terminar</button></footer>}>
+          <Pergunta figura="🧴">Pegue estes produtos</Pergunta>
+          {itens.map(({ item, insumo, separado }) => (
+            <div key={item.id} className="campo-item">
+              <button type="button" className={`produto-linha ${separado ? "feito" : ""}`} disabled={separado}
+                onClick={() => { setItemId(item.id); falar(insumo.nome); ir("produto"); }}>
+                <FotoProduto insumo={insumo} />
+                <div>
+                  <b>{insumo.nome}</b>
+                  <small>{emEmbalagens(insumo, item.quantidade).texto}</small>
+                  {ordem?.dose_por === "pipa" && item.dose_pipa != null && <small>{numero(item.dose_pipa, 3)} {insumo.unidade} por pipa</small>}
+                </div>
+                <span className="estado">{separado ? "✅" : "▶"}</span>
+              </button>
+              <Ouvir texto={`${insumo.nome}. ${emEmbalagens(insumo, item.quantidade).fala}. ${separado ? "Já separado." : ""}`} />
+            </div>
+          ))}
+        </Tela>
+      );
+    }
+
+    case "produto": {
+      const e = emEmbalagens(atual.insumo, atual.item.quantidade);
+      const fala = `Pegue ${atual.insumo.nome}: ${e.fala}. Confira se é igual à foto e toque no botão verde.`;
+      return (
+        <Tela passo={passo} figura="📤" titulo={ordem ? nomesTalhoesDaOrdem(dados, ordem) : ""} fala={fala}
+          rodape={(
+            <footer className="campo-rodape">
+              <button type="button" className="campo-btn cinza" onClick={() => ir("lista")}>◀ Voltar</button>
+              <button type="button" className="campo-btn verde" onClick={separar}>✓ Peguei este</button>
+            </footer>
+          )}>
+          <div className="produto-grande">
+            <FotoProduto insumo={atual.insumo} className="foto" />
+            <h2>{atual.insumo.nome}</h2>
+          </div>
+          {erro && <div className="campo-aviso erro">{erro}</div>}
+          <Embalagens insumo={atual.insumo} quantidade={atual.item.quantidade} />
+        </Tela>
+      );
+    }
+
+    case "certo":
+      return (
+        <div className="campo-app resultado certo">
+          <div className="resultado-marca">✓</div>
+          <h2>Certo!</h2>
+          <p>{atual?.insumo.nome}</p>
+          <footer className="campo-rodape">
+            <button type="button" className="campo-btn verde" onClick={() => ir(faltamDepois ? "lista" : "pronto")}>
+              {faltamDepois ? "Próximo produto ▶" : "✓ Terminar"}
+            </button>
+          </footer>
+        </div>
+      );
+
+    default:
+      return (
+        <Tela passo={passo} figura="📤" titulo="Tirar do depósito" fala="Pronto! Todos os produtos separados. Pode levar para o trator.">
+          <Pronto texto="Todos os produtos separados. Pode levar para o trator." irPara={irPara} />
+        </Tela>
+      );
+  }
+}
+
+// ─── Guardar no depósito (compra ou sobra) ───────────────────────────────────────
+
+function Contador({ insumo, valor, aoMudar }) {
+  const tam = Number(insumo.tamanho_embalagem) || 0;
+  const qtd = Math.round((Number(valor) || 0) / tam);
+  const mudar = (d) => { vibrar(20); aoMudar(Math.max(0, qtd + d) * tam); };
+  return (
+    <div className="contador">
+      <button type="button" onClick={() => mudar(-1)} aria-label="Menos">−</button>
+      <div><b>{qtd}</b><small>{emEmbalagens(insumo, tam).texto.replace(/^1 /, "")}</small></div>
+      <button type="button" onClick={() => mudar(1)} aria-label="Mais">+</button>
+    </div>
+  );
+}
+
+export function Entrada({ dados, salvar, irPara }) {
+  const [passo, setPasso] = useState("tipo");
+  const [tipo, setTipo] = useState(null);
+  const [operadorId, setOperadorId] = useState(null);
+  const [ordemId, setOrdemId] = useState(null);
+  const [insumoId, setInsumoId] = useState(null);
+  const [qtd, setQtd] = useState(""); // texto do teclado ou número do contador
+  const [foto, setFoto] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  // Produto sem cadastro: o nome que o operador escreveu e a unidade.
+  const [novo, setNovo] = useState(false);
+  const [nomeNovo, setNomeNovo] = useState("");
+  const [unidadeNova, setUnidadeNova] = useState(null);
+  // Documentos da compra.
+  const [fotoNota, setFotoNota] = useState(null);
+  const [fotoBoleto, setFotoBoleto] = useState(null);
+  const [boleto, setBoleto] = useState(null);
+  const [lendoBoleto, setLendoBoleto] = useState(false);
+  const [empresaBoleto, setEmpresaBoleto] = useState("");
+
+  // O produto novo vira um "produto" de mentira só para as telas (nome, unidade, sem embalagem).
+  const insumo = novo
+    ? { nome: nomeNovo.trim() || "Produto novo", unidade: unidadeNova ?? "" }
+    : dados.insumos.find((i) => i.id === insumoId);
+  const ordem = dados.pulverizacoes.find((o) => o.id === ordemId);
+  const quantidade = typeof qtd === "number" ? qtd : paraNumero(qtd);
+  const ir = (p) => { setAviso(null); setPasso(p); window.scrollTo(0, 0); };
+  const escolherProduto = (id) => { setNovo(false); setInsumoId(id); setQtd(""); ir("quantidade"); };
+
+  /**
+   * Boleto lido no depósito: já entra na Programação de pagamentos (marcado
+   * "falta conferir"), para o vencimento aparecer no escritório na hora. Sem
+   * vencimento no código (conta de consumo) fica só na entrada, para o escritório.
+   */
+  const lancarBoleto = async () => {
+    if (!boleto?.vencimento) return null;
+    const digitos = (t) => String(t ?? "").replace(/\D/g, "");
+    const repetido = dados.boletos.find((b) => digitos(b.linha_digitavel) === digitos(boleto.linha_digitavel));
+    if (repetido) return repetido.id;
+    const operador = dados.funcionarios.find((f) => f.id === operadorId);
+    const { reg, erro } = prepararRegistro("boletos", {
+      empresa: empresaBoleto.trim() || "A conferir (lido no depósito)",
+      descricao: `Compra de ${insumo.nome} — chegou no depósito`,
+      valor: boleto.valor, vencimento: boleto.vencimento, forma_pagamento: "Boleto", categoria: "Produtos químicos",
+      linha_digitavel: formatarLinha(boleto.linha_digitavel), banco: boleto.banco, pago: false, a_conferir: true, foto: fotoBoleto,
+      observacao: `Lido no depósito por ${operador?.nome ?? "operador"} em ${dataBR(hoje())}. A compra entra no estoque pela aprovação: ao pagar, não precisa lançar de novo em Despesas.`,
+    }, dados);
+    if (erro) throw new Error(`Boleto: ${erro}`);
+    return (await salvar("boletos", reg)).id;
+  };
+
+  const gravar = async () => {
+    setSalvando(true);
+    try {
+      const [colecao, brutos] = tipo === "compra"
+        ? ["insumo_entradas", [{
+          data: hoje(), insumo_id: novo ? null : insumo.id, quantidade, valor: null, a_conferir: true, foto,
+          produto_novo: novo ? insumo.nome : null, unidade_nova: novo ? unidadeNova : null,
+          foto_nota: fotoNota, foto_boleto: fotoBoleto, linha_digitavel: boleto?.linha_digitavel ?? null,
+          responsavel_id: operadorId,
+          observacao: novo ? "Produto sem cadastro, lançado no depósito (Modo Campo)" : "Entrada pelo depósito (Modo Campo)",
+        }]]
+        : ["aplicacoes", sobraDaOrdem(dados, ordem, insumo.id, quantidade, operadorId, hoje())];
+      const regs = brutos.map((b) => prepararRegistro(colecao, b));
+      const erro = regs.find((x) => x.erro)?.erro;
+      if (erro) throw new Error(erro);
+      // A entrada já conferida; agora o boleto, para ela guardar qual pagamento é o dela.
+      if (tipo === "compra") regs[0].reg.boleto_id = await lancarBoleto();
+      for (const { reg } of regs) await salvar(colecao, reg);
+      vibrar([60, 60, 120]);
+      ir(tipo === "compra" ? "pronto" : "mais");
+    } catch (e) {
+      setAviso(String(e?.message ?? e));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const titulo = "Guardar no depósito";
+  switch (passo) {
+    case "tipo":
+      return (
+        <Tela passo={passo} figura="📥" titulo={titulo} fala="O que está entrando no depósito? Produto novo que chegou, ou sobra que voltou da pulverização?"
+          rodape={<Rodape aoVoltar={() => irPara("/campo")} />}>
+          <Pergunta figura="📥">O que está entrando?</Pergunta>
+          <div className="campo-grade dois">
+            <Cartao fala="Produto novo, que chegou de compra" aoTocar={() => { setTipo("compra"); falar("Produto novo"); ir("operador"); }}>
+              <span className="figura">🆕</span><span>Produto novo</span>
+            </Cartao>
+            <Cartao fala="Sobra que voltou da pulverização" aoTocar={() => { setTipo("sobra"); falar("Sobra da pulverização"); ir("operador"); }}>
+              <span className="figura">↩️</span><span>Sobrou da pulverização</span>
+            </Cartao>
+          </div>
+        </Tela>
+      );
+
+    case "operador":
+      return (
+        <Tela passo={passo} figura="📥" titulo={titulo} fala="Quem é você? Toque na sua foto."
+          rodape={<Rodape aoVoltar={() => ir("tipo")} />}>
+          <Pergunta figura="👤">Quem é você?</Pergunta>
+          <EscolherPessoa pessoas={operadores(dados)} marcado={operadorId} aoEscolher={(id) => {
+            setOperadorId(id);
+            if (tipo === "sobra") ir("ordem");
+            else if (insumoId || novo) ir("quantidade");
+            else ir("produto");
+          }} />
+        </Tela>
+      );
+
+    case "ordem": {
+      const lista = ordensSeparadas(dados);
+      return (
+        <Tela passo={passo} figura="📥" titulo={titulo} fala={lista.length ? "De qual pulverização sobrou? Toque nela." : "Nenhuma pulverização saiu do depósito ainda."}
+          rodape={<Rodape aoVoltar={() => ir("operador")} />}>
+          <Pergunta figura="💦">De qual pulverização?</Pergunta>
+          {!lista.length && <div className="campo-aviso">Nenhuma pulverização saiu do depósito ainda.</div>}
+          <div className="ordens">
+            {lista.map((o) => <CartaoOrdem key={o.id} dados={dados} ordem={o} aoTocar={() => { setOrdemId(o.id); ir("produto"); }} />)}
+          </div>
+        </Tela>
+      );
+    }
+
+    case "produto": {
+      const produtos = tipo === "sobra"
+        ? itensDaOrdem(dados, ordemId).map((x) => x.insumo)
+        : dados.insumos.filter((i) => i.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
+      return (
+        <Tela passo={passo} figura="📥" titulo={titulo}
+          fala={tipo === "sobra" ? "Qual produto sobrou? Toque na foto." : "Qual produto chegou? Toque na foto."}
+          rodape={<Rodape aoVoltar={() => ir(tipo === "sobra" ? "ordem" : "operador")} />}>
+          <Pergunta figura="🧴">{tipo === "sobra" ? "Qual produto sobrou?" : "Qual produto?"}</Pergunta>
+          {aviso && <div className="campo-aviso erro">{aviso}</div>}
+          <div className="campo-grade">
+            {tipo === "compra" && (
+              <Cartao fala="Não está na lista: produto sem cadastro" marcado={novo}
+                aoTocar={() => { setNovo(true); setInsumoId(null); setQtd(""); ir("novo"); }}>
+                <span className="figura">➕</span><span>Não está na lista</span>
+              </Cartao>
+            )}
+            {produtos.map((i) => (
+              <Cartao key={i.id} fala={i.nome} marcado={insumoId === i.id} aoTocar={() => { falar(i.nome); escolherProduto(i.id); }}>
+                <FotoProduto insumo={i} />
+                <span>{i.nome}</span>
+              </Cartao>
+            ))}
+          </div>
+        </Tela>
+      );
+    }
+
+    case "novo":
+      return (
+        <Tela passo={passo} figura="➕" titulo="Produto sem cadastro"
+          fala="Produto novo, sem cadastro. Tire uma foto do produto, escreva o nome se souber e toque na unidade."
+          rodape={<Rodape aoVoltar={() => ir("produto")} aoSeguir={() => ir("quantidade")} podeSeguir={Boolean(foto && unidadeNova)} />}>
+          <Pergunta figura="📷">Tire foto do produto</Pergunta>
+          <FotoComprovante caminho={foto} aoTirar={setFoto} texto="Tirar foto do produto (rótulo de frente)" />
+          <Pergunta figura="✏️">Nome do produto</Pergunta>
+          <input className="campo-texto" value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)}
+            placeholder="Como está escrito na embalagem (se souber)" autoComplete="off" />
+          <Pergunta figura="📏">Vem em quê?</Pergunta>
+          <div className="campo-grade dois">
+            {[["L", "Litro (L)"], ["kg", "Quilo (kg)"], ["saco", "Saco"], ["unidade", "Unidade / caixa"]].map(([v, rotulo]) => (
+              <Cartao key={v} fala={rotulo} marcado={unidadeNova === v} aoTocar={() => { falar(rotulo); setUnidadeNova(v); }}>
+                <span>{rotulo}</span>
+              </Cartao>
+            ))}
+          </div>
+          {!foto && <p className="dica-anterior">A foto é obrigatória: é por ela que o escritório cadastra o produto.</p>}
+        </Tela>
+      );
+
+    case "documentos": {
+      const fala = "Agora a nota fiscal e o boleto. Tire a foto da nota. Se veio boleto, tire a foto e leia o código de barras. Se não veio, toque em próximo.";
+      return (
+        <Tela passo={passo} figura="🧾" titulo={insumo?.nome} fala={fala}
+          rodape={<Rodape aoVoltar={() => ir("quantidade")} aoSeguir={() => ir("conferir")} />}>
+          <Pergunta figura="🧾">Nota fiscal</Pergunta>
+          <FotoComprovante caminho={fotoNota} aoTirar={setFotoNota} lado={1800} texto="Tirar foto da nota fiscal" />
+          <Pergunta figura="💳">Boleto (se veio)</Pergunta>
+          <FotoComprovante caminho={fotoBoleto} aoTirar={setFotoBoleto} lado={1800} texto="Tirar foto do boleto" />
+          <button type="button" className={`campo-foto-btn ${boleto ? "ok" : ""}`} style={{ marginTop: 10 }} onClick={() => setLendoBoleto(true)}>
+            <span className="emoji">{boleto ? "✅" : "▮▯▮"}</span>
+            <span>{boleto ? `Código lido${boleto.valor ? ` · ${brl(boleto.valor)}` : ""}${boleto.vencimento ? ` · vence ${dataBR(boleto.vencimento)}` : ""}` : "Ler o código de barras do boleto"}</span>
+          </button>
+          {lendoBoleto && (
+            <LeitorBoleto dados={dados} aoFechar={() => setLendoBoleto(false)}
+              aoRepetido={() => falar("Atenção! Este boleto já foi lançado. Confira para não pagar duas vezes.")}
+              aoLer={(lido) => { setBoleto(lido); setLendoBoleto(false); vibrar([60, 40, 60]); falar("Código do boleto lido. Ele vai direto para a programação de pagamentos."); }} />
+          )}
+          {boleto && (
+            <>
+              <Pergunta figura="🏢">De quem é o boleto?</Pergunta>
+              <input className="campo-texto" value={empresaBoleto} onChange={(e) => setEmpresaBoleto(e.target.value)}
+                placeholder="Nome da loja / empresa (se souber)" autoComplete="off" />
+              <p className="dica-anterior">
+                {boleto.vencimento
+                  ? "Ao enviar, o boleto já entra na Programação de pagamentos do escritório."
+                  : "Este código não tem vencimento: o escritório lança o pagamento."}
+              </p>
+            </>
+          )}
+        </Tela>
+      );
+    }
+
+    case "quantidade": {
+      const usaContador = tipo === "compra" && Number(insumo?.tamanho_embalagem) > 0;
+      const saiu = tipo === "sobra"
+        ? dados.aplicacoes.filter((a) => a.pulverizacao_id === ordemId && a.insumo_id === insumoId).reduce((s, a) => s + (Number(a.quantidade) || 0), 0)
+        : null;
+      const passou = saiu != null && quantidade > saiu + 1e-9;
+      const fala = tipo === "sobra"
+        ? `Quanto sobrou de ${insumo?.nome}? Digite em ${insumo?.unidade}. Saíram ${numero(saiu)}.${quantidade ? ` Você digitou ${numero(quantidade)}.` : ""}`
+        : novo
+          ? `Quanto chegou de ${insumo.nome}? Digite em ${insumo.unidade}.`
+          : `Quantas embalagens de ${insumo?.nome} chegaram?${quantidade ? ` ${emEmbalagens(insumo, quantidade).fala}.` : ""} Tire uma foto do produto.`;
+      return (
+        <Tela passo={passo} figura="📥" titulo={insumo?.nome} fala={fala}
+          rodape={<Rodape aoVoltar={() => ir(novo ? "novo" : "produto")} aoSeguir={() => ir(tipo === "compra" ? "documentos" : "conferir")} podeSeguir={quantidade > 0 && !passou} />}>
+          <div className="produto-grande pequeno">
+            {novo ? <Foto caminho={foto} alt={insumo.nome} className="foto" /> : <FotoProduto insumo={insumo} className="foto" />}
+            <h2>{insumo?.nome}</h2>
+          </div>
+          {usaContador ? (
+            <>
+              <Contador insumo={insumo} valor={quantidade} aoMudar={setQtd} />
+              {quantidade > 0 && <Embalagens insumo={insumo} quantidade={quantidade} />}
+            </>
+          ) : (
+            <>
+              <div className="visor">{qtd || <span className="apagado">0</span>} <small>{insumo?.unidade}</small></div>
+              {saiu != null && <p className="dica-anterior">Saíram: {numero(saiu)} {insumo?.unidade}</p>}
+              {passou && <div className="campo-aviso erro">Sobrou mais do que saiu. Confira o número.</div>}
+              <Teclado valor={typeof qtd === "string" ? qtd : ""} aoMudar={setQtd} casas={2} />
+            </>
+          )}
+          {tipo === "compra" && !novo && <div style={{ marginTop: 14 }}><FotoComprovante caminho={foto} aoTirar={setFoto} texto="Tirar foto do produto" /></div>}
+        </Tela>
+      );
+    }
+
+    case "conferir": {
+      const operador = dados.funcionarios.find((f) => f.id === operadorId);
+      const qtdTexto = emEmbalagens(insumo, quantidade).texto;
+      const fala = `Confira. ${tipo === "compra" ? "Produto novo" : "Sobra da pulverização"}. ${insumo?.nome}: ${qtdTexto}. Quem recebeu: ${operador?.nome}. ${tipo === "compra" ? "Se estiver certo, toque em enviar. O escritório vai conferir e aprovar." : "Se estiver certo, toque em salvar."}`;
+      return (
+        <Tela passo={passo} figura="📥" titulo={titulo} fala={fala}
+          rodape={(
+            <footer className="campo-rodape">
+              <button type="button" className="campo-btn cinza" onClick={() => ir("quantidade")}>◀ Voltar</button>
+              <button type="button" className="campo-btn verde" onClick={gravar} disabled={salvando}>
+                {salvando ? "Salvando…" : tipo === "compra" ? "✓ Enviar para aprovar" : "✓ Salvar"}
+              </button>
+            </footer>
+          )}>
+          <Pergunta figura="👀">Está certo?</Pergunta>
+          {aviso && <div className="campo-aviso erro">{aviso}</div>}
+          <div className="resumo-linha"><span className="figura">{tipo === "compra" ? "🆕" : "↩️"}</span><span>{tipo === "compra" ? "Produto novo" : "Sobra da pulverização"}</span></div>
+          <div className="resumo-linha" onClick={() => ir(novo ? "novo" : "produto")}>
+            {novo ? <Foto caminho={foto} alt={insumo.nome} className="foto" /> : <FotoProduto insumo={insumo} />}
+            <span>{insumo?.nome}{novo && " (sem cadastro)"}</span>
+          </div>
+          <div className="resumo-linha" onClick={() => ir("quantidade")}><span className="figura">🔢</span><span>{qtdTexto}</span></div>
+          <div className="resumo-linha" onClick={() => ir("operador")}><FotoOuInicial caminho={operador?.foto} nome={operador?.nome ?? "?"} /><span>{operador?.nome}</span></div>
+          {foto && !novo && <div className="resumo-linha"><Foto caminho={foto} alt="Foto tirada" className="foto" ampliar /><span>Foto tirada ✓</span></div>}
+          {tipo === "compra" && (
+            <>
+              <div className="resumo-linha" onClick={() => ir("documentos")}>
+                {fotoNota ? <Foto caminho={fotoNota} alt="Nota fiscal" className="foto" /> : <span className="figura">🧾</span>}
+                <span>{fotoNota ? "Nota fiscal ✓" : "Sem foto da nota"}</span>
+              </div>
+              <div className="resumo-linha" onClick={() => ir("documentos")}>
+                {fotoBoleto ? <Foto caminho={fotoBoleto} alt="Boleto" className="foto" /> : <span className="figura">💳</span>}
+                <span>{fotoBoleto || boleto ? `Boleto ✓${boleto?.valor ? ` ${brl(boleto.valor)}` : ""}` : "Sem boleto"}</span>
+              </div>
+            </>
+          )}
+        </Tela>
+      );
+    }
+
+    case "mais":
+      return (
+        <Tela passo={passo} figura="📥" titulo={titulo} fala="Guardado! Sobrou mais algum produto desta pulverização?"
+          rodape={(
+            <footer className="campo-rodape">
+              <button type="button" className="campo-btn cinza" onClick={async () => {
+                await salvar("pulverizacoes", { ...ordem, situacao: "concluida" });
+                ir("pronto");
+              }}>✕ Não, terminei</button>
+              <button type="button" className="campo-btn verde" onClick={() => { setInsumoId(null); setQtd(""); ir("produto"); }}>✓ Sim</button>
+            </footer>
+          )}>
+          <div className="pronto"><div className="check">✅</div><h2>Guardado!</h2><p>Sobrou mais algum produto desta pulverização?</p></div>
+        </Tela>
+      );
+
+    default:
+      return (
+        <Tela passo={passo} figura="📥" titulo={titulo}
+          fala={tipo === "compra" ? "Pronto! Enviado para o escritório aprovar. Obrigado." : "Pronto! Guardado no depósito. Obrigado."}>
+          <Pronto texto={tipo === "compra" ? "Enviado para o escritório aprovar." : "Guardado no depósito."} irPara={irPara} />
+        </Tela>
+      );
+  }
+}

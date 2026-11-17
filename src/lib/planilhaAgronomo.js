@@ -23,7 +23,7 @@ function baixar(buffer, nome) {
   URL.revokeObjectURL(a.href);
 }
 
-/** `linhas`: [{ produto, fabricante, tipo, principio, unidade, entrou, aplicado, saldo, minimo, situacao, custo, valor, observacao, fotos }] */
+/** `linhas`: [{ produto, fabricante, tipo, principio, unidade, entrou, aplicado, saldo, minimo, validade, situacao, custo, valor, observacao, fotos }] */
 export async function gerarPlanilhaAgronomo(nomeArquivo, linhas) {
   const { default: ExcelJS } = await import("exceljs");
   const pasta = new ExcelJS.Workbook();
@@ -40,6 +40,7 @@ export async function gerarPlanilhaAgronomo(nomeArquivo, linhas) {
     { header: "Aplicado", key: "aplicado", width: 12 },
     { header: "Saldo", key: "saldo", width: 12 },
     { header: "Estoque mínimo", key: "minimo", width: 15 },
+    { header: "Validade", key: "validade", width: 14 },
     { header: "Situação", key: "situacao", width: 12 },
     { header: "Custo médio (R$)", key: "custo", width: 16, style: { numFmt: "#,##0.00" } },
     { header: "Valor em estoque (R$)", key: "valor", width: 20, style: { numFmt: "#,##0.00" } },

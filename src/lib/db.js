@@ -6,6 +6,10 @@
  *   uma por coleção do esquema (culturas, talhoes, maquinas, …) → cópia local
  *   fila  → operações pendentes de envio para o Supabase, em ordem
  *   meta  → chaves de controle (última sincronização)
+ *   fotos → as fotos (chave = caminho no Storage): as tiradas aqui esperando
+ *           envio e as já baixadas, para aparecerem sem internet
+ *   arquivos → comprovantes salvos no aparelho esperando subir para a nuvem
+ *              (chave = caminho do arquivo; ver lib/arquivos.js)
  */
 
 import { COLECOES } from "./esquema";
@@ -15,9 +19,9 @@ export { COLECOES };
 const DB_NOME = "fazenda-carvalho-cruz";
 // Suba a versão sempre que uma coleção nova entrar no esquema: é no upgrade
 // que a store dela é criada.
-const DB_VERSAO = 3;
+const DB_VERSAO = 11;
 
-const STORES = [...COLECOES, "fila", "meta"];
+const STORES = [...COLECOES, "fila", "meta", "fotos", "arquivos"];
 
 let promessaDB = null;
 
@@ -45,6 +49,12 @@ export function abrirDB() {
       }
       if (!db.objectStoreNames.contains("meta")) {
         db.createObjectStore("meta");
+      }
+      if (!db.objectStoreNames.contains("fotos")) {
+        db.createObjectStore("fotos");
+      }
+      if (!db.objectStoreNames.contains("arquivos")) {
+        db.createObjectStore("arquivos");
       }
     };
 
@@ -111,10 +121,18 @@ export async function gravarColecao(store, itens) {
   await concluida;
 }
 
+/** Substitui várias stores de uma vez, numa transação só (bem mais rápido). */
 export async function gravarTodasColecoes(dados) {
-  for (const nome of COLECOES) {
-    if (Array.isArray(dados[nome])) await gravarColecao(nome, dados[nome]);
+  const nomes = COLECOES.filter((nome) => Array.isArray(dados[nome]));
+  if (!nomes.length) return;
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, nomes, "readwrite");
+  for (const nome of nomes) {
+    const os = tx.objectStore(nome);
+    os.clear();
+    for (const item of dados[nome]) os.put(item);
   }
+  await concluida;
 }
 
 export async function contarTudo() {
@@ -172,10 +190,12 @@ export async function atualizarOp(op) {
   await concluida;
 }
 
-export async function apagarOp(id) {
+export async function apagarOps(ids) {
+  if (!ids.length) return;
   const db = await abrirDB();
   const { tx, concluida } = transacao(db, ["fila"], "readwrite");
-  tx.objectStore("fila").delete(id);
+  const os = tx.objectStore("fila");
+  for (const id of ids) os.delete(id);
   await concluida;
 }
 
@@ -220,9 +240,57 @@ export async function gravarItem(store, item) {
   await concluida;
 }
 
+/** Grava (ou substitui) vários registros numa transação só. */
+export async function gravarItens(store, itens) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, [store], "readwrite");
+  const os = tx.objectStore(store);
+  for (const item of itens) os.put(item);
+  await concluida;
+}
+
 export async function apagarItem(store, id) {
   const db = await abrirDB();
   const { tx, concluida } = transacao(db, [store], "readwrite");
   tx.objectStore(store).delete(id);
+  await concluida;
+}
+
+// ─── Fotos ──────────────────────────────────────────────────────────────────
+
+/** @returns {Promise<{ blob: Blob, pendente: boolean } | undefined>} */
+export async function lerFoto(caminho) {
+  const db = await abrirDB();
+  const { tx } = transacao(db, ["fotos"], "readonly");
+  return pedido(tx.objectStore("fotos").get(caminho));
+}
+
+export async function gravarFoto(caminho, foto) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["fotos"], "readwrite");
+  tx.objectStore("fotos").put(foto, caminho);
+  await concluida;
+}
+
+// ─── Arquivos (comprovantes) ────────────────────────────────────────────────
+
+/** @param {{ arquivo: Blob, tipo: string }} valor */
+export async function gravarArquivo(caminho, valor) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["arquivos"], "readwrite");
+  tx.objectStore("arquivos").put(valor, caminho);
+  await concluida;
+}
+
+export async function lerArquivo(caminho) {
+  const db = await abrirDB();
+  const { tx } = transacao(db, ["arquivos"], "readonly");
+  return pedido(tx.objectStore("arquivos").get(caminho));
+}
+
+export async function apagarArquivo(caminho) {
+  const db = await abrirDB();
+  const { tx, concluida } = transacao(db, ["arquivos"], "readwrite");
+  tx.objectStore("arquivos").delete(caminho);
   await concluida;
 }

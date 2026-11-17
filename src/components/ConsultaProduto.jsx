@@ -20,7 +20,10 @@ export default function ConsultaProduto({ reg, setReg }) {
       const { data, error } = await supabase.functions.invoke("consultar-produto", {
         body: { nome: reg.nome, fabricante: reg.fabricante, principio_ativo: reg.principio_ativo, tipo: reg.tipo },
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        const corpo = await error.context?.json?.().catch(() => null);
+        throw new Error(corpo?.erro ?? corpo?.message ?? error.message);
+      }
       if (data?.erro) throw new Error(data.erro);
       setTexto(data.texto);
     } catch (e) {
