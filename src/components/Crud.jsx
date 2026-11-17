@@ -12,6 +12,7 @@ import { Icone, Modal, SeletorPeriodo } from "./ui";
 const SOMAVEIS = new Set([
   "valor", "valor_bruto", "valor_desconto", "valor_beneficiamento", "total", "litros", "quantidade", "trabalhado",
   "peso_liquido", "peso_kg", "km", "horas", "custo", "quantidade_total", "area_ha", "pes", "frete", "comissao", "milimetros",
+  "valor_aquisicao", "valor_quitacao", "valor_liquido",
 ]);
 
 /** Tipos de coluna que viram filtro de caixinha quando a coleção não define `filtros`. */

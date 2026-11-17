@@ -306,6 +306,18 @@ function SituacaoMaquinas({ dados }) {
   );
 }
 
+/** Valor líquido = valor de mercado − o que falta quitar (só aparece na lista). */
+const INVENTARIO_CALCULADAS = {
+  campos: { valor_liquido: { tipo: "dinheiro", rotulo: "Valor líquido" } },
+  calcular: (dados) => new Map(dados.maquinas.map((m) => [m.id, {
+    valor_liquido: m.valor == null || m.valor === "" ? null : (Number(m.valor) || 0) - (Number(m.valor_quitacao) || 0),
+  }])),
+};
+const INVENTARIO_COLUNAS = [
+  "nome", "categoria", "marca", "modelo", "ano", "estado_conservacao",
+  "valor_aquisicao", "valor_quitacao", "valor", "valor_liquido",
+];
+
 /** Inventário: totais de aquisição, quitação e estado, e o cadastro embaixo. */
 function InventarioMaquinas(props) {
   const ativas = props.dados.maquinas.filter((m) => m.ativo !== false);
@@ -328,10 +340,12 @@ function InventarioMaquinas(props) {
           <Stat rotulo="Valor de aquisição" valor={brl(aquisicao)} sub={porEstado || "Informe o estado de conservação"} />
           <Stat rotulo="Falta para quitar" valor={brl(quitacao)} cor={quitacao > 0 ? "laranja" : ""}
             sub={financiadas ? `${financiadas} ainda financiada(s)` : "Tudo quitado"} />
-          {mercado > 0 && <Stat rotulo="Valor de mercado hoje" valor={brl(mercado)} sub={`Patrimônio livre: ${brl(mercado - quitacao)}`} />}
+          <Stat rotulo="Valor de mercado" valor={brl(mercado)} sub="Soma do valor de venda hoje" />
+          <Stat rotulo="Valor líquido" valor={brl(mercado - quitacao)} cor={mercado - quitacao < 0 ? "vermelho" : ""}
+            sub="Valor de mercado − falta quitar" />
         </div>
       )}
-      <Crud colecao="maquinas" {...props} />
+      <Crud colecao="maquinas" calculadas={INVENTARIO_CALCULADAS} colunas={INVENTARIO_COLUNAS} {...props} />
     </>
   );
 }
