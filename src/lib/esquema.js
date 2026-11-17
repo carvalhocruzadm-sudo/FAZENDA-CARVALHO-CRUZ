@@ -43,6 +43,11 @@ export const CATEGORIAS_DESPESA = [
   "Arrendamentos", "Empréstimos", "Retirada / dividendos", "Fretes", "Compra de laranja", "Cartão de crédito", "Outros",
 ];
 
+export const ESTADOS_CONSERVACAO = [
+  ["novo", "Novo"], ["otimo", "Ótimo"], ["bom", "Bom"], ["regular", "Regular"],
+  ["ruim", "Ruim"], ["sucata", "Sucata / parado"],
+];
+
 export const FORMAS_PAGAMENTO = ["PIX", "Boleto", "Cartão", "Dinheiro", "Transferência", "Cheque"];
 
 export const FASES = [
@@ -232,7 +237,10 @@ export const ESQUEMA = {
       placa: { tipo: "texto", rotulo: "Placa / chassi / série" },
       leitura_inicial: { tipo: "numero", rotulo: "Horímetro/km no cadastro", casas: 1, dica: "A leitura atual passa a vir dos lançamentos" },
       intervalo_revisao: { tipo: "numero", rotulo: "Revisão a cada (h ou km)", dica: "Ex.: 250 h, 10.000 km" },
-      valor: { tipo: "dinheiro", rotulo: "Valor patrimonial" },
+      estado_conservacao: { tipo: "opcoes", rotulo: "Estado de conservação", padrao: "bom", opcoes: ESTADOS_CONSERVACAO },
+      valor_aquisicao: { tipo: "dinheiro", rotulo: "Valor da aquisição", dica: "Quanto custou quando foi comprada" },
+      valor_quitacao: { tipo: "dinheiro", rotulo: "Custo da quitação", dica: "Quanto falta pagar para quitar o financiamento (0 se já está quitada)" },
+      valor: { tipo: "dinheiro", rotulo: "Valor de mercado hoje", dica: "Quanto valeria se fosse vendida hoje (estimativa)" },
       ativo: { tipo: "booleano", rotulo: "Ativa", padrao: true },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
     },
@@ -242,7 +250,7 @@ export const ESQUEMA = {
           : reg.categoria === "implemento" ? "nenhum" : "horas",
       }),
     },
-    colunas: ["nome", "categoria", "marca", "modelo", "placa", "medidor"],
+    colunas: ["nome", "categoria", "marca", "modelo", "ano", "estado_conservacao", "valor_aquisicao", "valor_quitacao"],
     ordem: (a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }),
     resumo: (r) => r.nome,
   },
