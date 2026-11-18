@@ -100,35 +100,44 @@ export async function gerarPdfPulverizacao(dados, ordem) {
   y = doc.lastAutoTable.finalY + 10;
   doc.setFont("helvetica", "bold").setFontSize(13).text("Produtos", 14, y);
   y += 4;
-  const alturaBloco = 42;
+  const alturaBloco = 48;
   itens.forEach(({ insumo, item }, k) => {
     if (y + alturaBloco > altura - 12) { doc.addPage(); y = 16; }
     doc.setDrawColor(220).setLineWidth(0.3).roundedRect(14, y, largura - 28, alturaBloco - 4, 2, 2);
     const f = fotos[k];
-    const caixa = 34;
+    const caixa = 38;
     if (f) {
       const esc = Math.min(caixa / f.w, caixa / f.h);
       const w = f.w * esc;
       const h = f.h * esc;
-      doc.addImage(f.url, "JPEG", 16 + (caixa - w) / 2, y + 2 + (caixa - h) / 2, w, h);
+      doc.addImage(f.url, "JPEG", 16 + (caixa - w) / 2, y + 3 + (caixa - h) / 2, w, h);
     } else {
-      doc.setFillColor(240, 240, 235).rect(16, y + 2, caixa, caixa, "F");
-      doc.setFontSize(8).setTextColor(150).text("sem foto", 16 + caixa / 2, y + 20, { align: "center" });
+      doc.setFillColor(240, 240, 235).rect(16, y + 3, caixa, caixa, "F");
+      doc.setFontSize(8).setTextColor(150).text("sem foto", 16 + caixa / 2, y + 22, { align: "center" });
     }
     const x = 16 + caixa + 6;
     const un = insumo.unidade || "";
     doc.setTextColor(40, 40, 35).setFont("helvetica", "bold").setFontSize(13);
     doc.text(`${k + 1}. ${insumo.nome}`, x, y + 8);
-    doc.setFont("helvetica", "normal").setFontSize(10);
-    const dose = porPipa && item.dose_pipa != null
-      ? `Dose: ${numero(item.dose_pipa, 3)} ${un} por pipa`
-      : `Dose: ${numero(item.dose_ha, 3)} ${un} por ha`;
-    doc.text(dose, x, y + 15);
-    doc.setFont("helvetica", "bold").setFontSize(11);
-    doc.text(`Total: ${numero(item.quantidade, 2)} ${un}`, x, y + 22);
+
+    // Destaque: a dose por hectare, grande, numa faixa verde.
+    const doseHa = item.dose_ha != null && item.dose_ha !== ""
+      ? n(item.dose_ha)
+      : porPipa && item.dose_pipa != null ? n(item.dose_pipa) / n(ordem.ha_por_pipa) : null;
+    const textoHa = doseHa != null ? `${numero(doseHa, 3)} ${un} por hectare` : "Dose por hectare não informada";
+    doc.setFont("helvetica", "bold").setFontSize(16);
+    const larguraFaixa = doc.getTextWidth(textoHa) + 8;
+    doc.setFillColor(...verde).roundedRect(x, y + 11.5, larguraFaixa, 10, 1.5, 1.5, "F");
+    doc.setTextColor(255, 255, 255).text(textoHa, x + 4, y + 18.8);
+
+    // O resto em letra menor e cinza.
     doc.setFont("helvetica", "normal").setFontSize(9.5).setTextColor(119, 119, 106);
-    doc.text(`No depósito: ${emEmbalagens(insumo, item.quantidade).texto}`, x, y + 29);
-    if (insumo.fabricante) doc.text(`Fabricante: ${insumo.fabricante}`, x, y + 34);
+    const extras = [];
+    if (porPipa && item.dose_pipa != null) extras.push(`Por pipa: ${numero(item.dose_pipa, 3)} ${un}`);
+    extras.push(`Total da ordem: ${numero(item.quantidade, 2)} ${un}`);
+    doc.text(extras.join("   ·   "), x, y + 28);
+    doc.text(`No depósito: ${emEmbalagens(insumo, item.quantidade).texto}`, x, y + 34);
+    if (insumo.fabricante) doc.text(`Fabricante: ${insumo.fabricante}`, x, y + 40);
     y += alturaBloco;
   });
 
