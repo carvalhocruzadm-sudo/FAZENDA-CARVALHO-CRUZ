@@ -520,6 +520,9 @@ span.figura.mini, .mini .figura { font-size: 30px; }
 .publico h3 { font-size: 14px; margin-bottom: 10px; }
 .publico .boleto { border: 1px solid var(--linha); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
 .publico .boleto header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.publico .varios { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin-bottom: 14px; }
+.publico .varios .btn { cursor: pointer; padding: 11px 16px; }
+.publico .varios .desligado { opacity: 0.6; pointer-events: none; }
 .publico .acoes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .publico .acoes .btn { justify-content: center; padding: 11px 16px; }
 .mensagem {
