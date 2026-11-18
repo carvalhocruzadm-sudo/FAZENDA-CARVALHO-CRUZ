@@ -458,6 +458,7 @@ function Calendario({ dados, abrir, pagar }) {
         <TabelaSimples
           vazio={diaEscolhido ? "Nenhum pagamento vence neste dia." : "Nenhum pagamento neste mês. Use “Ler boleto” ou “Outro pagamento” para incluir."}
           linhas={lista}
+          aoClicar={abrir}
           colunas={[
             { rotulo: "Vencimento", valor: (b) => data(b.vencimento) },
             { rotulo: "Empresa", valor: (b) => (b.a_conferir ? <>{b.empresa} <span className="selo atencao">Lido no depósito</span></> : b.empresa) },
@@ -468,8 +469,8 @@ function Calendario({ dados, abrir, pagar }) {
             {
               rotulo: " ", valor: (b) => (
                 <span style={{ display: "inline-flex", gap: 6 }}>
-                  {!b.pago && <button className="btn" onClick={() => pagar(b)}><Icone nome="check" tamanho={15} /> Pagar</button>}
-                  <button className="btn" onClick={() => abrir(b)}><Icone nome="editar" tamanho={15} /> Abrir</button>
+                  {!b.pago && <button className="btn" onClick={(e) => { e.stopPropagation(); pagar(b); }}><Icone nome="check" tamanho={15} /> Pagar</button>}
+                  <button className="btn" onClick={(e) => { e.stopPropagation(); abrir(b); }}><Icone nome="editar" tamanho={15} /> Abrir</button>
                 </span>
               ),
             },
