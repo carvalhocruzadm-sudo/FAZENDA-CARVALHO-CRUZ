@@ -261,11 +261,21 @@ lançamentos do campo (veja "Notificação no celular" abaixo).
 
 Um número de WhatsApp que conversa com o sistema todo. Só atende os números autorizados.
 
-**Comprovante** — mande a **foto ou o PDF** (PIX, boleto, transferência). A IA lê valor, data e
-favorecido, escolhe a categoria olhando como a fazenda já lançou aquele favorecido, **lança em Despesas na
-hora** com o arquivo no campo **Comprovante** e responde o que lançou. Para dizer para que foi, escreva na
-legenda da foto ou numa mensagem logo antes ("almoço jhun", "1620", "diária João"). O mesmo comprovante
-mandado duas vezes não duplica.
+**Arquivos (foto ou PDF)** — a IA vê o que é e lança no lugar certo, na hora:
+
+- **Comprovante** (PIX, transferência, boleto já pago): lê valor, data e favorecido, escolhe a categoria
+  olhando como a fazenda já lançou aquele favorecido e **lança em Despesas** com o arquivo no campo
+  **Comprovante**. Se for o pagamento de um boleto que está na Programação de pagamentos (mesmo código de
+  barras), marca o boleto como **pago**.
+- **Boleto a pagar**: lê o código de barras (que traz valor, vencimento e banco), o beneficiário e o nº do
+  documento e **lança na Programação de pagamentos** como "a pagar". Avisa se já venceu. O mesmo boleto
+  mandado duas vezes não duplica.
+- **Outra coisa** (nota fiscal, orçamento…): não lança nada e diz o que viu. Se ele errar, responda
+  "são boletos para pagar" (ou "é comprovante") que ele lê de novo os arquivos que acabou de recusar e lança
+  do jeito certo.
+
+Para dizer para que foi, escreva na legenda ou numa mensagem logo antes ("almoço jhun", "1620", "diária
+João", "boleto do adubo").
 
 **Perguntas** — "quanto gastei com diesel em outubro?", "quantas horas o trator 02 trabalhou essa
 semana?", "quais boletos vencem até sexta?". Ele busca nos dados antes de responder (nunca chuta).
