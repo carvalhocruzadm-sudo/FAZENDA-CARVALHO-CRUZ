@@ -11,8 +11,10 @@ import { salvarComAviso, textoDoAviso } from "./lib/avisos";
 import { DA_CULTURA, DA_FAZENDA } from "./lib/navegacao";
 import { iniciarNtfy } from "./lib/ntfy";
 import { culturaDaTela, culturasAtivas, dadosDaCultura, emojiDaCultura, telaDaCultura } from "./lib/porCultura";
+import { ehPaginaDeEnvio } from "./lib/linkFornecedor";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Boletos from "./pages/Boletos";
+import EnviarBoleto from "./pages/EnviarBoleto";
 import Agronomo from "./pages/Agronomo";
 import Avisos from "./pages/Avisos";
 import Cultura from "./pages/Cultura";
@@ -635,6 +637,8 @@ class ProtecaoErro extends Component {
 const tokenAgronomo = () => window.location.pathname.match(/^\/agronomo\/([A-Za-z0-9]{16,})\/?$/)?.[1];
 
 export default function App() {
+  // Link público dos fornecedores (enviar boleto): sem login e sem o banco do aparelho.
+  if (ehPaginaDeEnvio()) return <ProtecaoErro><EnviarBoleto /></ProtecaoErro>;
   const token = tokenAgronomo();
   if (token) return <ProtecaoErro><Agronomo token={token} /></ProtecaoErro>;
   return (

@@ -48,6 +48,8 @@ export function pendencias(dados) {
   const tanque = diesel(dados);
   const aConferir = dados.insumo_entradas.filter((e) => e.a_conferir).length;
   if (aConferir) lista.push({ tipo: "atencao", texto: `${aConferir} entrada(s) de produto lançada(s) no depósito esperando sua aprovação`, ir: "quimicos", aba: "aprovar" });
+  const doFornecedor = (dados.boletos_fornecedor ?? []).filter((b) => b.situacao === "pendente").length;
+  if (doFornecedor) lista.push({ tipo: "atencao", texto: `${doFornecedor} boleto(s) enviado(s) por fornecedor esperando conferência`, ir: "boletos", aba: "fornecedores" });
   lista.push(...pendenciasDasCulturas(dados));
   for (const m of dados.maquinas.filter((x) => x.ativo !== false)) {
     const s = situacaoRevisao(dados, m);
