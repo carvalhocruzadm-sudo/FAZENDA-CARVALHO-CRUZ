@@ -402,6 +402,39 @@ export const ESQUEMA = {
     colunas: ["data", "situacao", "produto", "quantidade", "unidade", "operador_id", "resposta"],
   },
 
+  boletos_fornecedor: {
+    titulo: "Boletos enviados por fornecedores", singular: "boleto", icone: "dinheiro", lancamento: true, semRepetir: true,
+    descricao: "O fornecedor manda o boleto pelo link público (sem senha). O escritório confere e lança como despesa a pagar.",
+    // Quem não tem login (o fornecedor) só pode INSERIR boleto novo nesta
+    // tabela — nunca ler, mudar ou apagar. Ver scripts/gerar-schema.mjs.
+    envioPublico: true,
+    campos: {
+      data: { tipo: "data", rotulo: "Enviado em", obrigatorio: true, padrao: hoje },
+      envio: { tipo: "texto", rotulo: "Código do envio", oculto: true },
+      fornecedor: { tipo: "texto", rotulo: "Fornecedor (nome da empresa)", obrigatorio: true },
+      documento: { tipo: "texto", rotulo: "CNPJ / CPF" },
+      contato: { tipo: "texto", rotulo: "Quem está enviando e telefone" },
+      nota: { tipo: "texto", rotulo: "Nº da nota fiscal" },
+      descricao: { tipo: "texto", rotulo: "Referente a", dica: "Ex.: adubo, peças do trator" },
+      valor: { tipo: "dinheiro", rotulo: "Valor do boleto", obrigatorio: true },
+      vencimento: { tipo: "data", rotulo: "Vencimento", obrigatorio: true },
+      codigo_boleto: codigoBoleto,
+      arquivos: { tipo: "fotos", rotulo: "Boleto (foto ou PDF)", obrigatorio: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      situacao: { tipo: "opcoes", rotulo: "Situação", oculto: true, padrao: "pendente", opcoes: [["pendente", "Esperando conferência"], ["lancado", "Lançado nas despesas"], ["recusado", "Recusado"]] },
+      resposta: { tipo: "texto", rotulo: "Motivo da recusa", oculto: true },
+      despesa_id: { tipo: "texto", rotulo: "Despesa lançada", oculto: true },
+    },
+    aoMudar: {
+      codigo_boleto: (reg) => {
+        const b = lerBoleto(reg.codigo_boleto);
+        return b ? { vencimento: b.vencimento ?? reg.vencimento, valor: reg.valor || b.valor } : {};
+      },
+    },
+    travado: (r) => r.situacao !== "pendente",
+    colunas: ["data", "situacao", "fornecedor", "nota", "valor", "vencimento"],
+  },
+
   aplicacoes: {
     titulo: "Aplicações / saídas", singular: "aplicação", icone: "spray", lancamento: true,
     descricao: "Produto que saiu do estoque para um talhão. Vira custo do talhão e da cultura.",

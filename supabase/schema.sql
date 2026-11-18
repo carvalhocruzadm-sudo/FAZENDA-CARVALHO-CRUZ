@@ -292,6 +292,37 @@ drop policy if exists "equipe acessa solicitacoes_produto" on public.solicitacoe
 create policy "equipe acessa solicitacoes_produto" on public.solicitacoes_produto
   for all to authenticated using (true) with check (true);
 
+-- Boletos enviados por fornecedores
+create table if not exists public.boletos_fornecedor (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.boletos_fornecedor add column if not exists data date;
+alter table public.boletos_fornecedor add column if not exists envio text;
+alter table public.boletos_fornecedor add column if not exists fornecedor text;
+alter table public.boletos_fornecedor add column if not exists documento text;
+alter table public.boletos_fornecedor add column if not exists contato text;
+alter table public.boletos_fornecedor add column if not exists nota text;
+alter table public.boletos_fornecedor add column if not exists descricao text;
+alter table public.boletos_fornecedor add column if not exists valor numeric;
+alter table public.boletos_fornecedor add column if not exists vencimento date;
+alter table public.boletos_fornecedor add column if not exists codigo_boleto text;
+alter table public.boletos_fornecedor add column if not exists arquivos jsonb;
+alter table public.boletos_fornecedor add column if not exists observacao text;
+alter table public.boletos_fornecedor add column if not exists situacao text;
+alter table public.boletos_fornecedor add column if not exists resposta text;
+alter table public.boletos_fornecedor add column if not exists despesa_id text;
+create index if not exists boletos_fornecedor_data_idx on public.boletos_fornecedor (data);
+alter table public.boletos_fornecedor enable row level security;
+drop policy if exists "equipe acessa boletos_fornecedor" on public.boletos_fornecedor;
+create policy "equipe acessa boletos_fornecedor" on public.boletos_fornecedor
+  for all to authenticated using (true) with check (true);
+drop policy if exists "publico envia boletos_fornecedor" on public.boletos_fornecedor;
+create policy "publico envia boletos_fornecedor" on public.boletos_fornecedor
+  for insert to anon with check (situacao = 'pendente' and despesa_id is null and coalesce(pg_column_size(arquivos), 0) < 8000000);
+grant insert on public.boletos_fornecedor to anon;
+
 -- Aplicações / saídas
 create table if not exists public.aplicacoes (
   id uuid primary key default gen_random_uuid(),

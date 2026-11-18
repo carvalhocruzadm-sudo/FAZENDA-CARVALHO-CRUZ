@@ -54,6 +54,8 @@ export default function Painel({ dados, irPara }) {
     if (tanque.litrosEntrada && tanque.saldo < 0) alertas.push({ tipo: "ruim", texto: `Tanque de diesel negativo (${numero(tanque.saldo, 0)} L) — falta lançar compra`, ir: "diesel" });
     const pendentes = dados.solicitacoes_produto.filter((x) => x.situacao === "pendente").length;
     if (pendentes) alertas.unshift({ tipo: "atencao", texto: `${pendentes} ${pendentes === 1 ? "entrada de produto esperando" : "entradas de produto esperando"} sua aprovação`, ir: "quimicos" });
+    const boletos = dados.boletos_fornecedor.filter((x) => x.situacao === "pendente").length;
+    if (boletos) alertas.unshift({ tipo: "atencao", texto: `${boletos} ${boletos === 1 ? "boleto de fornecedor esperando" : "boletos de fornecedores esperando"} conferência`, ir: "financeiro" });
     for (const e of dados.insumo_entradas.filter((x) => x.pago === false && x.vencimento)) {
       const texto = `boleto de ${nomeRef(dados, "insumos", e.insumo_id)}${e.fornecedor ? ` (${e.fornecedor})` : ""} — ${brl(e.valor)}`;
       if (e.vencimento < hojeIso) alertas.push({ tipo: "ruim", texto: `Vencido ${data(e.vencimento)}: ${texto}`, ir: "quimicos" });

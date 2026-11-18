@@ -4,9 +4,11 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import { Icone } from "./components/ui";
 import { useDados } from "./hooks/useDados";
 import { useSync } from "./hooks/useSync";
+import { ehPaginaDeEnvio } from "./lib/boletos";
 import { desligarModoCampo, ligarModoCampo, modoCampoLigado } from "./lib/aparelho";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Campo from "./pages/Campo";
+import EnviarBoleto from "./pages/EnviarBoleto";
 import Login from "./pages/Login";
 import Painel from "./pages/Painel";
 import { Diesel, Equipe, Financeiro, Fretes, Lavoura, Maquinas, Quimicos, Vendas } from "./pages/Secoes";
@@ -163,6 +165,8 @@ class ProtecaoErro extends Component {
 }
 
 export default function App() {
+  // Link público dos fornecedores: sem login e sem o banco do aparelho.
+  if (ehPaginaDeEnvio()) return <ProtecaoErro><EnviarBoleto /></ProtecaoErro>;
   return (
     <ProtecaoErro>
       <Portao />

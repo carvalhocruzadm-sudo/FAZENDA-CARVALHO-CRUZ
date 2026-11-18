@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
 
+import { reduzirFoto } from "../lib/arquivos";
 import { lerCodigoDaFoto } from "../lib/codigos";
 import { ESQUEMA, campoObrigatorio, campoVisivel } from "../lib/esquema";
 import ConsultaProduto from "./ConsultaProduto";
@@ -14,25 +15,6 @@ function sugestoesDoCampo(campo, dados) {
   const usadas = fontes.flatMap(([colecao, chave, filtro]) =>
     (dados[colecao] ?? []).filter((x) => !filtro || filtro(x)).map((x) => x[chave]).filter(Boolean));
   return [...new Set([...fixas, ...usadas])].sort((a, b) => String(a).localeCompare(String(b)));
-}
-
-/** Reduz a foto (lado maior 1000 px, JPEG) para caber no registro e sincronizar rápido. */
-function reduzirFoto(arquivo, ladoMaior = 1000) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(arquivo);
-    const img = new Image();
-    img.onload = () => {
-      const escala = Math.min(1, ladoMaior / Math.max(img.width, img.height));
-      const tela = document.createElement("canvas");
-      tela.width = Math.round(img.width * escala);
-      tela.height = Math.round(img.height * escala);
-      tela.getContext("2d").drawImage(img, 0, 0, tela.width, tela.height);
-      URL.revokeObjectURL(url);
-      resolve(tela.toDataURL("image/jpeg", 0.7));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não consegui abrir essa foto.")); };
-    img.src = url;
-  });
 }
 
 const MAX_FOTOS = 6;

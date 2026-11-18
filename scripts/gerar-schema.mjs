@@ -36,7 +36,16 @@ for (const [tabela, def] of Object.entries(ESQUEMA)) {
   sql += `alter table public.${tabela} enable row level security;
 drop policy if exists "equipe acessa ${tabela}" on public.${tabela};
 create policy "equipe acessa ${tabela}" on public.${tabela}
-  for all to authenticated using (true) with check (true);\n\n`;
+  for all to authenticated using (true) with check (true);\n`;
+  if (def.envioPublico) {
+    // Link público (fornecedor sem login): só pode criar registro novo, ainda
+    // pendente e de tamanho razoável. Não lê, não muda e não apaga nada.
+    sql += `drop policy if exists "publico envia ${tabela}" on public.${tabela};
+create policy "publico envia ${tabela}" on public.${tabela}
+  for insert to anon with check (situacao = 'pendente' and despesa_id is null and coalesce(pg_column_size(arquivos), 0) < 8000000);
+grant insert on public.${tabela} to anon;\n`;
+  }
+  sql += `\n`;
 }
 
 sql += `-- ─── Cadastro inicial (tirado das planilhas) ───────────────────────────────\n`;

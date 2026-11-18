@@ -11,6 +11,7 @@ import { brl, data, nomeRef, numero } from "../lib/formato";
 import { contatosDoBling, textoDoArquivo } from "../lib/importarContatos";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 import AprovarEntradas from "./AprovarEntradas";
+import BoletosFornecedores from "./BoletosFornecedores";
 
 /**
  * Uma seção do menu = abas. Cada aba é uma coleção (vira a tela padrão de
@@ -464,14 +465,15 @@ function Custos({ dados }) {
 }
 
 export function Financeiro(props) {
-  return (
-    <Secao props={props} abas={[
-      ["resumo", "Resumo do mês", ResumoFinanceiro],
-      ["despesas", "Despesas"],
-      ["entradas", "Outras entradas"],
-      ["custos", "Custo por cultura e talhão", Custos],
-    ]} />
-  );
+  const pendentes = props.dados.boletos_fornecedor.filter((b) => b.situacao === "pendente").length;
+  const boletos = ["boletos", pendentes ? `Boletos de fornecedores (${pendentes})` : "Boletos de fornecedores", BoletosFornecedores];
+  const abas = [
+    ["resumo", "Resumo do mês", ResumoFinanceiro],
+    ["despesas", "Despesas"],
+    ["entradas", "Outras entradas"],
+    ["custos", "Custo por cultura e talhão", Custos],
+  ];
+  return <Secao props={props} abas={pendentes ? [boletos, ...abas] : [...abas, boletos]} />;
 }
 
 export function Equipe(props) {
