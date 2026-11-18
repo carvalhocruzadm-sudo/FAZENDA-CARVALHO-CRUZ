@@ -221,52 +221,92 @@ export function codigosNoTexto(texto) {
 /**
  * Lançamentos repetidos na Programação de pagamentos — para não pagar duas vezes.
  *
- * Dois pagamentos são o mesmo quando:
- *   • têm o mesmo código de boleto (certeza); ou
- *   • têm a mesma empresa, o mesmo valor e o mesmo vencimento (provável).
- *     Se os dois têm descrição e as descrições são diferentes (ex.: "parcela 1"
- *     e "parcela 2"), não conta: é assim que se diz que não é repetido.
+ * Dois pagamentos parecem o mesmo quando:
+ *   • têm o mesmo código de boleto (certeza);
+ *   • têm o mesmo valor e o mesmo vencimento — a descrição não importa, porque
+ *     o mesmo boleto lançado pelo WhatsApp, pelo PDF e à mão vem com descrições
+ *     diferentes (e às vezes com o nome da empresa escrito de outro jeito); ou
+ *   • têm a mesma empresa e o mesmo valor com vencimentos até 5 dias de distância
+ *     (vencimento digitado errado num dos dois).
+ *
+ * Não contam: dois boletos com códigos diferentes; parcelas diferentes da mesma
+ * conta ("(1/12)" e "(2/12)", "parcela 1" e "parcela 2"); e os que alguém já
+ * marcou como "não é repetido" (os dois do par marcados).
  *
  * Só mostra os grupos com algum ainda a pagar (os já pagos não têm mais o que evitar).
- * Devolve [{ chave, certeza, itens: [boleto, …] }], o mais perto de vencer primeiro.
+ * Devolve [{ chave, motivo, itens: [boleto, …] }], o mais perto de vencer primeiro.
  */
 export function pagamentosRepetidos(boletos) {
-  const texto = (t) => String(t ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
+  const texto = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
   const centavos = (v) => Math.round((Number(v) || 0) * 100);
-  const lista = (boletos ?? []).filter((b) => b && b.vencimento && centavos(b.valor) > 0);
+  const dias = (a, b) => Math.abs((Date.parse(a) - Date.parse(b)) / 86400000);
+  const lista = (boletos ?? []).filter((b) => b && b.id && b.vencimento && centavos(b.valor) > 0);
 
-  // Junta quem é igual (union-find simples), para A=B pelo código e B=C pelo nome virar um grupo só.
-  const pai = new Map(lista.map((b) => [b.id, b.id]));
-  const raiz = (id) => (pai.get(id) === id ? id : raiz(pai.get(id)));
-  const certos = new Set();
-  const juntar = (a, b, certeza) => {
-    pai.set(raiz(a.id), raiz(b.id));
-    if (certeza) { certos.add(a.id); certos.add(b.id); }
+  // Palavras que não dizem quem é a empresa.
+  const GENERICAS = new Set(["ltda", "eireli", "epp", "me", "sa", "s", "a", "de", "da", "do", "das", "dos", "e", "comercio", "industria",
+    "servicos", "cia", "produtos", "pagamento", "boleto", "pix", "receita", "federal", "banco", "caixa", "economica"]);
+  const palavras = (t) => new Set(texto(t).split(" ").filter((p) => p.length >= 3 && !GENERICAS.has(p)));
+  const mesmaEmpresa = (a, b) => {
+    const n1 = texto(a.empresa);
+    const n2 = texto(b.empresa);
+    if (!n1 || !n2) return false;
+    if (n1 === n2 || n1.includes(n2) || n2.includes(n1)) return true;
+    const p2 = palavras(b.empresa);
+    return [...palavras(a.empresa)].some((p) => p2.has(p));
+  };
+  // "(3/12)", "parcela 3", "3ª parcela" → "3/12" ou "3".
+  const parcela = (t) => {
+    const s = String(t ?? "").toLowerCase();
+    const m = s.match(/\((\d+)\s*\/\s*(\d+)\)/) || s.match(/parcela\s*(\d+)(?:\s*\/\s*(\d+))?/) || s.match(/(\d+)\s*[ªa]?\s*parcela/);
+    return m ? `${Number(m[1])}/${m[2] ?? ""}` : null;
   };
 
-  const porCodigo = new Map();
-  const porDados = new Map();
+  /** Por que `a` e `b` parecem o mesmo pagamento (ou null). */
+  const motivoDoPar = (a, b) => {
+    const c1 = soDigitos(a.linha_digitavel);
+    const c2 = soDigitos(b.linha_digitavel);
+    const temCodigo = c1.length >= 44 && c2.length >= 44;
+    if (temCodigo && c1 === c2) return "codigo";
+    if (temCodigo) return null;
+    if (a.nao_repetido && b.nao_repetido) return null;
+    if (centavos(a.valor) !== centavos(b.valor)) return null;
+    const p1 = parcela(a.descricao);
+    const p2 = parcela(b.descricao);
+    if (p1 && p2 && p1 !== p2) return null;
+    if (a.vencimento === b.vencimento) return mesmaEmpresa(a, b) ? "empresa" : "valor";
+    if (dias(a.vencimento, b.vencimento) <= 5 && mesmaEmpresa(a, b)) return "perto";
+    return null;
+  };
+
+  // Junta quem é igual: A=B e B=C viram um grupo só.
+  const pai = new Map(lista.map((b) => [b.id, b.id]));
+  const raiz = (id) => (pai.get(id) === id ? id : raiz(pai.get(id)));
+  const motivos = new Map();
+  const FORCA = { codigo: 4, empresa: 3, perto: 2, valor: 1 };
+
+  const porValor = new Map();
   for (const b of lista) {
-    const codigo = soDigitos(b.linha_digitavel);
-    if (codigo.length >= 44) {
-      const igual = porCodigo.get(codigo);
-      if (igual) juntar(b, igual, true); else porCodigo.set(codigo, b);
+    const mesmoValor = porValor.get(centavos(b.valor)) ?? [];
+    for (const outro of mesmoValor) {
+      const motivo = motivoDoPar(b, outro);
+      if (!motivo) continue;
+      pai.set(raiz(b.id), raiz(outro.id));
+      for (const id of [b.id, outro.id]) if ((FORCA[motivos.get(id)] ?? 0) < FORCA[motivo]) motivos.set(id, motivo);
     }
-    const chave = `${texto(b.empresa)}|${centavos(b.valor)}|${b.vencimento}`;
-    if (!texto(b.empresa)) continue;
-    const mesmos = porDados.get(chave) ?? [];
-    for (const outro of mesmos) {
-      const d1 = texto(b.descricao);
-      const d2 = texto(outro.descricao);
-      if (d1 && d2 && d1 !== d2) continue;
-      // Dois boletos com códigos diferentes não são o mesmo, mesmo com tudo igual.
-      const c1 = soDigitos(b.linha_digitavel);
-      const c2 = soDigitos(outro.linha_digitavel);
-      if (c1.length >= 44 && c2.length >= 44 && c1 !== c2) continue;
-      juntar(b, outro, false);
-    }
-    mesmos.push(b);
-    porDados.set(chave, mesmos);
+    mesmoValor.push(b);
+    porValor.set(centavos(b.valor), mesmoValor);
+  }
+  // O mesmo código com valor diferente (um dos dois digitado errado) também é repetido.
+  const porCodigo = new Map();
+  for (const b of lista) {
+    const c = soDigitos(b.linha_digitavel);
+    if (c.length < 44) continue;
+    const igual = porCodigo.get(c);
+    if (igual) {
+      pai.set(raiz(b.id), raiz(igual.id));
+      motivos.set(b.id, "codigo");
+      motivos.set(igual.id, "codigo");
+    } else porCodigo.set(c, b);
   }
 
   const grupos = new Map();
@@ -279,7 +319,7 @@ export function pagamentosRepetidos(boletos) {
     .filter(([, itens]) => itens.length > 1 && itens.some((b) => !b.pago))
     .map(([chave, itens]) => ({
       chave,
-      certeza: itens.some((b) => certos.has(b.id)),
+      motivo: itens.map((b) => motivos.get(b.id)).sort((x, y) => (FORCA[y] ?? 0) - (FORCA[x] ?? 0))[0],
       itens: itens.sort((a, b) => Number(Boolean(b.pago)) - Number(Boolean(a.pago)) || String(a.vencimento).localeCompare(String(b.vencimento))),
     }))
     .sort((a, b) => String(a.itens[0].vencimento).localeCompare(String(b.itens[0].vencimento)));

@@ -824,6 +824,8 @@ export const ESQUEMA = {
       observacao: { tipo: "textoLongo", rotulo: "Observação" },
       a_conferir: { tipo: "booleano", rotulo: "Lido no depósito — falta conferir a empresa" },
       despesa_id: { tipo: "texto", rotulo: "Despesa lançada", oculto: true },
+      // Marcado no aviso de repetidos: "não é repetido" (o par com os dois marcados não avisa mais).
+      nao_repetido: { tipo: "booleano", rotulo: "Conferido: não é pagamento repetido", oculto: true },
     },
     aoMudar: {
       linha_digitavel: (reg) => {

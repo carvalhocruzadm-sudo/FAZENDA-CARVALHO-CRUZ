@@ -681,6 +681,7 @@ alter table public.boletos add column if not exists foto text;
 alter table public.boletos add column if not exists observacao text;
 alter table public.boletos add column if not exists a_conferir boolean;
 alter table public.boletos add column if not exists despesa_id text;
+alter table public.boletos add column if not exists nao_repetido boolean;
 alter table public.boletos enable row level security;
 drop policy if exists "equipe acessa boletos" on public.boletos;
 create policy "equipe acessa boletos" on public.boletos

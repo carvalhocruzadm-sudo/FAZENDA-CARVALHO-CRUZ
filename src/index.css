@@ -782,7 +782,7 @@ img.ampliavel { cursor: zoom-in; }
 .repetidos-topo b { font-size: 15px; }
 .repetidos-grupo { background: var(--cartao); color: var(--texto); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .repetidos-itens { display: flex; flex-wrap: wrap; gap: 6px; }
-.repetidos-itens .btn { font-size: 12px; }
+.repetidos-itens .btn { font-size: 12px; white-space: normal; text-align: left; height: auto; }
 
 /* Pagamento que se repete (todo mês no dia tal…) */
 .recorrencia { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--linha); }
