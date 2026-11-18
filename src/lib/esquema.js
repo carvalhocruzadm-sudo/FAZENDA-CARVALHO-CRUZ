@@ -564,6 +564,8 @@ export const ESQUEMA = {
         opcoes: [["nova", "Nova"], ["aprovada", "Aprovada"], ["aplicada", "Aplicada (baixa dada)"], ["cancelada", "Cancelada"]],
       },
       link_id: { tipo: "ref", colecao: "links_agronomo", rotulo: "Link usado" },
+      // Virou esta ordem de pulverização: a baixa no estoque sai pelo depósito, não por aqui.
+      pulverizacao_id: { tipo: "ref", colecao: "pulverizacoes", rotulo: "Ordem de pulverização", somenteLeitura: true },
     },
     colunas: ["nome", "data", "agronomo", "talhao_id", "alvo", "situacao"],
   },

@@ -355,6 +355,7 @@ alter table public.recomendacoes add column if not exists itens jsonb;
 alter table public.recomendacoes add column if not exists observacao text;
 alter table public.recomendacoes add column if not exists situacao text;
 alter table public.recomendacoes add column if not exists link_id uuid;
+alter table public.recomendacoes add column if not exists pulverizacao_id uuid;
 create index if not exists recomendacoes_data_idx on public.recomendacoes (data);
 alter table public.recomendacoes enable row level security;
 drop policy if exists "equipe acessa recomendacoes" on public.recomendacoes;
