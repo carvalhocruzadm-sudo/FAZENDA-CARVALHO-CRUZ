@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Formulario from "../components/Formulario";
 import LeitorBoleto from "../components/LeitorBoleto";
 import { Icone, Modal, Stat, TabelaSimples } from "../components/ui";
-import { boletoJaLancado, formatarLinha, lerCodigoBoleto } from "../lib/boleto";
+import { boletoJaLancado, formatarLinha, lerCodigoBoleto, pagamentosRepetidos } from "../lib/boleto";
 import { enderecoDoArquivo, lerBeneficiarioDoBoleto } from "../lib/arquivos";
 import { abrirZips, lerBoletosDoPdf } from "../lib/boletoPdf";
 import { soma } from "../lib/calculos";
@@ -75,6 +75,70 @@ const paraDataUrl = (blob) => new Promise((resolve) => {
   leitor.readAsDataURL(blob);
 });
 
+// ─── Aviso de lançamentos repetidos ─────────────────────────────────────────
+
+function AvisoRepetidos({ dados, abrir }) {
+  const grupos = useMemo(() => pagamentosRepetidos(dados.boletos), [dados.boletos]);
+  const [aberto, setAberto] = useState(true);
+  if (!grupos.length) return null;
+  const aMais = soma(grupos, (g) => soma(g.itens.filter((b) => !b.pago).slice(g.itens.some((b) => b.pago) ? 0 : 1), (b) => b.valor));
+  return (
+    <div className="aviso repetidos">
+      <button type="button" className="repetidos-topo" onClick={() => setAberto(!aberto)}>
+        <b>⚠️ {grupos.length === 1 ? "1 pagamento parece lançado em duplicidade" : `${grupos.length} pagamentos parecem lançados em duplicidade`}</b>
+        <span>{brl(aMais)} a mais se pagar tudo · {aberto ? "esconder" : "ver"}</span>
+      </button>
+      {aberto && (
+        <>
+          <small>Toque em um lançamento para abrir e apagar o que sobrou. Se não for repetido (ex.: duas parcelas iguais), escreva uma descrição diferente em cada um — aí o aviso some.</small>
+          {grupos.map((g) => (
+            <div key={g.chave} className="repetidos-grupo">
+              <div>
+                <b>{g.itens[0].empresa || "Sem empresa"}</b> — {brl(g.itens[0].valor)}
+                {" "}<span className="selo ruim">{g.certeza ? "Mesmo código de boleto" : "Mesma empresa, valor e vencimento"}</span>
+              </div>
+              <div className="repetidos-itens">
+                {g.itens.map((b) => (
+                  <button key={b.id} type="button" className="btn" onClick={() => abrir(b)}>
+                    {data(b.vencimento)} · {brl(b.valor)}{b.descricao ? ` · ${b.descricao}` : ""}
+                    {" "}<span className={`selo ${situacaoBoleto(b)[0]}`}>{situacaoBoleto(b)[1]}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Pagamento que se repete (todo mês no dia tal, toda semana…) ───────────
+
+const FREQUENCIAS = [
+  ["nao", "Não repete (só uma vez)"],
+  ["mensal", "Todo mês, no mesmo dia"],
+  ["quinzenal", "A cada 15 dias"],
+  ["semanal", "Toda semana"],
+  ["anual", "Todo ano"],
+];
+
+/**
+ * Datas dos vencimentos a partir do primeiro. No mensal fica sempre o mesmo dia
+ * do mês; se o mês não tem esse dia (31 em abril, 30 em fevereiro), usa o último.
+ */
+function datasRecorrentes(inicio, frequencia, vezes) {
+  if (!inicio || frequencia === "nao") return inicio ? [inicio] : [];
+  const [ano, mes, dia] = inicio.split("-").map(Number);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return Array.from({ length: vezes }, (_, i) => {
+    if (frequencia === "semanal" || frequencia === "quinzenal") return iso(new Date(ano, mes - 1, dia + i * (frequencia === "semanal" ? 7 : 15)));
+    const meses = frequencia === "anual" ? i * 12 : i;
+    const ultimo = new Date(ano, mes - 1 + meses + 1, 0).getDate();
+    return iso(new Date(ano, mes - 1 + meses, Math.min(dia, ultimo)));
+  });
+}
+
 // ─── Janela de um boleto (incluir, editar, apagar) ──────────────────────────
 
 function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoPagar, aoFechar }) {
@@ -85,6 +149,11 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
   const lerSozinho = Boolean(fotoParaLer && !inicial.empresa);
   const [lendoNome, setLendoNome] = useState(lerSozinho);
   const [notaNome, setNotaNome] = useState(null);
+  // Só para pagamento novo: repetir todo mês (ou semana, ano) quantas vezes.
+  const [frequencia, setFrequencia] = useState("nao");
+  const [vezes, setVezes] = useState(12);
+  const repete = !inicial.id && frequencia !== "nao";
+  const datas = repete ? datasRecorrentes(reg.vencimento, frequencia, Math.max(2, Math.min(120, Number(vezes) || 0))) : [];
 
   /** Manda a foto para a IA e prepara a foto reduzida para guardar no boleto. */
   const lerFoto = (blob) => Promise.all([
@@ -132,7 +201,23 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
     if (parecido && !window.confirm(`Atenção: já existe um pagamento para ${parecido.empresa}, de ${brl(parecido.valor)}, vencendo em ${data(parecido.vencimento)}${parecido.pago ? " (já PAGO)" : ""}.\n\nÉ outro pagamento mesmo? Toque em OK para salvar assim mesmo.`)) return;
     setSalvando(true);
     try {
-      await salvar("boletos", pronto);
+      if (repete && datas.length > 1) {
+        // Um lançamento por vencimento, com "(1/12)", "(2/12)"… na descrição.
+        // O código do boleto e a foto ficam só no primeiro (cada boleto tem o seu).
+        const base = pronto.descricao || `${pronto.forma_pagamento || "Pagamento"} ${pronto.empresa}`;
+        for (const [i, venc] of datas.entries()) {
+          const { reg: cada, erro: e2 } = prepararRegistro("boletos", {
+            ...reg,
+            ...(i > 0 ? { linha_digitavel: null, banco: null, fotos: [], foto: null, pago: false, data_pagamento: null } : {}),
+            vencimento: venc,
+            descricao: `${base} (${i + 1}/${datas.length})`,
+          }, dados);
+          if (e2) throw new Error(`Vencimento ${data(venc)}: ${e2}`);
+          await salvar("boletos", cada);
+        }
+      } else {
+        await salvar("boletos", pronto);
+      }
       aoFechar();
     } catch (err) {
       setErro(String(err?.message ?? err));
@@ -157,7 +242,7 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
           {reg.id && !inicial.pago && <button className="btn" onClick={() => aoPagar(inicial)}><Icone nome="check" /> Pagar</button>}
           <button className="btn" onClick={aoFechar}>Cancelar</button>
           <button className="btn primario" onClick={gravar} disabled={salvando}>
-            <Icone nome="editar" /> {salvando ? "Salvando…" : "Salvar"}
+            <Icone nome="editar" /> {salvando ? "Salvando…" : repete && datas.length > 1 ? `Salvar ${datas.length} pagamentos` : "Salvar"}
           </button>
         </>
       }
@@ -175,6 +260,29 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
       )}
       {notaNome && <div className={`aviso ${notaNome[0]}`}>{notaNome[1]}</div>}
       <Formulario colecao="boletos" reg={reg} setReg={setReg} dados={dados} />
+      {!inicial.id && (
+        <div className="recorrencia">
+          <label className="campo">
+            <span>Repetir este pagamento</span>
+            <select value={frequencia} onChange={(e) => setFrequencia(e.target.value)}>
+              {FREQUENCIAS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+            </select>
+          </label>
+          {repete && (
+            <label className="campo">
+              <span>Quantas vezes (contando esta)</span>
+              <input type="number" min="2" max="120" inputMode="numeric" value={vezes} onChange={(e) => setVezes(e.target.value)} />
+            </label>
+          )}
+          {repete && (datas.length > 1 ? (
+            <div className="aviso ok recorrencia-resumo">
+              Vai lançar <b>{datas.length} pagamentos</b>
+              {reg.valor ? <> de <b>{brl(reg.valor)}</b> (total {brl(Number(reg.valor) * datas.length)})</> : null}
+              : {datas.slice(0, 3).map(data).join(", ")}{datas.length > 3 ? ` … até ${data(datas.at(-1))}` : ""}.
+            </div>
+          ) : <div className="aviso info recorrencia-resumo">Preencha o vencimento do primeiro pagamento.</div>)}
+        </div>
+      )}
     </Modal>
   );
 }
@@ -359,6 +467,7 @@ function Calendario({ dados, abrir, pagar }) {
         <TabelaSimples
           vazio={diaEscolhido ? "Nenhum pagamento vence neste dia." : "Nenhum pagamento neste mês. Use “Ler boleto” ou “Outro pagamento” para incluir."}
           linhas={lista}
+          aoClicar={abrir}
           colunas={[
             { rotulo: "Vencimento", valor: (b) => data(b.vencimento) },
             { rotulo: "Empresa", valor: (b) => (b.a_conferir ? <>{b.empresa} <span className="selo atencao">Lido no depósito</span></> : b.empresa) },
@@ -369,9 +478,9 @@ function Calendario({ dados, abrir, pagar }) {
             {
               rotulo: " ", valor: (b) => (
                 <span style={{ display: "inline-flex", gap: 6 }}>
-                  {!b.pago && <button className="btn" onClick={() => pagar(b)}><Icone nome="check" tamanho={15} /> Pagar</button>}
-                  {b.arquivo && <button className="btn" title="Abrir o arquivo do boleto" onClick={() => abrirArquivo(b.arquivo)}><Icone nome="exportar" tamanho={15} /> Ver boleto</button>}
-                  <button className="btn" onClick={() => abrir(b)}><Icone nome="editar" tamanho={15} /> Abrir</button>
+                  {!b.pago && <button className="btn" onClick={(e) => { e.stopPropagation(); pagar(b); }}><Icone nome="check" tamanho={15} /> Pagar</button>}
+                  {b.arquivo && <button className="btn" title="Abrir o arquivo do boleto" onClick={(e) => { e.stopPropagation(); abrirArquivo(b.arquivo); }}><Icone nome="exportar" tamanho={15} /> Ver boleto</button>}
+                  <button className="btn" onClick={(e) => { e.stopPropagation(); abrir(b); }}><Icone nome="editar" tamanho={15} /> Abrir</button>
                 </span>
               ),
             },
@@ -639,6 +748,8 @@ export default function Boletos(props) {
         <button className="btn" onClick={novo}><Icone nome="mais" /> Outro pagamento (PIX, transferência…)</button>
       </div>
 
+      <AvisoRepetidos dados={dados} abrir={abrir} />
+
       <div className="grade">
         <Stat rotulo={`A pagar nesta semana (${data(domingo).slice(0, 5)} a ${data(sabado).slice(0, 5)})`} valor={brl(soma(nestaSemana, (b) => b.valor))}
           sub={`${nestaSemana.length} ${nestaSemana.length === 1 ? "pagamento" : "pagamentos"}`} cor="laranja" />
@@ -654,7 +765,7 @@ export default function Boletos(props) {
 
       <Secao props={{ ...props, abrir, pagar: setPagando }} abas={[
         ["calendario", "Calendário", Calendario],
-        ["boletos", "Todos os pagamentos"],
+        ["boletos", "Todos os pagamentos", { aoNovo: novo }],
         ["fornecedores", doFornecedor ? `Enviados por fornecedores (${doFornecedor})` : "Enviados por fornecedores", BoletosFornecedores],
       ]} />
 

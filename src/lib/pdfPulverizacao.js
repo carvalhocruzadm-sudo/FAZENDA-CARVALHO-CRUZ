@@ -170,7 +170,6 @@ export async function gerarPdfDidatico(dados, ordem, operadorId) {
   const margem = 12;
   const util = largura - margem * 2;
   const verde = [45, 106, 79];
-  const verdeClaro = [228, 241, 233];
   const amarelo = [255, 244, 214];
   const escuro = [40, 40, 35];
   const cinza = [110, 110, 100];
