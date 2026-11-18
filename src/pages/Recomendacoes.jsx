@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import OrdensPulverizacao from "../components/OrdensPulverizacao";
 import { Icone, Modal, TabelaSimples } from "../components/ui";
 import { prepararRegistro, registroNovo } from "../lib/esquema";
 import { data as dataBR, nomeRef, numero } from "../lib/formato";
@@ -12,7 +13,16 @@ const SELOS = {
   parcial: ["atencao", "Parte aplicada"], cancelada: ["ruim", "Cancelada"],
 };
 const Selo = ({ situacao }) => <span className={`selo ${SELOS[situacao]?.[0] ?? "neutro"}`}>{SELOS[situacao]?.[1] ?? situacao}</span>;
-const aberta = (r) => r.situacao === "nova" || r.situacao === "aprovada";
+const emAberto = (r) => r.situacao === "nova" || r.situacao === "aprovada";
+/** Ainda não foi aplicada nem virou ordem de pulverização. */
+const livre = (r, dados) => emAberto(r) && !(r.pulverizacao_id && dados.pulverizacoes.some((o) => o.id === r.pulverizacao_id));
+const ordemDe = (r, dados) => r.pulverizacao_id && dados.pulverizacoes.find((o) => o.id === r.pulverizacao_id);
+
+/** Selo do talhão: se virou ordem, mostra isso no lugar da situação. */
+function SeloRec({ rec, dados }) {
+  const o = emAberto(rec) && ordemDe(rec, dados);
+  return o ? <span className="selo ok" title={o.titulo || ""}>Virou ordem</span> : <Selo situacao={rec.situacao} />;
+}
 
 /** Fazenda e talhão de cada registro da aplicação. */
 function talhoesDe(g, dados) {
@@ -183,12 +193,14 @@ function Editar({ grupo, dados, salvar, aoFechar }) {
   );
 }
 
-function Detalhe({ grupo, dados, salvar, aoFechar, aoEditar }) {
+function Detalhe({ grupo, dados, salvar, aoFechar, aoEditar, aoVirarOrdem }) {
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState(null);
   const itens = grupo.itens;
   const talhoes = talhoesDe(grupo, dados);
-  const abertas = grupo.recs.filter(aberta);
+  // "Abertas" aqui = as que ainda dá para aprovar, dar baixa ou virar ordem (as que viraram ordem saem pelo depósito).
+  const abertas = grupo.recs.filter((r) => livre(r, dados));
+  const ordens = [...new Set(grupo.recs.filter(emAberto).map((r) => ordemDe(r, dados)).filter(Boolean))];
   const pipa = porPipa(grupo);
   // Depois da baixa no estoque não dá para mudar (a saída já foi lançada com esses números).
   const podeEditar = !grupo.recs.some((r) => r.situacao === "aplicada");
@@ -237,13 +249,20 @@ function Detalhe({ grupo, dados, salvar, aoFechar, aoEditar }) {
           <span className="espaco" />
           {abertas.length > 0 && <button className="btn perigo" onClick={() => mudar("cancelada").then(aoFechar)} disabled={ocupado}>Cancelar aplicação</button>}
           {abertas.some((r) => r.situacao === "nova") && <button className="btn" onClick={() => mudar("aprovada").then(aoFechar)} disabled={ocupado}>Aprovar</button>}
-          {abertas.length > 0 && <button className="btn primario" onClick={darBaixa} disabled={ocupado}><Icone nome="spray" /> {ocupado ? "Lançando…" : "Dar baixa no estoque"}</button>}
+          {abertas.length > 0 && <button className="btn" onClick={darBaixa} disabled={ocupado}>{ocupado ? "Lançando…" : "Dar baixa no estoque"}</button>}
+          {abertas.length > 0 && <button className="btn primario" onClick={() => aoVirarOrdem(abertas)} disabled={ocupado}><Icone nome="spray" /> Virar ordem de pulverização</button>}
         </>
       }
     >
       {erro && <div className="aviso">{erro}</div>}
       {grupo.situacao === "aplicada" && <div className="aviso ok">Já foi dada a baixa no estoque (veja em Aplicações / saídas).</div>}
       {grupo.situacao === "parcial" && <div className="aviso info">Parte dos talhões já teve baixa. “Dar baixa” lança só os que faltam.</div>}
+      {ordens.length > 0 && (
+        <div className="aviso info">
+          {abertas.length ? "Parte desta aplicação já virou" : "Esta aplicação já virou"} ordem de pulverização: <b>{ordens.map((o) => o.titulo || `ordem de ${dataBR(o.data)}`).join(", ")}</b>.
+          Veja na aba “Ordens de pulverização”. A baixa no estoque sai quando o tratorista separar os produtos no depósito.
+        </div>
+      )}
       <p className="descricao">
         {dataBR(grupo.data)} · <b>{grupo.agronomo || "Agrônomo"}</b> · {numero(grupo.area_ha)} ha
         {grupo.alvo ? ` · ${grupo.alvo}` : ""}{grupo.calda_l_ha ? ` · calda ${numero(grupo.calda_l_ha, 1)} L/ha` : ""}
@@ -266,7 +285,7 @@ function Detalhe({ grupo, dados, salvar, aoFechar, aoEditar }) {
           { rotulo: "Fazenda", valor: (t) => t.fazenda },
           { rotulo: "Talhão", valor: (t) => <b>{t.talhao}</b> },
           { rotulo: "Área", num: true, valor: (t) => `${numero(t.area_ha)} ha` },
-          { rotulo: "Situação", valor: (t) => <Selo situacao={t.rec.situacao} /> },
+          { rotulo: "Situação", valor: (t) => <SeloRec rec={t.rec} dados={dados} /> },
         ]}
       />
       {grupo.observacao && <p className="descricao" style={{ marginTop: 12 }}>{grupo.observacao}</p>}
@@ -274,9 +293,10 @@ function Detalhe({ grupo, dados, salvar, aoFechar, aoEditar }) {
   );
 }
 
-export function AplicacoesAgronomo({ dados, salvar }) {
+export function AplicacoesAgronomo({ dados, salvar, remover }) {
   const [aberta, setAberta] = useState(null);
   const [editando, setEditando] = useState(false);
+  const [paraOrdem, setParaOrdem] = useState(null); // registros (talhões) que vão virar ordem
   const [busca, setBusca] = useState("");
   const termo = busca.trim().toLowerCase();
   // Acha pelo nome da aplicação, pelo nome, fabricante e princípio ativo dos produtos, e também por agrônomo, talhão e alvo.
@@ -318,12 +338,18 @@ export function AplicacoesAgronomo({ dados, salvar }) {
           { rotulo: "Produtos", valor: (g) => g.itens.map((i) => i.nome).join(", ") },
           { rotulo: "Dose por", valor: (g) => (porPipa(g) ? "Pipa" : "ha") },
           { rotulo: "Alvo", valor: (g) => g.alvo || "—" },
-          { rotulo: "Situação", valor: (g) => <Selo situacao={g.situacao} /> },
+          { rotulo: "Situação", valor: (g) => (g.recs.some((r) => emAberto(r) && ordemDe(r, dados)) && !g.recs.some((r) => livre(r, dados))
+            ? <span className="selo ok">Virou ordem</span> : <Selo situacao={g.situacao} />) },
           { rotulo: "", valor: () => <button className="btn">Abrir</button> },
         ]}
       />
-      {abertaAtual && !editando && (
-        <Detalhe grupo={abertaAtual} dados={dados} salvar={salvar} aoFechar={() => setAberta(null)} aoEditar={() => setEditando(true)} />
+      {abertaAtual && !editando && !paraOrdem && (
+        <Detalhe grupo={abertaAtual} dados={dados} salvar={salvar} aoFechar={() => setAberta(null)} aoEditar={() => setEditando(true)}
+          aoVirarOrdem={setParaOrdem} />
+      )}
+      {abertaAtual && paraOrdem && (
+        <OrdensPulverizacao dados={dados} salvar={salvar} remover={remover} daAplicacao={{ grupo: abertaAtual, recs: paraOrdem }}
+          aoFechar={() => setParaOrdem(null)} />
       )}
       {abertaAtual && editando && <Editar grupo={abertaAtual} dados={dados} salvar={salvar} aoFechar={() => setEditando(false)} />}
     </div>
