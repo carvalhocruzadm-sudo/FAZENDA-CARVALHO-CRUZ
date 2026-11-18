@@ -11,6 +11,7 @@ import { soma } from "../lib/calculos";
 import { CATEGORIAS_DESPESA, prepararRegistro, registroNovo } from "../lib/esquema";
 import { brl, data } from "../lib/formato";
 import { comprimir } from "../lib/fotos";
+import BoletosFornecedores from "./BoletosFornecedores";
 import { Secao } from "./Secoes";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -587,6 +588,8 @@ export default function Boletos(props) {
   const sabado = diaLocal(6 - diaDaSemana);
   const nestaSemana = abertos.filter((b) => b.vencimento >= domingo && b.vencimento <= sabado);
 
+  const doFornecedor = (dados.boletos_fornecedor ?? []).filter((b) => b.situacao === "pendente").length;
+
   const abrir = (b) => setEditando({ reg: { ...b } });
   const novo = () => setEditando({ reg: { ...registroNovo("boletos"), forma_pagamento: "PIX" } });
 
@@ -642,6 +645,7 @@ export default function Boletos(props) {
       <Secao props={{ ...props, abrir, pagar: setPagando }} abas={[
         ["calendario", "Calendário", Calendario],
         ["boletos", "Todos os pagamentos"],
+        ["fornecedores", doFornecedor ? `Enviados por fornecedores (${doFornecedor})` : "Enviados por fornecedores", BoletosFornecedores],
       ]} />
 
       <NotificacoesVencimento />

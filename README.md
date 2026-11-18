@@ -152,6 +152,21 @@ Os arquivos ficam no Storage do Supabase, numa pasta privada (`comprovantes`) cr
 - Perfis de acesso (o que cada funcionário pode ver e lançar).
 - Venda de laranja de terceiros, cotação de produtos.
 
+## 🧾 Boletos dos fornecedores (link público)
+
+Em **Programação de pagamentos → Enviados por fornecedores** fica o **link para os fornecedores** (botões
+*Copiar link* e *Mandar o link pelo WhatsApp*). Coloque ali o seu WhatsApp: ele vai junto no link.
+
+1. O fornecedor abre o link (sem senha), preenche o nome da empresa e anexa um ou mais boletos — foto ou
+   PDF de até 3 MB — com valor e vencimento. No PDF (ou colando a linha digitável) o valor e o vencimento
+   se preenchem sozinhos.
+2. Ao enviar, aparece a **mensagem de confirmação** (fornecedor, código do envio, cada boleto com valor e
+   vencimento, total) com o botão **Enviar confirmação pelo WhatsApp**, que já abre a conversa com você.
+3. No sistema, o boleto aparece esperando conferência (e no Início). Em **Conferir** você vê o arquivo,
+   escolhe a categoria e põe na **programação de pagamentos** — ou recusa, anotando o motivo.
+
+Segurança: quem não tem login só consegue **mandar** boleto novo; não vê, não muda e não apaga nada do sistema.
+
 ## 🚀 Como rodar
 
 ```bash

@@ -694,6 +694,40 @@ create policy "campo lanca boletos" on public.boletos
 create policy "campo corrige boletos" on public.boletos
   for update to authenticated using ((select public.eh_campo()) and a_conferir = true and (select public.acesso_campo()) is distinct from 'ticket') with check ((select public.eh_campo()) and a_conferir = true and (select public.acesso_campo()) is distinct from 'ticket');
 
+-- Boletos enviados por fornecedores
+create table if not exists public.boletos_fornecedor (
+  id uuid primary key default gen_random_uuid(),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz
+);
+alter table public.boletos_fornecedor add column if not exists data date;
+alter table public.boletos_fornecedor add column if not exists envio text;
+alter table public.boletos_fornecedor add column if not exists fornecedor text;
+alter table public.boletos_fornecedor add column if not exists documento text;
+alter table public.boletos_fornecedor add column if not exists contato text;
+alter table public.boletos_fornecedor add column if not exists nota text;
+alter table public.boletos_fornecedor add column if not exists descricao text;
+alter table public.boletos_fornecedor add column if not exists valor numeric;
+alter table public.boletos_fornecedor add column if not exists vencimento date;
+alter table public.boletos_fornecedor add column if not exists linha_digitavel text;
+alter table public.boletos_fornecedor add column if not exists arquivos jsonb;
+alter table public.boletos_fornecedor add column if not exists observacao text;
+alter table public.boletos_fornecedor add column if not exists situacao text;
+alter table public.boletos_fornecedor add column if not exists resposta text;
+alter table public.boletos_fornecedor add column if not exists boleto_id text;
+create index if not exists boletos_fornecedor_data_idx on public.boletos_fornecedor (data);
+alter table public.boletos_fornecedor enable row level security;
+drop policy if exists "equipe acessa boletos_fornecedor" on public.boletos_fornecedor;
+create policy "equipe acessa boletos_fornecedor" on public.boletos_fornecedor
+  for all to authenticated using (not (select public.eh_campo())) with check (not (select public.eh_campo()));
+drop policy if exists "campo le boletos_fornecedor" on public.boletos_fornecedor;
+drop policy if exists "campo lanca boletos_fornecedor" on public.boletos_fornecedor;
+drop policy if exists "campo corrige boletos_fornecedor" on public.boletos_fornecedor;
+drop policy if exists "publico envia boletos_fornecedor" on public.boletos_fornecedor;
+create policy "publico envia boletos_fornecedor" on public.boletos_fornecedor
+  for insert to anon with check (situacao = 'pendente' and boleto_id is null and coalesce(pg_column_size(arquivos), 0) < 8000000);
+grant insert on public.boletos_fornecedor to anon;
+
 -- Outras entradas
 create table if not exists public.entradas (
   id uuid primary key default gen_random_uuid(),
