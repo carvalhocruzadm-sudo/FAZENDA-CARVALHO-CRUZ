@@ -47,10 +47,11 @@ function exportarCSV(nome, colunas, campos, valorDe, linhas, dados) {
  * `filtro` restringe a lista (ex.: só os abastecimentos de posto) e
  * `padrao` preenche o registro novo e `acoes` entra como botão extra na barra.
  * `abrirNovo` (vindo do "+ Lançar") já abre o formulário em branco.
+ * `aoNovo`: a tela tem a sua própria janela de lançamento novo (ex.: Programação de pagamentos).
  * `calculadas` são colunas só da lista, que não vão para o banco:
  * `{ campos: { chave: { tipo, rotulo… } }, calcular: (dados) => Map(id → { chave: valor }) }`.
  */
-export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes, calculadas, abrirNovo }) {
+export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes, calculadas, abrirNovo, aoNovo }) {
   const def = ESQUEMA[colecao];
   const campos = useMemo(() => ({ ...def.campos, ...calculadas?.campos }), [def, calculadas]);
   const valores = useMemo(() => calculadas?.calcular(dados), [calculadas, dados]);
@@ -112,6 +113,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
   const { iniciar } = escolha;
   const abrir = useCallback((reg) => { setErro(null); setRascunho(reg); iniciar(reg); }, [iniciar]);
   const novo = () => {
+    if (aoNovo) { aoNovo(); return; }
     let reg = { ...registroNovo(colecao), ...(padrao ?? {}) };
     // Lançamento novo já vem com a cultura escolhida no topo (e o que ela traz: unidade, custo da turma…).
     if (nomeCultura && def.campos.cultura_id && !reg.cultura_id && campoVisivel(def.campos.cultura_id, reg, dados)) {

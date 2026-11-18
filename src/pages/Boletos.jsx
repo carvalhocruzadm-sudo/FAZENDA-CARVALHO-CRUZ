@@ -104,6 +104,32 @@ function AvisoRepetidos({ dados, abrir }) {
   );
 }
 
+// ─── Pagamento que se repete (todo mês no dia tal, toda semana…) ───────────
+
+const FREQUENCIAS = [
+  ["nao", "Não repete (só uma vez)"],
+  ["mensal", "Todo mês, no mesmo dia"],
+  ["quinzenal", "A cada 15 dias"],
+  ["semanal", "Toda semana"],
+  ["anual", "Todo ano"],
+];
+
+/**
+ * Datas dos vencimentos a partir do primeiro. No mensal fica sempre o mesmo dia
+ * do mês; se o mês não tem esse dia (31 em abril, 30 em fevereiro), usa o último.
+ */
+function datasRecorrentes(inicio, frequencia, vezes) {
+  if (!inicio || frequencia === "nao") return inicio ? [inicio] : [];
+  const [ano, mes, dia] = inicio.split("-").map(Number);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return Array.from({ length: vezes }, (_, i) => {
+    if (frequencia === "semanal" || frequencia === "quinzenal") return iso(new Date(ano, mes - 1, dia + i * (frequencia === "semanal" ? 7 : 15)));
+    const meses = frequencia === "anual" ? i * 12 : i;
+    const ultimo = new Date(ano, mes - 1 + meses + 1, 0).getDate();
+    return iso(new Date(ano, mes - 1 + meses, Math.min(dia, ultimo)));
+  });
+}
+
 // ─── Janela de um boleto (incluir, editar, apagar) ──────────────────────────
 
 function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoPagar, aoFechar }) {
@@ -114,6 +140,11 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
   const lerSozinho = Boolean(fotoParaLer && !inicial.empresa);
   const [lendoNome, setLendoNome] = useState(lerSozinho);
   const [notaNome, setNotaNome] = useState(null);
+  // Só para pagamento novo: repetir todo mês (ou semana, ano) quantas vezes.
+  const [frequencia, setFrequencia] = useState("nao");
+  const [vezes, setVezes] = useState(12);
+  const repete = !inicial.id && frequencia !== "nao";
+  const datas = repete ? datasRecorrentes(reg.vencimento, frequencia, Math.max(2, Math.min(120, Number(vezes) || 0))) : [];
 
   /** Manda a foto para a IA e prepara a foto reduzida para guardar no boleto. */
   const lerFoto = (blob) => Promise.all([
@@ -161,7 +192,23 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
     if (parecido && !window.confirm(`Atenção: já existe um pagamento para ${parecido.empresa}, de ${brl(parecido.valor)}, vencendo em ${data(parecido.vencimento)}${parecido.pago ? " (já PAGO)" : ""}.\n\nÉ outro pagamento mesmo? Toque em OK para salvar assim mesmo.`)) return;
     setSalvando(true);
     try {
-      await salvar("boletos", pronto);
+      if (repete && datas.length > 1) {
+        // Um lançamento por vencimento, com "(1/12)", "(2/12)"… na descrição.
+        // O código do boleto e a foto ficam só no primeiro (cada boleto tem o seu).
+        const base = pronto.descricao || `${pronto.forma_pagamento || "Pagamento"} ${pronto.empresa}`;
+        for (const [i, venc] of datas.entries()) {
+          const { reg: cada, erro: e2 } = prepararRegistro("boletos", {
+            ...reg,
+            ...(i > 0 ? { linha_digitavel: null, banco: null, fotos: [], foto: null, pago: false, data_pagamento: null } : {}),
+            vencimento: venc,
+            descricao: `${base} (${i + 1}/${datas.length})`,
+          }, dados);
+          if (e2) throw new Error(`Vencimento ${data(venc)}: ${e2}`);
+          await salvar("boletos", cada);
+        }
+      } else {
+        await salvar("boletos", pronto);
+      }
       aoFechar();
     } catch (err) {
       setErro(String(err?.message ?? err));
@@ -186,7 +233,7 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
           {reg.id && !inicial.pago && <button className="btn" onClick={() => aoPagar(inicial)}><Icone nome="check" /> Pagar</button>}
           <button className="btn" onClick={aoFechar}>Cancelar</button>
           <button className="btn primario" onClick={gravar} disabled={salvando}>
-            <Icone nome="editar" /> {salvando ? "Salvando…" : "Salvar"}
+            <Icone nome="editar" /> {salvando ? "Salvando…" : repete && datas.length > 1 ? `Salvar ${datas.length} pagamentos` : "Salvar"}
           </button>
         </>
       }
@@ -204,6 +251,29 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
       )}
       {notaNome && <div className={`aviso ${notaNome[0]}`}>{notaNome[1]}</div>}
       <Formulario colecao="boletos" reg={reg} setReg={setReg} dados={dados} />
+      {!inicial.id && (
+        <div className="recorrencia">
+          <label className="campo">
+            <span>Repetir este pagamento</span>
+            <select value={frequencia} onChange={(e) => setFrequencia(e.target.value)}>
+              {FREQUENCIAS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+            </select>
+          </label>
+          {repete && (
+            <label className="campo">
+              <span>Quantas vezes (contando esta)</span>
+              <input type="number" min="2" max="120" inputMode="numeric" value={vezes} onChange={(e) => setVezes(e.target.value)} />
+            </label>
+          )}
+          {repete && (datas.length > 1 ? (
+            <div className="aviso ok recorrencia-resumo">
+              Vai lançar <b>{datas.length} pagamentos</b>
+              {reg.valor ? <> de <b>{brl(reg.valor)}</b> (total {brl(Number(reg.valor) * datas.length)})</> : null}
+              : {datas.slice(0, 3).map(data).join(", ")}{datas.length > 3 ? ` … até ${data(datas.at(-1))}` : ""}.
+            </div>
+          ) : <div className="aviso info recorrencia-resumo">Preencha o vencimento do primeiro pagamento.</div>)}
+        </div>
+      )}
     </Modal>
   );
 }
@@ -684,7 +754,7 @@ export default function Boletos(props) {
 
       <Secao props={{ ...props, abrir, pagar: setPagando }} abas={[
         ["calendario", "Calendário", Calendario],
-        ["boletos", "Todos os pagamentos"],
+        ["boletos", "Todos os pagamentos", { aoNovo: novo }],
         ["fornecedores", doFornecedor ? `Enviados por fornecedores (${doFornecedor})` : "Enviados por fornecedores", BoletosFornecedores],
       ]} />
 
