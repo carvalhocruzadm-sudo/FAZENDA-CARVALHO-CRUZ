@@ -12,7 +12,7 @@ import {
 import { hoje, prepararRegistro } from "../lib/esquema";
 import { nomesTalhoesDaOrdem, talhoesDaOrdem } from "../lib/talhoes";
 import { formatarLinha } from "../lib/boleto";
-import { compartilharPdf, gerarPdfDidatico } from "../lib/pdfPulverizacao";
+import { baixarPdf, compartilharPdf, gerarPdfDidatico } from "../lib/pdfPulverizacao";
 import { brl, data as dataBR, nomeRef, numero } from "../lib/formato";
 
 /**
@@ -78,11 +78,17 @@ function Pronto({ texto, irPara }) {
 function ProntoComGuia({ dados, ordem, operadorId, irPara }) {
   const [gerando, setGerando] = useState(false);
   const [aviso, setAviso] = useState(null);
-  const gerar = async () => {
+  // jeito = "baixar" (salva o arquivo) ou "whatsapp" (janela de compartilhar).
+  const gerar = async (jeito) => {
     setGerando(true);
     setAviso(null);
     try {
       const pdf = await gerarPdfDidatico(dados, ordem, operadorId);
+      if (jeito === "baixar") {
+        baixarPdf(pdf);
+        setAviso(["ok", `O guia "${pdf.nome}" foi salvo em Downloads.`]);
+        return;
+      }
       const r = await compartilharPdf(pdf, `Preparo da calda: ${ordem.titulo || "pulverização"}`);
       if (r === "baixado") setAviso(["ok", `O guia "${pdf.nome}" foi baixado. Abra pelo celular para ver.`]);
     } catch (e) {
@@ -98,10 +104,13 @@ function ProntoComGuia({ dados, ordem, operadorId, irPara }) {
         <div className="check">✅</div>
         <h2>Pronto! <Ouvir texto={texto} className="na-pergunta" /></h2>
         <p>Todos os produtos separados. Pode levar para o trator.</p>
-        <button type="button" className="campo-btn amarelo guia-preparo" onClick={gerar} disabled={gerando}>
-          📄 {gerando ? "Preparando o guia…" : "Guia de preparo da calda (PDF)"}
+        <button type="button" className="campo-btn amarelo guia-preparo" onClick={() => gerar("baixar")} disabled={gerando}>
+          📄 {gerando ? "Preparando o guia…" : "Baixar guia de preparo (PDF)"}
         </button>
-        <p className="guia-explica">Foto de cada produto e quanto colocar {ordem?.dose_por === "pipa" || Number(ordem?.ha_por_pipa) > 0 ? "em cada pipa" : "por hectare"}.</p>
+        <button type="button" className="campo-btn verde guia-preparo" onClick={() => gerar("whatsapp")} disabled={gerando}>
+          💬 Mandar no WhatsApp
+        </button>
+        <p className="guia-explica">Foto de cada produto e a dose por hectare.</p>
         {aviso && <div className={`campo-aviso ${aviso[0] === "erro" ? "erro" : ""}`}>{aviso[1]}</div>}
       </div>
       <footer className="campo-rodape">
