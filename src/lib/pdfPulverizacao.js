@@ -159,7 +159,7 @@ const nomeArquivo = (texto) => String(texto || "").normalize("NFD").replace(/[\u
 /**
  * Guia de preparo da calda, para o tratorista levar ao trator depois de
  * separar os produtos: letra grande, foto grande de cada produto e a dose em
- * destaque (por pipa e por hectare), com o passo a passo de como misturar.
+ * destaque (por hectare; por pipa em letra menor), com o passo a passo de como misturar.
  * Devolve { blob, nome }.
  */
 export async function gerarPdfDidatico(dados, ordem, operadorId) {
@@ -170,7 +170,6 @@ export async function gerarPdfDidatico(dados, ordem, operadorId) {
   const margem = 12;
   const util = largura - margem * 2;
   const verde = [45, 106, 79];
-  const verdeClaro = [228, 241, 233];
   const amarelo = [255, 244, 214];
   const escuro = [40, 40, 35];
   const cinza = [110, 110, 100];
@@ -238,7 +237,7 @@ export async function gerarPdfDidatico(dados, ordem, operadorId) {
   }
 
   // Produtos: foto grande e a dose em destaque
-  texto(temPipa ? "O QUE COLOCAR EM CADA PIPA" : "PRODUTOS E DOSES", margem, y, { tam: 15, negrito: true, cor: verde });
+  texto("PRODUTOS E DOSE POR HECTARE", margem, y, { tam: 15, negrito: true, cor: verde });
   y += 4;
   const blocoH = 54;
   itens.forEach(({ insumo, item }, k) => {
@@ -266,20 +265,15 @@ export async function gerarPdfDidatico(dados, ordem, operadorId) {
     let yy = y + 10 + Math.min(nome.length, 2) * 6.5;
     if (insumo?.fabricante) { texto(insumo.fabricante, x, yy - 1.5, { tam: 9.5, cor: cinza }); yy += 3; }
 
-    // Caixa verde com a dose principal
+    // Caixa verde com a dose principal: sempre a dose por hectare.
     const dosePipa = temPipa ? (item.dose_pipa != null ? n(item.dose_pipa) : n(item.dose_ha) * hpp) : null;
-    const doseHa = item.dose_ha != null ? n(item.dose_ha) : temPipa && item.dose_pipa != null ? n(item.dose_pipa) / hpp : null;
-    doc.setFillColor(...verdeClaro).roundedRect(x, yy, larguraTexto, 15, 2, 2, "F");
-    if (temPipa) {
-      texto("EM CADA PIPA:", x + 4, yy + 6, { tam: 9, negrito: true, cor: verde });
-      texto(`${numero(dosePipa, 3)} ${un}`, x + 4, yy + 13, { tam: 17, negrito: true, cor: verde });
-      if (doseHa != null) texto(`= ${numero(doseHa, 3)} ${un} por hectare`, x + larguraTexto - 4, yy + 12, { tam: 10.5, cor: escuro, alinhar: "right" });
-    } else {
-      texto("POR HECTARE:", x + 4, yy + 6, { tam: 9, negrito: true, cor: verde });
-      texto(`${numero(doseHa, 3)} ${un}`, x + 4, yy + 13, { tam: 17, negrito: true, cor: verde });
-    }
+    const doseHa = item.dose_ha != null && item.dose_ha !== "" ? n(item.dose_ha) : temPipa && item.dose_pipa != null ? n(item.dose_pipa) / hpp : null;
+    doc.setFillColor(...verde).roundedRect(x, yy, larguraTexto, 16.5, 2, 2, "F");
+    texto("POR HECTARE:", x + 4, yy + 6, { tam: 9, negrito: true, cor: [255, 255, 255] });
+    texto(doseHa != null ? `${numero(doseHa, 3)} ${un}` : "não informada", x + 4, yy + 13, { tam: 18, negrito: true, cor: [255, 255, 255] });
+    if (temPipa) texto(`Em cada pipa: ${numero(dosePipa, 3)} ${un}`, x + larguraTexto - 4, yy + 12, { tam: 10.5, cor: [255, 255, 255], alinhar: "right" });
     yy += 21;
-    texto(`Total para a área: ${numero(item.quantidade, 2)} ${un}`, x, yy, { tam: 11.5, negrito: true });
+    texto(`Total para a área: ${numero(item.quantidade, 2)} ${un}`, x, yy, { tam: 10.5, cor: cinza });
     yy += 5.5;
     const emb = doc.setFont("helvetica", "normal").setFontSize(10).splitTextToSize(`Levar do depósito: ${emEmbalagens(insumo, item.quantidade).texto}`, larguraTexto);
     texto(emb.slice(0, 2), x, yy, { tam: 10, cor: cinza });

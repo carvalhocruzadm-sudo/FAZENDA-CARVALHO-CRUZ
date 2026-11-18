@@ -675,6 +675,7 @@ alter table public.boletos add column if not exists banco text;
 alter table public.boletos add column if not exists chave_pix text;
 alter table public.boletos add column if not exists pago boolean;
 alter table public.boletos add column if not exists data_pagamento date;
+alter table public.boletos add column if not exists arquivo text;
 alter table public.boletos add column if not exists fotos jsonb;
 alter table public.boletos add column if not exists foto text;
 alter table public.boletos add column if not exists observacao text;
