@@ -277,6 +277,9 @@ Um número de WhatsApp que conversa com o sistema todo. Só atende os números a
 Para dizer para que foi, escreva na legenda ou numa mensagem logo antes ("almoço jhun", "1620", "diária
 João", "boleto do adubo").
 
+Dá para mandar **vários arquivos de uma vez** (até uns 20): ele lê de 4 em 4 e responde cada um. Uma
+mensagem de texto mandada logo antes ("boletos do posto") vale para todos os arquivos do lote.
+
 **Perguntas** — "quanto gastei com diesel em outubro?", "quantas horas o trator 02 trabalhou essa
 semana?", "quais boletos vencem até sexta?". Ele busca nos dados antes de responder (nunca chuta).
 

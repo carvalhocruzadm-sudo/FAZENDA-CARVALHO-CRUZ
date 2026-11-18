@@ -53,7 +53,8 @@ const CADASTROS = ["culturas", "fazendas", "talhoes", "safras", "funcionarios", 
 /** Campos que não cabem numa mensagem (fotos, arquivos, listas). */
 const PESADOS = new Set(["foto", "fotos", "arquivo", "itens"]);
 
-const MINUTOS_LEGENDA = 10; // texto mandado até 10 min antes do comprovante vira a legenda dele
+const MINUTOS_LEGENDA = 10; // texto mandado até 10 min antes do arquivo vira a legenda dele
+const MINUTOS_LOTE = 3; // depois do 1º arquivo, a legenda ainda vale 3 min para os outros mandados juntos
 const HORAS_CONVERSA = 12; // o assessor lembra das mensagens das últimas 12 horas
 const HORAS_PENDENTE = 2; // lançamento esperando o SIM vale por 2 horas
 
@@ -129,15 +130,37 @@ async function baixarMidia(id: string) {
 
 // ─── IA ───────────────────────────────────────────────────────────────────
 
+/** Vários arquivos de uma vez fazem várias leituras ao mesmo tempo: se a IA disser "espere", espera e tenta de novo. */
 async function chamarIA(corpo: Registro) {
-  const resposta = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": segredo("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: MODELO, max_tokens: 16000, tool_choice: { type: "auto" }, ...corpo }),
-  });
-  const json = await resposta.json().catch(() => ({}));
-  if (!resposta.ok) throw new Error(json?.error?.message ?? "A IA não respondeu.");
-  return json as { content: Registro[]; stop_reason: string };
+  for (let tentativa = 1; ; tentativa++) {
+    const resposta = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": segredo("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: MODELO, max_tokens: 16000, tool_choice: { type: "auto" }, ...corpo }),
+    });
+    const json = await resposta.json().catch(() => ({}));
+    if (resposta.ok) return json as { content: Registro[]; stop_reason: string };
+    const passageiro = [429, 500, 502, 503, 504, 529].includes(resposta.status);
+    if (!passageiro || tentativa >= 5) throw new Error(json?.error?.message ?? "A IA não respondeu.");
+    const pedida = Number(resposta.headers.get("retry-after")) || 0;
+    const espera = Math.min(30, Math.max(pedida, 2 ** tentativa + Math.random() * 2));
+    console.warn(`IA ocupada (${resposta.status}); tentando de novo em ${espera.toFixed(0)}s.`);
+    await new Promise((ok) => setTimeout(ok, espera * 1000));
+  }
+}
+
+/** Roda as tarefas de `quantas` em `quantas` (para não ler 10 PDFs ao mesmo tempo). */
+async function emLotes<T, R>(itens: T[], quantas: number, fazer: (item: T) => Promise<R>) {
+  const saida: R[] = new Array(itens.length);
+  let proximo = 0;
+  const trabalhador = async () => {
+    while (proximo < itens.length) {
+      const i = proximo++;
+      saida[i] = await fazer(itens[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(quantas, itens.length) }, trabalhador));
+  return saida;
 }
 
 const textoDa = (r: { content: Registro[] }) =>
@@ -153,7 +176,7 @@ async function guardar(db: Banco, numero: string, papel: "user" | "assistant", t
 async function conversaRecente(db: Banco, numero: string, horas: number) {
   const desde = new Date(Date.now() - horas * 3_600_000).toISOString();
   const { data } = await db.from("whatsapp_conversa").select("papel, texto, criado_em")
-    .eq("numero", numero).gte("criado_em", desde).order("criado_em", { ascending: false }).limit(16);
+    .eq("numero", numero).gte("criado_em", desde).order("criado_em", { ascending: false }).limit(40);
   return ((data ?? []) as Registro[]).reverse();
 }
 
@@ -550,17 +573,11 @@ async function executar(nome: string, entrada: Registro, ctx: Ctx): Promise<Regi
       return error ? { erro: `Não consegui anotar (rodou o SQL da tabela whatsapp_recados?): ${error.message}` } : { ok: true };
     }
     if (nome === "lancar_arquivos") {
-      const ids = [...new Set<string>((entrada.midias ?? []).map((m: Qualquer) => String(m).replace(/\D/g, "")).filter(Boolean))].slice(0, 10);
+      const ids = [...new Set<string>((entrada.midias ?? []).map((m: Qualquer) => String(m).replace(/\D/g, "")).filter(Boolean))].slice(0, 20);
       if (!ids.length) return { erro: "Diga quais arquivos (ids das marcas [arquivo: midia …])." };
       const como = entrada.como === "comprovante" ? "comprovante" : "boleto";
-      const respostas: string[] = [];
-      for (const id of ids) {
-        try {
-          respostas.push(await arquivoRecebido(ctx.db, ctx.numero, ctx.nome, id, { como }));
-        } catch (e) {
-          respostas.push(`Não consegui abrir um dos arquivos (${e instanceof Error ? e.message : "erro"}). Mande ele de novo.`);
-        }
-      }
+      const respostas = await emLotes(ids, 4, (id) => arquivoRecebido(ctx.db, ctx.numero, ctx.nome, id, { como })
+        .catch((e) => `Não consegui abrir um dos arquivos (${e instanceof Error ? e.message : "erro"}). Mande ele de novo.`));
       return { ok: true, respostas };
     }
     if (nome === "propor_lancamento") return await proporLancamento(entrada, ctx);
@@ -990,7 +1007,11 @@ async function arquivoRecebido(db: Banco, numero: string, nome: string, midiaId:
 async function arquivoDaMensagem(db: Banco, msg: Mensagem, nome: string, midia: { id: string; caption?: string; filename?: string }) {
   const recados = await recadosRecentes(db, msg.from);
   const legenda = [...recados.map((r) => r.texto), midia.caption ?? ""].map((t) => t.trim()).filter(Boolean).join(" · ");
-  if (recados.length) await db.from("whatsapp_recados").delete().in("id", recados.map((r) => r.id));
+  // Vários arquivos mandados juntos usam a mesma legenda: em vez de apagar, ela vale só mais uns minutos.
+  if (recados.length) {
+    const ate = new Date(Date.now() - (MINUTOS_LEGENDA - MINUTOS_LOTE) * 60_000).toISOString();
+    await db.from("whatsapp_recados").update({ criado_em: ate }).in("id", recados.map((r) => r.id)).gt("criado_em", ate);
+  }
   await guardar(db, msg.from, "user", `[arquivo enviado${midia.filename ? `: ${midia.filename}` : ""}]${midia.caption ? ` ${midia.caption}` : ""}`);
   return arquivoRecebido(db, msg.from, nome, midia.id, { legenda, timestamp: msg.timestamp });
 }
@@ -1066,14 +1087,17 @@ Deno.serve(async (req) => {
   }
 
   const evento = JSON.parse(corpo);
-  const tarefas: Promise<unknown>[] = [];
+  const textos: (() => Promise<unknown>)[] = [];
+  const arquivos: (() => Promise<unknown>)[] = [];
   for (const entrada of evento.entry ?? []) {
     for (const mudanca of entrada.changes ?? []) {
       const v = mudanca.value ?? {};
       const nomes = new Map((v.contacts ?? []).map((c: { wa_id: string; profile?: { name?: string } }) => [c.wa_id, c.profile?.name ?? ""]));
-      for (const msg of (v.messages ?? []) as Mensagem[]) {
+      const mensagens = [...((v.messages ?? []) as Mensagem[])].sort((a, b) => Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0));
+      for (const msg of mensagens) {
         console.log(`Mensagem recebida de ${msg.from} (${msg.type})`);
-        tarefas.push(tratar(msg, String(nomes.get(msg.from) ?? ""), v.metadata?.phone_number_id));
+        const tarefa = () => tratar(msg, String(nomes.get(msg.from) ?? ""), v.metadata?.phone_number_id);
+        (msg.image || msg.document ? arquivos : textos).push(tarefa);
       }
       // A Meta aceita a resposta na hora e só depois avisa se não conseguiu entregar.
       for (const st of v.statuses ?? []) {
@@ -1085,6 +1109,10 @@ Deno.serve(async (req) => {
   }
 
   // Responde logo para a Meta não reenviar; a leitura continua em segundo plano.
-  EdgeRuntime.waitUntil(Promise.allSettled(tarefas));
+  // Vários arquivos juntos: primeiro os textos (a legenda), depois os arquivos, de 4 em 4.
+  EdgeRuntime.waitUntil((async () => {
+    for (const t of textos) await t().catch((e) => console.error(e));
+    await emLotes(arquivos, 4, (t) => t().catch((e) => console.error(e)));
+  })());
   return new Response("ok");
 });
