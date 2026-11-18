@@ -25,6 +25,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
+import { extractText, getDocumentProxy } from "npm:unpdf@1.4.0";
 import * as EsquemaDoApp from "https://raw.githubusercontent.com/carvalhocruzadm-sudo/FAZENDA-CARVALHO-CRUZ/main/src/lib/esquema.js";
 import * as BoletoDoApp from "https://raw.githubusercontent.com/carvalhocruzadm-sudo/FAZENDA-CARVALHO-CRUZ/main/src/lib/boleto.js";
 
@@ -36,7 +37,7 @@ type Registro = Record<string, Qualquer>;
 type Dados = Record<string, Registro[]>;
 
 const { ESQUEMA, registroNovo, prepararRegistro, campoVisivel, CATEGORIAS_DESPESA, FORMAS_PAGAMENTO } = EsquemaDoApp as Qualquer;
-const { lerCodigoBoleto, boletoJaLancado } = BoletoDoApp as Qualquer;
+const { lerCodigoBoleto, boletoJaLancado, codigosNoTexto } = BoletoDoApp as Qualquer;
 
 const MODELO = Deno.env.get("MODELO_AGENTE_WHATSAPP") ?? "claude-haiku-5-5";
 const ORIGEM = "WHATSAPP-IA"; // entra no id, para o mesmo comprovante ou boleto não duplicar
@@ -727,7 +728,42 @@ type Leitura = {
 
 type Item = { id: string; nome: string };
 type Arquivo = { bytes: Uint8Array; tipo: string };
-type Contexto = { db: Banco; numero: string; nome: string; midiaId: string; quando: string; legenda: string; arquivo: Arquivo; culturas: Item[]; maquinas: Item[] };
+type Contexto = { db: Banco; numero: string; nome: string; midiaId: string; quando: string; legenda: string; arquivo: Arquivo; culturas: Item[]; maquinas: Item[]; codigosDoPdf: Registro[] };
+
+/**
+ * Códigos de boleto escritos no texto do PDF (o PDF do banco sempre traz a
+ * linha digitável escrita). Mais seguro que a IA copiar 47 números da imagem:
+ * só passa o que bate com os dígitos verificadores. Foto ou PDF escaneado: [].
+ */
+async function codigosNoPdf(arquivo: Arquivo): Promise<Registro[]> {
+  if (arquivo.tipo !== "application/pdf") return [];
+  try {
+    const pdf = await getDocumentProxy(new Uint8Array(arquivo.bytes));
+    const { text } = await extractText(pdf, { mergePages: true });
+    return codigosNoTexto(text) as Registro[];
+  } catch (e) {
+    console.warn("Não consegui ler o texto do PDF:", e instanceof Error ? e.message : e);
+    return [];
+  }
+}
+
+/** O código certo do boleto: o do texto do PDF que bate com a leitura da IA; senão o que a IA leu, se confere. */
+function escolherCodigo(c: Contexto, l: Leitura): { lido: Registro | null; aviso?: string } {
+  const digitos = soDigitos(l.linha_digitavel);
+  const daIA = digitos ? lerCodigoBoleto(digitos) : { erro: "sem código" };
+  const doPdf = c.codigosDoPdf;
+  if (doPdf.length) {
+    const mesmo = doPdf.find((x) => !daIA.erro && x.barras === daIA.barras)
+      ?? doPdf.find((x) => l.valor && Math.abs(Number(x.valor) - Number(l.valor)) < 0.005)
+      ?? doPdf[0];
+    const aviso = doPdf.length > 1 ? `Esse PDF tem ${doPdf.length} boletos; lancei só o de ${reais(Number(mesmo.valor) || 0)}. Lance os outros pelo app (Boletos em PDF).` : undefined;
+    return { lido: mesmo, aviso };
+  }
+  if (!daIA.erro) return { lido: daIA };
+  // A IA às vezes junta número a mais ou a menos: procura um código que confere no meio do que ela leu.
+  const noTexto = codigosNoTexto(String(l.linha_digitavel ?? "")) as Registro[];
+  return { lido: noTexto[0] ?? null };
+}
 
 const soDigitos = (t?: string | null) => String(t ?? "").replace(/\D/g, "");
 const dataValida = (d?: string | null) => Boolean(d && /^\d{4}-\d{2}-\d{2}$/.test(d));
@@ -865,10 +901,13 @@ async function lancarDespesa(c: Contexto, l: Leitura) {
 
   // Pagamento de um boleto que estava na programação (mesmo código)? Marca como pago.
   let boletoPago: Registro | null = null;
-  const codigo = soDigitos(l.linha_digitavel);
-  if (codigo.length >= 44) {
+  const { lido: codigoPago } = escolherCodigo(c, l);
+  if (codigoPago) {
     const { data: abertos } = await db.from("boletos").select("id, empresa, vencimento, linha_digitavel").eq("pago", false);
-    boletoPago = ((abertos ?? []) as Registro[]).find((b) => soDigitos(b.linha_digitavel) === codigo) ?? null;
+    boletoPago = ((abertos ?? []) as Registro[]).find((b) => {
+      const outro = lerCodigoBoleto(b.linha_digitavel);
+      return !outro.erro && outro.barras === codigoPago.barras;
+    }) ?? null;
     if (boletoPago) {
       await db.from("boletos").update({ pago: true, data_pagamento: despesa.data, despesa_id: despesa.id, atualizado_em: new Date().toISOString() }).eq("id", boletoPago.id);
     }
@@ -896,14 +935,12 @@ async function lancarBoleto(c: Contexto, l: Leitura) {
   const avisos: string[] = [];
 
   // O código de barras traz valor, vencimento e banco com dígito verificador: vale mais que a leitura da IA.
-  const codigo = soDigitos(l.linha_digitavel);
-  let lido: Registro | null = null;
-  if (codigo) {
-    const r = lerCodigoBoleto(codigo);
-    if (r.erro) avisos.push("Não consegui ler o código de barras certinho. Cole a linha digitável no app antes de pagar.");
-    else lido = r;
-  } else {
-    avisos.push("Não achei a linha digitável no arquivo. Cole ela no app antes de pagar.");
+  const { lido, aviso: avisoCodigo } = escolherCodigo(c, l);
+  if (avisoCodigo) avisos.push(avisoCodigo);
+  if (!lido) {
+    avisos.push(soDigitos(l.linha_digitavel)
+      ? "Não consegui ler o código de barras certinho. Cole a linha digitável no app antes de pagar."
+      : "Não achei a linha digitável no arquivo. Cole ela no app antes de pagar.");
   }
   const valor = Number(lido?.valor ?? l.valor) || 0;
   const vencimento = lido?.vencimento ?? (dataValida(l.vencimento) ? l.vencimento : null);
@@ -929,7 +966,7 @@ async function lancarBoleto(c: Contexto, l: Leitura) {
   const empresa = (contato ? contato.fantasia || contato.nome : l.favorecido) || "";
   if (!empresa) avisos.push("Não achei o nome de quem recebe (beneficiário). Preencha a empresa no app.");
 
-  // Foto pequena vai junto (como a tirada no app); o PDF fica guardado no Storage.
+  // O arquivo fica anexado ao boleto (abre pelo app, em Boleto (PDF ou foto)); foto pequena vai também como foto.
   const ext = EXTENSOES[c.arquivo.tipo];
   const caminho = `boletos/${vencimento.slice(0, 7)}/${id}.${ext}`;
   const envio = await db.storage.from(BUCKET).upload(caminho, c.arquivo.bytes, { contentType: c.arquivo.tipo, upsert: true });
@@ -942,7 +979,6 @@ async function lancarBoleto(c: Contexto, l: Leitura) {
     `WhatsApp · enviado por ${c.nome || c.numero} em ${dataBr(c.quando)}`,
     l.numero_documento ? `Nº do documento: ${l.numero_documento}` : "",
     doc && !contato ? `CNPJ/CPF do beneficiário: ${l.cnpj_favorecido}` : "",
-    envio.error ? "" : `Arquivo original: ${BUCKET}/${caminho}`,
   ].filter(Boolean).join(" · ");
 
   const base = {
@@ -956,6 +992,7 @@ async function lancarBoleto(c: Contexto, l: Leitura) {
     linha_digitavel: lido?.linha_digitavel ?? null,
     banco: lido?.banco ?? null,
     fotos: foto ? [foto] : null,
+    arquivo: envio.error ? null : caminho,
     observacao,
     a_conferir: !empresa,
   };
@@ -994,7 +1031,7 @@ async function arquivoRecebido(db: Banco, numero: string, nome: string, midiaId:
   const culturas = (cults ?? []) as Item[];
   const maquinas = ((maqs ?? []) as Registro[]).map((m) => ({ id: m.id, nome: [m.nome, m.modelo, m.placa].filter(Boolean).join(" · ") }));
   const quando = opcoes.timestamp ? new Date(Number(opcoes.timestamp) * 1000).toISOString().slice(0, 10) : hojeBR();
-  const c: Contexto = { db, numero, nome, midiaId, quando, legenda: opcoes.legenda ?? "", arquivo, culturas, maquinas };
+  const c: Contexto = { db, numero, nome, midiaId, quando, legenda: opcoes.legenda ?? "", arquivo, culturas, maquinas, codigosDoPdf: await codigosNoPdf(arquivo) };
 
   const l = await lerDocumento(c, opcoes.como ?? null, await historicoDeFavorecidos(db, culturas));
   const marca = `\n[arquivo: midia ${midiaId}]`;

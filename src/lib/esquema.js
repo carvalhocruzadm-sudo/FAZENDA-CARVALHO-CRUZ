@@ -818,6 +818,7 @@ export const ESQUEMA = {
       chave_pix: { tipo: "texto", rotulo: "Chave PIX / conta para depósito", mostrarSe: (r) => ["PIX", "Transferência"].includes(r.forma_pagamento) },
       pago: { tipo: "booleano", rotulo: "Pago", padrao: false },
       data_pagamento: { tipo: "data", rotulo: "Pago em", mostrarSe: (r) => r.pago },
+      arquivo: { tipo: "arquivo", rotulo: "Boleto (PDF ou foto)", dica: "O arquivo do boleto. O que chega pelo assessor do WhatsApp já vem anexado." },
       fotos: { tipo: "fotos", rotulo: "Foto do boleto / nota" },
       foto: { tipo: "foto", rotulo: "Foto do boleto (tirada no depósito)", lado: 1800 },
       observacao: { tipo: "textoLongo", rotulo: "Observação" },

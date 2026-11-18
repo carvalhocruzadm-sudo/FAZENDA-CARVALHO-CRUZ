@@ -11,8 +11,11 @@
  * Os dígitos verificadores barram números que só parecem um código.
  */
 
-import { lerCodigoBoleto } from "./boleto";
+import { codigosNoTexto } from "./boleto";
 import { boletoValido, criarDecodificador, FAIXAS_FOTO } from "./codigoDeBarras";
+
+// O app e o assessor do WhatsApp usam a mesma leitura do texto.
+export { codigosNoTexto };
 
 /** Página a mais disso é muito provavelmente outra coisa (contrato, nota). */
 const MAX_PAGINAS = 30;
@@ -27,40 +30,6 @@ function carregarPdfjs() {
     return pdfjs;
   });
   return pdfjsPronto;
-}
-
-/**
- * Códigos de boleto válidos dentro de um texto. Junta os números de cada
- * trecho (pontos, espaços e traços entre eles valem) e testa janelas de 47 e
- * 48 dígitos: só passa o que bate com os dígitos verificadores. O código de
- * barras (44) só vale sozinho no trecho: ele tem um dígito verificador só, e
- * uma janela qualquer de números passaria por acaso.
- */
-export function codigosNoTexto(texto) {
-  const achados = [];
-  const guardar = (lido) => {
-    if (!lido.erro && !achados.some((a) => a.barras === lido.barras)) achados.push(lido);
-    return !lido.erro;
-  };
-  for (const trecho of String(texto ?? "").split(/[^\d.\s-]+/)) {
-    const d = trecho.replace(/\D/g, "");
-    if (d.length === 44) { guardar(lerCodigoBoleto(d)); continue; }
-    // O código começa e termina onde um número termina (antes de um espaço,
-    // ponto ou traço): não vale um pedaço do meio de outro número.
-    const corte = new Set([0, d.length]);
-    let n = 0;
-    for (let i = 0; i < trecho.length; i++) {
-      if (/\d/.test(trecho[i])) n++;
-      else corte.add(n);
-    }
-    for (let i = 0; i + 47 <= d.length; i++) {
-      if (!corte.has(i)) continue;
-      // Achou um: pula os números dele (a janela vizinha não é outro boleto).
-      if (corte.has(i + 47) && guardar(lerCodigoBoleto(d.slice(i, i + 47)))) i += 46;
-      else if (corte.has(i + 48) && guardar(lerCodigoBoleto(d.slice(i, i + 48)))) i += 47;
-    }
-  }
-  return achados;
 }
 
 /** Desenha a página num canvas (`escala` 2 ≈ 150 dpi: as barras ficam nítidas). */

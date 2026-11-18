@@ -5,7 +5,7 @@ import Formulario from "../components/Formulario";
 import LeitorBoleto from "../components/LeitorBoleto";
 import { Icone, Modal, Stat, TabelaSimples } from "../components/ui";
 import { boletoJaLancado, formatarLinha, lerCodigoBoleto } from "../lib/boleto";
-import { lerBeneficiarioDoBoleto } from "../lib/arquivos";
+import { enderecoDoArquivo, lerBeneficiarioDoBoleto } from "../lib/arquivos";
 import { abrirZips, lerBoletosDoPdf } from "../lib/boletoPdf";
 import { soma } from "../lib/calculos";
 import { CATEGORIAS_DESPESA, prepararRegistro, registroNovo } from "../lib/esquema";
@@ -57,6 +57,15 @@ function empresaJaConhecida(boletos, lido) {
 function empresaDoBeneficiario(dados, { nome, documento }) {
   const contato = documento && (dados.contatos ?? []).find((c) => String(c.documento ?? "").replace(/\D/g, "") === documento);
   return contato ? contato.fantasia || contato.nome : nome;
+}
+
+/** Abre o PDF (ou a foto) anexado ao boleto numa aba nova. */
+function abrirArquivo(caminho) {
+  // A aba abre já no clique (senão o navegador bloqueia) e recebe o endereço quando ele chega.
+  const aba = window.open("", "_blank");
+  enderecoDoArquivo(caminho)
+    .then((url) => { if (aba) aba.location.href = url; else window.location.href = url; })
+    .catch((e) => { aba?.close(); window.alert(e.message); });
 }
 
 const paraDataUrl = (blob) => new Promise((resolve) => {
@@ -361,6 +370,7 @@ function Calendario({ dados, abrir, pagar }) {
               rotulo: " ", valor: (b) => (
                 <span style={{ display: "inline-flex", gap: 6 }}>
                   {!b.pago && <button className="btn" onClick={() => pagar(b)}><Icone nome="check" tamanho={15} /> Pagar</button>}
+                  {b.arquivo && <button className="btn" title="Abrir o arquivo do boleto" onClick={() => abrirArquivo(b.arquivo)}><Icone nome="exportar" tamanho={15} /> Ver boleto</button>}
                   <button className="btn" onClick={() => abrir(b)}><Icone nome="editar" tamanho={15} /> Abrir</button>
                 </span>
               ),
