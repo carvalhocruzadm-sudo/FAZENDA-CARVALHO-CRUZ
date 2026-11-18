@@ -77,11 +77,37 @@ const paraDataUrl = (blob) => new Promise((resolve) => {
 
 // ─── Aviso de lançamentos repetidos ─────────────────────────────────────────
 
-function AvisoRepetidos({ dados, abrir }) {
+const MOTIVOS_REPETIDO = {
+  codigo: "Mesmo código de boleto",
+  empresa: "Mesma empresa, valor e vencimento",
+  perto: "Mesma empresa e valor, vencimentos a poucos dias",
+  valor: "Mesmo valor e vencimento (nome da empresa diferente)",
+};
+
+function AvisoRepetidos({ dados, abrir, salvar }) {
   const grupos = useMemo(() => pagamentosRepetidos(dados.boletos), [dados.boletos]);
   const [aberto, setAberto] = useState(true);
+  const [marcando, setMarcando] = useState(null);
   if (!grupos.length) return null;
   const aMais = soma(grupos, (g) => soma(g.itens.filter((b) => !b.pago).slice(g.itens.some((b) => b.pago) ? 0 : 1), (b) => b.valor));
+
+  /** "Não é repetido": marca todos do grupo, e o aviso deste grupo some. */
+  const naoERepetido = async (g) => {
+    if (!window.confirm(`Confirma que são ${g.itens.length} pagamentos diferentes (e que é para pagar todos)?`)) return;
+    setMarcando(g.chave);
+    try {
+      for (const b of g.itens) {
+        const { reg, erro } = prepararRegistro("boletos", { ...b, nao_repetido: true }, dados);
+        if (erro) throw new Error(erro);
+        await salvar("boletos", reg);
+      }
+    } catch (e) {
+      window.alert(`Não consegui marcar: ${e.message}`);
+    } finally {
+      setMarcando(null);
+    }
+  };
+
   return (
     <div className="aviso repetidos">
       <button type="button" className="repetidos-topo" onClick={() => setAberto(!aberto)}>
@@ -90,17 +116,25 @@ function AvisoRepetidos({ dados, abrir }) {
       </button>
       {aberto && (
         <>
-          <small>Toque em um lançamento para abrir e apagar o que sobrou. Se não for repetido (ex.: duas parcelas iguais), escreva uma descrição diferente em cada um — aí o aviso some.</small>
+          <small>Toque num lançamento para abrir e apagar o que sobrou. Se forem pagamentos diferentes mesmo, toque em “Não é repetido”.</small>
           {grupos.map((g) => (
             <div key={g.chave} className="repetidos-grupo">
-              <div>
-                <b>{g.itens[0].empresa || "Sem empresa"}</b> — {brl(g.itens[0].valor)}
-                {" "}<span className="selo ruim">{g.certeza ? "Mesmo código de boleto" : "Mesma empresa, valor e vencimento"}</span>
+              <div className="barra" style={{ margin: 0 }}>
+                <span>
+                  <b>{g.itens[0].empresa || "Sem empresa"}</b> — {brl(g.itens[0].valor)}
+                  {" "}<span className={`selo ${g.motivo === "valor" ? "atencao" : "ruim"}`}>{MOTIVOS_REPETIDO[g.motivo] ?? "Parecidos"}</span>
+                </span>
+                <span className="espaco" />
+                {g.motivo !== "codigo" && (
+                  <button type="button" className="btn" disabled={marcando === g.chave} onClick={() => naoERepetido(g)}>
+                    <Icone nome="check" tamanho={15} /> {marcando === g.chave ? "Marcando…" : "Não é repetido"}
+                  </button>
+                )}
               </div>
               <div className="repetidos-itens">
                 {g.itens.map((b) => (
                   <button key={b.id} type="button" className="btn" onClick={() => abrir(b)}>
-                    {data(b.vencimento)} · {brl(b.valor)}{b.descricao ? ` · ${b.descricao}` : ""}
+                    {data(b.vencimento)} · {b.empresa || "sem empresa"} · {brl(b.valor)}{b.descricao ? ` · ${b.descricao}` : ""}
                     {" "}<span className={`selo ${situacaoBoleto(b)[0]}`}>{situacaoBoleto(b)[1]}</span>
                   </button>
                 ))}
@@ -748,7 +782,7 @@ export default function Boletos(props) {
         <button className="btn" onClick={novo}><Icone nome="mais" /> Outro pagamento (PIX, transferência…)</button>
       </div>
 
-      <AvisoRepetidos dados={dados} abrir={abrir} />
+      <AvisoRepetidos dados={dados} abrir={abrir} salvar={salvar} />
 
       <div className="grade">
         <Stat rotulo={`A pagar nesta semana (${data(domingo).slice(0, 5)} a ${data(sabado).slice(0, 5)})`} valor={brl(soma(nestaSemana, (b) => b.valor))}
