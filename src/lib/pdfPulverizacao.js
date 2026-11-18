@@ -144,10 +144,22 @@ export async function gerarPdfPulverizacao(dados, ordem) {
   return { blob: doc.output("blob"), nome: `${base || "pulverizacao"}-${ordem.data}.pdf` };
 }
 
+/** Salva o PDF direto na pasta de Downloads (sem janela de compartilhar). */
+export function baixarPdf({ blob, nome }) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 /**
  * Manda o PDF: no celular (e no Windows) abre a janela de compartilhar, onde
  * aparece o WhatsApp. Onde não dá, baixa o arquivo para anexar na mão.
- * Devolve "compartilhado" ou "baixado".
+ * Devolve "compartilhado", "cancelado" ou "baixado".
  */
 export async function compartilharPdf({ blob, nome }, texto) {
   const arquivo = new File([blob], nome, { type: "application/pdf" });
@@ -159,11 +171,6 @@ export async function compartilharPdf({ blob, nome }, texto) {
       if (e?.name === "AbortError") return "cancelado";
     }
   }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = nome;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  baixarPdf({ blob, nome });
   return "baixado";
 }

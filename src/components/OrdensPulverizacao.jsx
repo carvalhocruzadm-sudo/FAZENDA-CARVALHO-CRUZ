@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { emEmbalagens, itensDaOrdem } from "../lib/deposito";
 import { ESQUEMA, prepararRegistro, registroNovo } from "../lib/esquema";
-import { compartilharPdf, gerarPdfPulverizacao } from "../lib/pdfPulverizacao";
+import { baixarPdf, compartilharPdf, gerarPdfPulverizacao } from "../lib/pdfPulverizacao";
 import { data as dataBR, nomeRef, numero } from "../lib/formato";
 import { SEM_CULTURA, chaveCultura, fazendaDoTalhao, nomesTalhoesDaOrdem, talhoesDaOrdem } from "../lib/talhoes";
 import { FotoProduto } from "./CampoUI";
@@ -213,12 +213,14 @@ export default function OrdensPulverizacao({ dados, salvar, remover, daAplicacao
   };
 
   // PDF da ordem gravada (com as fotos dos produtos) para o WhatsApp dos operadores.
-  const mandarPdf = async () => {
+  // jeito = "baixar" (salva no computador) ou "whatsapp" (janela de compartilhar).
+  const mandarPdf = async (jeito) => {
     const gravada = dados.pulverizacoes.find((x) => x.id === ordem.id);
     if (!gravada) return;
     setGerandoPdf(true);
     try {
       const pdf = await gerarPdfPulverizacao(dados, gravada);
+      if (jeito === "baixar") { baixarPdf(pdf); return; }
       const r = await compartilharPdf(pdf, gravada.titulo || "Ordem de pulverização");
       if (r === "baixado") window.alert(`O PDF "${pdf.nome}" foi baixado. Abra o WhatsApp e anexe o arquivo na conversa dos operadores.`);
     } catch (err) {
@@ -237,8 +239,13 @@ export default function OrdensPulverizacao({ dados, salvar, remover, daAplicacao
         <>
           {ordem.id && <button className="btn perigo" onClick={apagar}><Icone nome="lixo" /> Apagar</button>}
           {ordem.id && (
-            <button className="btn" onClick={mandarPdf} disabled={gerandoPdf} title="PDF com as fotos dos produtos (o que está salvo)">
-              <Icone nome="exportar" /> {gerandoPdf ? "Gerando…" : "PDF / WhatsApp"}
+            <button className="btn" onClick={() => mandarPdf("baixar")} disabled={gerandoPdf} title="Salva o PDF com as fotos dos produtos na pasta Downloads">
+              <Icone nome="importar" /> {gerandoPdf ? "Gerando…" : "Baixar PDF"}
+            </button>
+          )}
+          {ordem.id && (
+            <button className="btn" onClick={() => mandarPdf("whatsapp")} disabled={gerandoPdf} title="Abre a janela de compartilhar (WhatsApp)">
+              <Icone nome="exportar" /> WhatsApp
             </button>
           )}
           <span className="espaco" />
