@@ -771,3 +771,11 @@ img.ampliavel { cursor: zoom-in; }
 .grade.grade-5 { grid-template-columns: repeat(5, 1fr); }
 @media (max-width: 1200px) { .grade.grade-5 { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 640px) { .grade.grade-5 { grid-template-columns: 1fr 1fr; } }
+
+/* Aviso de pagamentos lançados em duplicidade (Programação de pagamentos) */
+.aviso.repetidos { display: flex; flex-direction: column; gap: 8px; border: 2px solid var(--vermelho); }
+.repetidos-topo { all: unset; cursor: pointer; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.repetidos-topo b { font-size: 15px; }
+.repetidos-grupo { background: var(--cartao); color: var(--texto); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.repetidos-itens { display: flex; flex-wrap: wrap; gap: 6px; }
+.repetidos-itens .btn { font-size: 12px; }

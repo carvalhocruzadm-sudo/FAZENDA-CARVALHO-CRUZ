@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Formulario from "../components/Formulario";
 import LeitorBoleto from "../components/LeitorBoleto";
 import { Icone, Modal, Stat, TabelaSimples } from "../components/ui";
-import { boletoJaLancado, formatarLinha, lerCodigoBoleto } from "../lib/boleto";
+import { boletoJaLancado, formatarLinha, lerCodigoBoleto, pagamentosRepetidos } from "../lib/boleto";
 import { lerBeneficiarioDoBoleto } from "../lib/arquivos";
 import { abrirZips, lerBoletosDoPdf } from "../lib/boletoPdf";
 import { soma } from "../lib/calculos";
@@ -65,6 +65,44 @@ const paraDataUrl = (blob) => new Promise((resolve) => {
   leitor.onerror = () => resolve(null);
   leitor.readAsDataURL(blob);
 });
+
+// ─── Aviso de lançamentos repetidos ─────────────────────────────────────────
+
+function AvisoRepetidos({ dados, abrir }) {
+  const grupos = useMemo(() => pagamentosRepetidos(dados.boletos), [dados.boletos]);
+  const [aberto, setAberto] = useState(true);
+  if (!grupos.length) return null;
+  const aMais = soma(grupos, (g) => soma(g.itens.filter((b) => !b.pago).slice(g.itens.some((b) => b.pago) ? 0 : 1), (b) => b.valor));
+  return (
+    <div className="aviso repetidos">
+      <button type="button" className="repetidos-topo" onClick={() => setAberto(!aberto)}>
+        <b>⚠️ {grupos.length === 1 ? "1 pagamento parece lançado em duplicidade" : `${grupos.length} pagamentos parecem lançados em duplicidade`}</b>
+        <span>{brl(aMais)} a mais se pagar tudo · {aberto ? "esconder" : "ver"}</span>
+      </button>
+      {aberto && (
+        <>
+          <small>Toque em um lançamento para abrir e apagar o que sobrou. Se não for repetido (ex.: duas parcelas iguais), escreva uma descrição diferente em cada um — aí o aviso some.</small>
+          {grupos.map((g) => (
+            <div key={g.chave} className="repetidos-grupo">
+              <div>
+                <b>{g.itens[0].empresa || "Sem empresa"}</b> — {brl(g.itens[0].valor)}
+                {" "}<span className="selo ruim">{g.certeza ? "Mesmo código de boleto" : "Mesma empresa, valor e vencimento"}</span>
+              </div>
+              <div className="repetidos-itens">
+                {g.itens.map((b) => (
+                  <button key={b.id} type="button" className="btn" onClick={() => abrir(b)}>
+                    {data(b.vencimento)} · {brl(b.valor)}{b.descricao ? ` · ${b.descricao}` : ""}
+                    {" "}<span className={`selo ${situacaoBoleto(b)[0]}`}>{situacaoBoleto(b)[1]}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
 
 // ─── Janela de um boleto (incluir, editar, apagar) ──────────────────────────
 
@@ -628,6 +666,8 @@ export default function Boletos(props) {
         </label>
         <button className="btn" onClick={novo}><Icone nome="mais" /> Outro pagamento (PIX, transferência…)</button>
       </div>
+
+      <AvisoRepetidos dados={dados} abrir={abrir} />
 
       <div className="grade">
         <Stat rotulo={`A pagar nesta semana (${data(domingo).slice(0, 5)} a ${data(sabado).slice(0, 5)})`} valor={brl(soma(nestaSemana, (b) => b.valor))}

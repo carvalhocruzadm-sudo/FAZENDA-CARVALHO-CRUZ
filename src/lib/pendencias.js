@@ -5,6 +5,7 @@
  * `tipo`: "ruim" (vencido, negativo) ou "atencao" (está chegando a hora).
  */
 
+import { pagamentosRepetidos } from "./boleto";
 import { diesel, estoqueInsumos, situacaoRevisao } from "./calculos";
 import { brl, data, leitura, nomeRef, numero } from "./formato";
 import { destinoDoRegistro, telaDaCultura } from "./porCultura";
@@ -87,13 +88,18 @@ export function contasAPagar(dados, dias = 30) {
 
 /** As contas do jeito de aviso (vencidas e as dos próximos 7 dias), para o Painel. */
 export function avisosDeContas(dados) {
-  return contasAPagar(dados, 7).map((c) => ({
+  const repetidos = pagamentosRepetidos(dados.boletos).map((g) => ({
+    tipo: "ruim",
+    texto: `Pagamento lançado ${g.itens.length} vezes: ${g.itens[0].empresa || "sem empresa"} — ${brl(g.itens[0].valor)}, vence ${data(g.itens[0].vencimento)}. Confira para não pagar duas vezes.`,
+    ir: "boletos",
+  }));
+  return [...repetidos, ...contasAPagar(dados, 7).map((c) => ({
     tipo: c.tipo,
     texto: c.boleto
       ? `${c.tipo === "ruim" ? "Pagamento vencido" : "Pagamento vence"} ${data(c.vencimento)}: ${c.texto} — ${brl(c.valor)} (${c.quem})`
       : `${c.tipo === "ruim" ? "Conta vencida" : "Vence"} ${data(c.vencimento)}: ${c.texto} — ${brl(c.valor)}`,
     ir: c.ir, aba: c.aba, sub: c.sub,
-  }));
+  }))];
 }
 
 /** O que foi feito no campo por último: aplicações, serviços, colheitas, abastecimentos e cargas. */

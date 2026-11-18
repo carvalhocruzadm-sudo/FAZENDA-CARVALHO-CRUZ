@@ -183,3 +183,70 @@ export function boletoJaLancado(dados, linha, ignorar = {}, soBoletos = false) {
   if (e) return `já foi lançado no depósito em ${dataBR(e.data)}${e.a_conferir ? ", esperando aprovação no escritório" : ""}.`;
   return null;
 }
+
+/**
+ * Lançamentos repetidos na Programação de pagamentos — para não pagar duas vezes.
+ *
+ * Dois pagamentos são o mesmo quando:
+ *   • têm o mesmo código de boleto (certeza); ou
+ *   • têm a mesma empresa, o mesmo valor e o mesmo vencimento (provável).
+ *     Se os dois têm descrição e as descrições são diferentes (ex.: "parcela 1"
+ *     e "parcela 2"), não conta: é assim que se diz que não é repetido.
+ *
+ * Só mostra os grupos com algum ainda a pagar (os já pagos não têm mais o que evitar).
+ * Devolve [{ chave, certeza, itens: [boleto, …] }], o mais perto de vencer primeiro.
+ */
+export function pagamentosRepetidos(boletos) {
+  const texto = (t) => String(t ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
+  const centavos = (v) => Math.round((Number(v) || 0) * 100);
+  const lista = (boletos ?? []).filter((b) => b && b.vencimento && centavos(b.valor) > 0);
+
+  // Junta quem é igual (union-find simples), para A=B pelo código e B=C pelo nome virar um grupo só.
+  const pai = new Map(lista.map((b) => [b.id, b.id]));
+  const raiz = (id) => (pai.get(id) === id ? id : raiz(pai.get(id)));
+  const certos = new Set();
+  const juntar = (a, b, certeza) => {
+    pai.set(raiz(a.id), raiz(b.id));
+    if (certeza) { certos.add(a.id); certos.add(b.id); }
+  };
+
+  const porCodigo = new Map();
+  const porDados = new Map();
+  for (const b of lista) {
+    const codigo = soDigitos(b.linha_digitavel);
+    if (codigo.length >= 44) {
+      const igual = porCodigo.get(codigo);
+      if (igual) juntar(b, igual, true); else porCodigo.set(codigo, b);
+    }
+    const chave = `${texto(b.empresa)}|${centavos(b.valor)}|${b.vencimento}`;
+    if (!texto(b.empresa)) continue;
+    const mesmos = porDados.get(chave) ?? [];
+    for (const outro of mesmos) {
+      const d1 = texto(b.descricao);
+      const d2 = texto(outro.descricao);
+      if (d1 && d2 && d1 !== d2) continue;
+      // Dois boletos com códigos diferentes não são o mesmo, mesmo com tudo igual.
+      const c1 = soDigitos(b.linha_digitavel);
+      const c2 = soDigitos(outro.linha_digitavel);
+      if (c1.length >= 44 && c2.length >= 44 && c1 !== c2) continue;
+      juntar(b, outro, false);
+    }
+    mesmos.push(b);
+    porDados.set(chave, mesmos);
+  }
+
+  const grupos = new Map();
+  for (const b of lista) {
+    const r = raiz(b.id);
+    if (!grupos.has(r)) grupos.set(r, []);
+    grupos.get(r).push(b);
+  }
+  return [...grupos.entries()]
+    .filter(([, itens]) => itens.length > 1 && itens.some((b) => !b.pago))
+    .map(([chave, itens]) => ({
+      chave,
+      certeza: itens.some((b) => certos.has(b.id)),
+      itens: itens.sort((a, b) => Number(Boolean(b.pago)) - Number(Boolean(a.pago)) || String(a.vencimento).localeCompare(String(b.vencimento))),
+    }))
+    .sort((a, b) => String(a.itens[0].vencimento).localeCompare(String(b.itens[0].vencimento)));
+}
