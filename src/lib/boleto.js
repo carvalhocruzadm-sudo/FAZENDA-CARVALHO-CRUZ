@@ -183,3 +183,37 @@ export function boletoJaLancado(dados, linha, ignorar = {}, soBoletos = false) {
   if (e) return `já foi lançado no depósito em ${dataBR(e.data)}${e.a_conferir ? ", esperando aprovação no escritório" : ""}.`;
   return null;
 }
+
+/**
+ * Códigos de boleto válidos dentro de um texto. Junta os números de cada
+ * trecho (pontos, espaços e traços entre eles valem) e testa janelas de 47 e
+ * 48 dígitos: só passa o que bate com os dígitos verificadores. O código de
+ * barras (44) só vale sozinho no trecho: ele tem um dígito verificador só, e
+ * uma janela qualquer de números passaria por acaso.
+ */
+export function codigosNoTexto(texto) {
+  const achados = [];
+  const guardar = (lido) => {
+    if (!lido.erro && !achados.some((a) => a.barras === lido.barras)) achados.push(lido);
+    return !lido.erro;
+  };
+  for (const trecho of String(texto ?? "").split(/[^\d.\s-]+/)) {
+    const d = trecho.replace(/\D/g, "");
+    if (d.length === 44) { guardar(lerCodigoBoleto(d)); continue; }
+    // O código começa e termina onde um número termina (antes de um espaço,
+    // ponto ou traço): não vale um pedaço do meio de outro número.
+    const corte = new Set([0, d.length]);
+    let n = 0;
+    for (let i = 0; i < trecho.length; i++) {
+      if (/\d/.test(trecho[i])) n++;
+      else corte.add(n);
+    }
+    for (let i = 0; i + 47 <= d.length; i++) {
+      if (!corte.has(i)) continue;
+      // Achou um: pula os números dele (a janela vizinha não é outro boleto).
+      if (corte.has(i + 47) && guardar(lerCodigoBoleto(d.slice(i, i + 47)))) i += 46;
+      else if (corte.has(i + 48) && guardar(lerCodigoBoleto(d.slice(i, i + 48)))) i += 47;
+    }
+  }
+  return achados;
+}
