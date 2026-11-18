@@ -847,6 +847,40 @@ export const ESQUEMA = {
     ordem: (a, b) => String(a.vencimento ?? "").localeCompare(String(b.vencimento ?? "")),
   },
 
+  boletos_fornecedor: {
+    titulo: "Boletos enviados por fornecedores", singular: "boleto", icone: "calendario", lancamento: true, semRepetir: true,
+    descricao: "O fornecedor manda o boleto pelo link público (sem senha). O escritório confere e passa para a Programação de pagamentos.",
+    // Quem não tem login (o fornecedor) só pode INSERIR boleto novo nesta
+    // tabela — nunca ler, mudar ou apagar. Ver scripts/gerar-schema.mjs.
+    envioPublico: true,
+    campos: {
+      data: { tipo: "data", rotulo: "Enviado em", obrigatorio: true, padrao: hoje },
+      envio: { tipo: "texto", rotulo: "Código do envio", oculto: true },
+      fornecedor: { tipo: "texto", rotulo: "Fornecedor (nome da empresa)", obrigatorio: true },
+      documento: { tipo: "texto", rotulo: "CNPJ / CPF" },
+      contato: { tipo: "texto", rotulo: "Quem está enviando e telefone" },
+      nota: { tipo: "texto", rotulo: "Nº da nota fiscal" },
+      descricao: { tipo: "texto", rotulo: "Referente a", dica: "Ex.: adubo, peças do trator" },
+      valor: { tipo: "dinheiro", rotulo: "Valor do boleto", obrigatorio: true },
+      vencimento: { tipo: "data", rotulo: "Vencimento", obrigatorio: true },
+      linha_digitavel: { tipo: "texto", rotulo: "Código do boleto (linha digitável)" },
+      arquivos: { tipo: "fotos", rotulo: "Boleto (foto ou PDF)", obrigatorio: true },
+      observacao: { tipo: "textoLongo", rotulo: "Observação" },
+      situacao: { tipo: "opcoes", rotulo: "Situação", oculto: true, padrao: "pendente", opcoes: [["pendente", "Esperando conferência"], ["lancado", "Na programação de pagamentos"], ["recusado", "Recusado"]] },
+      resposta: { tipo: "texto", rotulo: "Motivo da recusa", oculto: true },
+      boleto_id: { tipo: "texto", rotulo: "Pagamento lançado", oculto: true },
+    },
+    aoMudar: {
+      linha_digitavel: (reg) => {
+        const lido = lerCodigoBoleto(reg.linha_digitavel);
+        if (lido.erro) return {};
+        return { ...(lido.valor ? { valor: lido.valor } : {}), ...(lido.vencimento ? { vencimento: lido.vencimento } : {}) };
+      },
+    },
+    travado: (r) => r.situacao !== "pendente",
+    colunas: ["data", "situacao", "fornecedor", "nota", "valor", "vencimento"],
+  },
+
   entradas: {
     titulo: "Outras entradas", singular: "entrada", icone: "entrada", lancamento: true,
     descricao: "Dinheiro que entra sem ser venda: aditivo dos sócios (Lucas, Carlinhos), empréstimo, indenização…",

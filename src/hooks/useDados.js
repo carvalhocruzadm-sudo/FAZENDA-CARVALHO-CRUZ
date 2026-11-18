@@ -9,7 +9,7 @@ import { atualizarContadores, iniciarAutoSync, pedirEnvioEmSegundoPlano, sincron
 
 const vazio = () => Object.fromEntries(COLECOES.map((c) => [c, []]));
 
-function novoId() {
+export function novoId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   // Navegadores antigos (e http fora de localhost) não têm randomUUID.
   return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>

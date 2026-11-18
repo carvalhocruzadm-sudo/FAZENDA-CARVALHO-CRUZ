@@ -507,6 +507,25 @@ span.figura.mini, .mini .figura { font-size: 30px; }
 .foto img { display: block; width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid #e3e3d8; }
 .foto .btn { position: absolute; top: 4px; right: 4px; background: #fff; }
 .foto-nova { cursor: pointer; align-self: center; }
+.foto .miniatura { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
+.foto .pdf {
+  width: 110px; height: 110px; border-radius: 8px; border: 1px solid #e3e3d8; background: var(--vermelho-pale);
+  color: var(--vermelho); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-weight: 700;
+}
+
+/* Link público do fornecedor (enviar boleto) */
+.publico { max-width: 680px; margin: 0 auto; padding: 20px 16px 60px; }
+.publico .cabeca { text-align: center; margin-bottom: 16px; }
+.publico .cabeca img { width: 110px; display: block; margin: 0 auto 8px; }
+.publico h3 { font-size: 14px; margin-bottom: 10px; }
+.publico .boleto { border: 1px solid var(--linha); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+.publico .boleto header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.publico .acoes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.publico .acoes .btn { justify-content: center; padding: 11px 16px; }
+.mensagem {
+  white-space: pre-wrap; background: var(--fundo); border: 1px solid var(--linha); border-radius: 10px;
+  padding: 14px; font-size: 13px; line-height: 1.55; margin: 0;
+}
 
 /* Consulta de produto (IA) */
 .consulta { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }

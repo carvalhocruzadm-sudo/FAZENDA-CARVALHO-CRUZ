@@ -112,6 +112,14 @@ drop policy if exists "campo corrige ${tabela}" on public.${tabela};\n`;
 create policy "campo corrige ${tabela}" on public.${tabela}
   for update to authenticated using (${grava}) with check (${grava});\n`;
   }
+  if (def.envioPublico) {
+    // Link público (fornecedor sem login): só pode criar registro novo, ainda
+    // pendente e de tamanho razoável. Não lê, não muda e não apaga nada.
+    sql += `drop policy if exists "publico envia ${tabela}" on public.${tabela};
+create policy "publico envia ${tabela}" on public.${tabela}
+  for insert to anon with check (situacao = 'pendente' and boleto_id is null and coalesce(pg_column_size(arquivos), 0) < 8000000);
+grant insert on public.${tabela} to anon;\n`;
+  }
   sql += "\n";
 }
 
