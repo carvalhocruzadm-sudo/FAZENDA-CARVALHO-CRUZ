@@ -1,5 +1,6 @@
 // Assessor da fazenda pelo WhatsApp.
-// - Comprovante (foto ou PDF): a IA lê, lança em Despesas na hora e responde o que lançou.
+// - Arquivo (foto ou PDF): a IA lê e lança na hora. Comprovante (já pago) vai
+//   para Despesas; boleto ainda a pagar vai para a Programação de pagamentos.
 // - Texto: conversa com o sistema todo — responde perguntas consultando os dados
 //   e prepara lançamentos e correções em qualquer tela, mas só grava depois que
 //   a pessoa responde SIM.
@@ -25,6 +26,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import * as EsquemaDoApp from "https://raw.githubusercontent.com/carvalhocruzadm-sudo/FAZENDA-CARVALHO-CRUZ/main/src/lib/esquema.js";
+import * as BoletoDoApp from "https://raw.githubusercontent.com/carvalhocruzadm-sudo/FAZENDA-CARVALHO-CRUZ/main/src/lib/boleto.js";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -34,9 +36,10 @@ type Registro = Record<string, Qualquer>;
 type Dados = Record<string, Registro[]>;
 
 const { ESQUEMA, registroNovo, prepararRegistro, campoVisivel, CATEGORIAS_DESPESA, FORMAS_PAGAMENTO } = EsquemaDoApp as Qualquer;
+const { lerCodigoBoleto, boletoJaLancado } = BoletoDoApp as Qualquer;
 
 const MODELO = Deno.env.get("MODELO_AGENTE_WHATSAPP") ?? "claude-haiku-5-5";
-const ORIGEM = "WHATSAPP-IA"; // entra no id, para o mesmo comprovante não duplicar
+const ORIGEM = "WHATSAPP-IA"; // entra no id, para o mesmo comprovante ou boleto não duplicar
 const GRAPH = `https://graph.facebook.com/${Deno.env.get("WHATSAPP_GRAPH_VERSAO") ?? "v23.0"}`;
 const BUCKET = "comprovantes"; // o mesmo de src/lib/arquivos.js
 const EXTENSOES: Record<string, string> = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
@@ -50,7 +53,8 @@ const CADASTROS = ["culturas", "fazendas", "talhoes", "safras", "funcionarios", 
 /** Campos que não cabem numa mensagem (fotos, arquivos, listas). */
 const PESADOS = new Set(["foto", "fotos", "arquivo", "itens"]);
 
-const MINUTOS_LEGENDA = 10; // texto mandado até 10 min antes do comprovante vira a legenda dele
+const MINUTOS_LEGENDA = 10; // texto mandado até 10 min antes do arquivo vira a legenda dele
+const MINUTOS_LOTE = 3; // depois do 1º arquivo, a legenda ainda vale 3 min para os outros mandados juntos
 const HORAS_CONVERSA = 12; // o assessor lembra das mensagens das últimas 12 horas
 const HORAS_PENDENTE = 2; // lançamento esperando o SIM vale por 2 horas
 
@@ -126,15 +130,37 @@ async function baixarMidia(id: string) {
 
 // ─── IA ───────────────────────────────────────────────────────────────────
 
+/** Vários arquivos de uma vez fazem várias leituras ao mesmo tempo: se a IA disser "espere", espera e tenta de novo. */
 async function chamarIA(corpo: Registro) {
-  const resposta = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": segredo("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: MODELO, max_tokens: 16000, tool_choice: { type: "auto" }, ...corpo }),
-  });
-  const json = await resposta.json().catch(() => ({}));
-  if (!resposta.ok) throw new Error(json?.error?.message ?? "A IA não respondeu.");
-  return json as { content: Registro[]; stop_reason: string };
+  for (let tentativa = 1; ; tentativa++) {
+    const resposta = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": segredo("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: MODELO, max_tokens: 16000, tool_choice: { type: "auto" }, ...corpo }),
+    });
+    const json = await resposta.json().catch(() => ({}));
+    if (resposta.ok) return json as { content: Registro[]; stop_reason: string };
+    const passageiro = [429, 500, 502, 503, 504, 529].includes(resposta.status);
+    if (!passageiro || tentativa >= 5) throw new Error(json?.error?.message ?? "A IA não respondeu.");
+    const pedida = Number(resposta.headers.get("retry-after")) || 0;
+    const espera = Math.min(30, Math.max(pedida, 2 ** tentativa + Math.random() * 2));
+    console.warn(`IA ocupada (${resposta.status}); tentando de novo em ${espera.toFixed(0)}s.`);
+    await new Promise((ok) => setTimeout(ok, espera * 1000));
+  }
+}
+
+/** Roda as tarefas de `quantas` em `quantas` (para não ler 10 PDFs ao mesmo tempo). */
+async function emLotes<T, R>(itens: T[], quantas: number, fazer: (item: T) => Promise<R>) {
+  const saida: R[] = new Array(itens.length);
+  let proximo = 0;
+  const trabalhador = async () => {
+    while (proximo < itens.length) {
+      const i = proximo++;
+      saida[i] = await fazer(itens[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(quantas, itens.length) }, trabalhador));
+  return saida;
 }
 
 const textoDa = (r: { content: Registro[] }) =>
@@ -150,7 +176,7 @@ async function guardar(db: Banco, numero: string, papel: "user" | "assistant", t
 async function conversaRecente(db: Banco, numero: string, horas: number) {
   const desde = new Date(Date.now() - horas * 3_600_000).toISOString();
   const { data } = await db.from("whatsapp_conversa").select("papel, texto, criado_em")
-    .eq("numero", numero).gte("criado_em", desde).order("criado_em", { ascending: false }).limit(16);
+    .eq("numero", numero).gte("criado_em", desde).order("criado_em", { ascending: false }).limit(40);
   return ((data ?? []) as Registro[]).reverse();
 }
 
@@ -309,6 +335,18 @@ const FERRAMENTAS = [
     name: "anotar_legenda",
     description: "Guarda o texto como legenda do próximo comprovante (foto/PDF) que a pessoa vai mandar, ex.: 'almoço jhun', '1620', 'diária João'.",
     input_schema: { type: "object", properties: { texto: { type: "string" } }, required: ["texto"] },
+  },
+  {
+    name: "lancar_arquivos",
+    description: "Lê de novo arquivos (foto/PDF) que a pessoa já mandou e lança do jeito que ela disse: boleto a pagar → Programação de pagamentos; comprovante → Despesas. Os ids vêm das marcas [arquivo: midia …] das suas mensagens anteriores. Grava na hora (não precisa de SIM).",
+    input_schema: {
+      type: "object",
+      properties: {
+        midias: { type: "array", items: { type: "string" }, description: "Ids das mídias (o número depois de 'midia')." },
+        como: { type: "string", enum: ["boleto", "comprovante"] },
+      },
+      required: ["midias", "como"],
+    },
   },
   {
     name: "propor_lancamento",
@@ -534,6 +572,14 @@ async function executar(nome: string, entrada: Registro, ctx: Ctx): Promise<Regi
       const { error } = await ctx.db.from("whatsapp_recados").insert({ numero: ctx.numero, texto: String(entrada.texto ?? "").trim() });
       return error ? { erro: `Não consegui anotar (rodou o SQL da tabela whatsapp_recados?): ${error.message}` } : { ok: true };
     }
+    if (nome === "lancar_arquivos") {
+      const ids = [...new Set<string>((entrada.midias ?? []).map((m: Qualquer) => String(m).replace(/\D/g, "")).filter(Boolean))].slice(0, 20);
+      if (!ids.length) return { erro: "Diga quais arquivos (ids das marcas [arquivo: midia …])." };
+      const como = entrada.como === "comprovante" ? "comprovante" : "boleto";
+      const respostas = await emLotes(ids, 4, (id) => arquivoRecebido(ctx.db, ctx.numero, ctx.nome, id, { como })
+        .catch((e) => `Não consegui abrir um dos arquivos (${e instanceof Error ? e.message : "erro"}). Mande ele de novo.`));
+      return { ok: true, respostas };
+    }
     if (nome === "propor_lancamento") return await proporLancamento(entrada, ctx);
     if (nome === "propor_alteracao") return await proporAlteracao(entrada, ctx);
     return { erro: `Ferramenta ${nome} não existe.` };
@@ -578,7 +624,8 @@ Como trabalhar:
 - Datas: "hoje", "ontem", "segunda" contam a partir do dia que vem no começo da mensagem. Nas ferramentas, use AAAA-MM-DD.
 - Campos marcados como conta automática o sistema calcula: não preencha.
 - Apagar registro não é por aqui: diga para apagar no app.
-- Comprovante de pagamento (foto ou PDF) a pessoa manda direto e o sistema lança a despesa sozinho. Se ela escrever algo que parece a legenda de um comprovante que vai mandar (ex.: "almoço jhun", "1620", "diária João"), use anotar_legenda com o texto dela.
+- Arquivo (foto ou PDF) a pessoa manda direto e o sistema lê sozinho: comprovante de algo já pago vai para Despesas; boleto ainda a pagar vai para a Programação de pagamentos (tabela boletos). Nem tudo que ela manda é despesa. Se ela escrever algo que parece a legenda de um arquivo que vai mandar (ex.: "almoço jhun", "1620", "diária João", "boleto do adubo"), use anotar_legenda com o texto dela.
+- Se a pessoa disser que arquivos que você recusou (ou lançou no lugar errado) são boletos a pagar ou comprovantes, use lancar_arquivos com os ids das marcas [arquivo: midia …] das suas mensagens anteriores (todos os que ela quis dizer) e o como certo. Se algum já tinha ido para o lugar errado, avise que o lançamento errado precisa ser apagado no app. Arquivo sem marca (mandado antes desta versão) precisa ser mandado de novo.
 - O "[registro: tabela id]" nas suas mensagens anteriores é o que foi gravado: use esse id para corrigir.
 - Se a pergunta não tem a ver com a fazenda, responda em uma linha que você cuida do sistema da fazenda.
 
@@ -605,59 +652,85 @@ async function assessor(ctx: Ctx, texto: string) {
     const resultados: Registro[] = [];
     let proposta: string | null = null;
     let legenda: string | null = null;
+    const arquivos: string[] = [];
     for (const u of usos) {
       const res = await executar(u.name, u.input, ctx);
       console.log(`Ferramenta ${u.name}: ${JSON.stringify(u.input).slice(0, 300)} → ${res.erro ? `erro: ${res.erro}` : "ok"}`);
       if (u.name.startsWith("propor_") && res.ok) proposta = res.resumo;
       if (u.name === "anotar_legenda" && res.ok) legenda = String(u.input.texto ?? "");
+      if (u.name === "lancar_arquivos" && res.ok) arquivos.push(...res.respostas);
       resultados.push({ type: "tool_result", tool_use_id: u.id, content: JSON.stringify(res).slice(0, 20000), ...(res.erro ? { is_error: true } : {}) });
+    }
+    // O que foi lançado dos arquivos já é a resposta (com as marcas, para a próxima conversa).
+    if (arquivos.length) {
+      const antes = textoDa(r);
+      return [antes, ...arquivos].filter(Boolean).join("\n\n");
     }
     if (proposta) {
       const antes = textoDa(r);
       return `${antes ? `${antes}\n\n` : ""}${proposta}\n\nResponda *SIM* para gravar, ou me diga o que mudar.`;
     }
     if (legenda && usos.length === 1) {
-      return `📝 Anotei: "${legenda}". Agora mande a foto ou o PDF do comprovante (nos próximos ${MINUTOS_LEGENDA} minutos) que eu uso isso para lançar.`;
+      return `📝 Anotei: "${legenda}". Agora mande a foto ou o PDF (comprovante ou boleto) nos próximos ${MINUTOS_LEGENDA} minutos que eu uso isso para lançar.`;
     }
     mensagens.push({ role: "user", content: resultados });
   }
   return "Essa ficou complicada para mim. Pode pedir de um jeito mais direto?";
 }
 
-// ─── Comprovante ──────────────────────────────────────────────────────────
+// ─── Arquivo (foto ou PDF): comprovante pago ou boleto a pagar ─────────────
+// Comprovante (já pago) → Despesas. Boleto ainda não pago → Programação de
+// pagamentos (boletos). Outra coisa → não lança nada e explica o que viu.
 
-const FERRAMENTA_COMPROVANTE = {
-  name: "lancar_despesa",
-  description: "Registra a despesa lida do comprovante no sistema da fazenda.",
+type Como = "comprovante" | "boleto";
+
+const FERRAMENTA_ARQUIVO = {
+  name: "ler_documento",
+  description: "Registra o que foi lido do arquivo: comprovante de pagamento, boleto a pagar ou outra coisa.",
   input_schema: {
     type: "object",
     properties: {
-      e_comprovante: { type: "boolean", description: "true se o arquivo é um comprovante de pagamento (PIX, boleto pago, transferência, TED…)." },
-      motivo: { type: "string", description: "Se não for comprovante, o que é o arquivo, em poucas palavras." },
-      data: { type: "string", description: "Data do pagamento, AAAA-MM-DD." },
-      valor: { type: "number", description: "Valor pago em reais, com centavos." },
-      favorecido: { type: "string", description: "Quem recebeu o dinheiro, como está escrito no comprovante." },
-      forma_pagamento: { type: "string", enum: FORMAS_PAGAMENTO },
+      tipo_documento: {
+        type: "string",
+        enum: ["comprovante", "boleto", "outro"],
+        description: "comprovante = prova de que JÁ PAGOU (PIX feito, transferência, TED, boleto com autenticação/recibo de pagamento). boleto = boleto/fatura/conta AINDA A PAGAR (tem vencimento, linha digitável e nenhum sinal de pagamento). outro = nota fiscal, pedido, orçamento, foto qualquer…",
+      },
+      motivo: { type: "string", description: "Se for outro, o que é o arquivo, em poucas palavras." },
+      valor: { type: "number", description: "Valor em reais, com centavos (no boleto, o valor do documento)." },
+      favorecido: { type: "string", description: "Quem recebe o dinheiro (no boleto, o beneficiário/cedente), como está escrito." },
+      cnpj_favorecido: { type: ["string", "null"], description: "CNPJ ou CPF de quem recebe, se aparecer." },
       categoria: { type: "string", enum: CATEGORIAS_DESPESA },
-      tipo: { type: "string", description: "Detalhe curto da categoria, ex.: Diárias, Almoço, Pneus, Pró-labore LB." },
-      descricao: { type: "string", description: "Descrição curta da despesa. Use a legenda da mensagem quando houver." },
+      tipo: { type: "string", description: "Detalhe curto da categoria, ex.: Diárias, Almoço, Pneus, Diesel, Pró-labore LB." },
+      descricao: { type: "string", description: "Descrição curta. Use a legenda da mensagem quando houver." },
       centro: { type: "string", enum: ["geral", "cultura"], description: "geral, ou cultura quando a legenda ou o histórico deixam claro para qual cultura foi." },
       cultura_id: { type: ["string", "null"], description: "id da cultura (da lista) quando centro = cultura." },
       maquina_id: { type: ["string", "null"], description: "id da máquina/caminhão (da lista) quando o texto diz que a despesa foi dela." },
-      id_transacao: { type: ["string", "null"], description: "ID da transação / autenticação / E2E do comprovante, se aparecer." },
+      data: { type: ["string", "null"], description: "Comprovante: data do pagamento, AAAA-MM-DD." },
+      forma_pagamento: { type: ["string", "null"], enum: [...FORMAS_PAGAMENTO, null], description: "Comprovante: como foi pago." },
+      id_transacao: { type: ["string", "null"], description: "Comprovante: ID da transação / autenticação / E2E, se aparecer." },
+      vencimento: { type: ["string", "null"], description: "Boleto: data de vencimento, AAAA-MM-DD." },
+      linha_digitavel: { type: ["string", "null"], description: "Boleto (ou comprovante de pagamento de boleto): a linha digitável / código de barras, só os números (47 ou 48)." },
+      numero_documento: { type: ["string", "null"], description: "Boleto: nº do documento / nosso número, se aparecer." },
       duvida: { type: ["string", "null"], description: "O que ficou incerto e vale a pessoa conferir. null se estiver tudo claro." },
     },
-    required: ["e_comprovante"],
+    required: ["tipo_documento"],
   },
 };
 
 type Leitura = {
-  e_comprovante: boolean; motivo?: string; data?: string; valor?: number; favorecido?: string;
-  forma_pagamento?: string; categoria?: string; tipo?: string; descricao?: string; centro?: string;
-  cultura_id?: string | null; maquina_id?: string | null; id_transacao?: string | null; duvida?: string | null;
+  tipo_documento: "comprovante" | "boleto" | "outro"; motivo?: string; valor?: number; favorecido?: string;
+  cnpj_favorecido?: string | null; categoria?: string; tipo?: string; descricao?: string; centro?: string;
+  cultura_id?: string | null; maquina_id?: string | null; data?: string | null; forma_pagamento?: string | null;
+  id_transacao?: string | null; vencimento?: string | null; linha_digitavel?: string | null;
+  numero_documento?: string | null; duvida?: string | null;
 };
 
 type Item = { id: string; nome: string };
+type Arquivo = { bytes: Uint8Array; tipo: string };
+type Contexto = { db: Banco; numero: string; nome: string; midiaId: string; quando: string; legenda: string; arquivo: Arquivo; culturas: Item[]; maquinas: Item[] };
+
+const soDigitos = (t?: string | null) => String(t ?? "").replace(/\D/g, "");
+const dataValida = (d?: string | null) => Boolean(d && /^\d{4}-\d{2}-\d{2}$/.test(d));
 
 /** O último lançamento de cada favorecido ensina à IA como a fazenda costuma classificar. */
 async function historicoDeFavorecidos(db: Banco, culturas: Item[]) {
@@ -674,46 +747,58 @@ async function historicoDeFavorecidos(db: Banco, culturas: Item[]) {
   return [...vistos.values()].join("\n");
 }
 
-async function lerComprovante(arquivo: { bytes: Uint8Array; tipo: string }, legenda: string, culturas: Item[], maquinas: Item[], historicoFav: string): Promise<Leitura> {
-  const dados = encodeBase64(arquivo.bytes);
-  const bloco = arquivo.tipo === "application/pdf"
+async function lerDocumento(c: Contexto, como: Como | null, historicoFav: string): Promise<Leitura> {
+  const dados = encodeBase64(c.arquivo.bytes);
+  const bloco = c.arquivo.tipo === "application/pdf"
     ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: dados } }
-    : { type: "image", source: { type: "base64", media_type: arquivo.tipo, data: dados } };
+    : { type: "image", source: { type: "base64", media_type: c.arquivo.tipo, data: dados } };
+
+  const jaDisse = como === "boleto"
+    ? "\nA PESSOA JÁ DISSE: este arquivo é um BOLETO A PAGAR (vai para a programação de pagamentos). Use tipo_documento = boleto.\n"
+    : como === "comprovante"
+      ? "\nA PESSOA JÁ DISSE: este arquivo é um COMPROVANTE de algo já pago. Use tipo_documento = comprovante.\n"
+      : "";
 
   const pedido = `Este arquivo foi mandado pelo WhatsApp para o financeiro da Fazenda Carvalho Cruz (milho, laranja, silagem, abóbora, amendoim, confinamento).
-Leia o comprovante e responda chamando a ferramenta lancar_despesa (sempre, mesmo que não seja comprovante).
-
-O que a pessoa escreveu (legenda da foto e mensagens de texto mandadas logo antes): ${legenda ? `"${legenda}"` : "(nada)"}
+Veja se é um COMPROVANTE de pagamento (já pago), um BOLETO A PAGAR ou outra coisa, leia e responda chamando a ferramenta ler_documento (sempre).
+${jaDisse}
+O que a pessoa escreveu (legenda e mensagens de texto mandadas logo antes): ${c.legenda ? `"${c.legenda}"` : "(nada)"}
 Hoje: ${hojeBR()}
 
 Culturas cadastradas (id → nome):
-${culturas.map((c) => `${c.id} → ${c.nome}`).join("\n") || "(nenhuma)"}
+${c.culturas.map((x) => `${x.id} → ${x.nome}`).join("\n") || "(nenhuma)"}
 
 Máquinas e caminhões (id → nome):
-${maquinas.map((m) => `${m.id} → ${m.nome}`).join("\n") || "(nenhuma)"}
+${c.maquinas.map((m) => `${m.id} → ${m.nome}`).join("\n") || "(nenhuma)"}
 
 Como a fazenda classificou cada favorecido da última vez (use para escolher categoria, tipo e cultura):
 ${historicoFav || "(sem histórico)"}
 
 Regras:
+- Boleto que ainda não foi pago (só tem vencimento, código de barras, "pagável em qualquer banco", sem autenticação nem "comprovante de pagamento") é BOLETO, não "outro": ele vai para a programação de pagamentos. Boleto vencido continua sendo boleto.
+- Se a pessoa escreveu "boleto", "a pagar", "pagar", "programação" ou "vencimento", é boleto. Se escreveu "pago", "paguei", "comprovante", é comprovante.
 - O que a pessoa escreveu manda, sempre acima do histórico: se diz para que foi (ex.: "diária João", "pró-labore LB", "adubo milho", "almoço"), use isso na categoria, no tipo e na descrição.
 - Comida (almoço, janta, café, lanche, marmita, refeição, restaurante) = "Alimentação", com o tipo "Almoço", "Janta" etc.
 - Se o texto cita uma máquina ou caminhão (nome, modelo ou placa), preencha maquina_id. "1620" é o caminhão MB 1620.
 - Só quando a pessoa não escreveu para que foi, use o histórico do favorecido; se não tiver histórico, escolha a categoria mais provável e diga a dúvida.
 - Pró-labore e retirada dos sócios (Lucas, Carlinhos) = "Retirada / dividendos". Pagamento de boleto de banco/financiamento = "Empréstimos".
-- Valor e data exatamente como no comprovante. Nunca invente: se não der para ler, diga em "duvida".`;
+- Valores, datas e números exatamente como no arquivo. Nunca invente: se não der para ler, diga em "duvida".`;
 
   const r = await chamarIA({
     output_config: { effort: "low" },
-    tools: [FERRAMENTA_COMPROVANTE],
+    tools: [FERRAMENTA_ARQUIVO],
+    tool_choice: { type: "tool", name: FERRAMENTA_ARQUIVO.name },
     messages: [{ role: "user", content: [bloco, { type: "text", text: pedido }] }],
   });
   const uso = r.content.find((b) => b.type === "tool_use");
-  if (!uso) throw new Error("A IA não devolveu a leitura do comprovante.");
-  return uso.input as Leitura;
+  if (!uso) throw new Error("A IA não devolveu a leitura do arquivo.");
+  const l = uso.input as Leitura;
+  // A pessoa disse o que é: vale mais que o palpite da IA.
+  if (como) l.tipo_documento = como;
+  return l;
 }
 
-/** Mesmo comprovante mandado duas vezes vira o mesmo id, então não duplica. */
+/** Mesmo arquivo mandado duas vezes vira o mesmo id, então não duplica. */
 async function idDoComprovante(chave: string) {
   const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${ORIGEM}:${chave}`)));
   h[6] = (h[6] & 0x0f) | 0x50;
@@ -726,35 +811,17 @@ async function idDoComprovante(chave: string) {
 const CAMINHAO_1620 = "00000000-0000-4000-8300-000000000001";
 const tem1620 = (texto?: string | null) => /(^|\D)1620(\D|$)/.test(texto ?? "");
 
-/** Lança o comprovante e devolve a resposta (com o id marcado para a conversa). */
-async function comprovante(db: Banco, msg: Mensagem, nome: string, midia: { id: string; caption?: string }) {
-  const arquivo = await baixarMidia(midia.id);
-  if (arquivo.tipo !== "application/pdf" && !/^image\/(jpeg|png|webp|gif)$/.test(arquivo.tipo)) {
-    return "Esse tipo de arquivo eu não consigo ler. Mande a foto (print) ou o PDF do comprovante.";
-  }
-  const recados = await recadosRecentes(db, msg.from);
-  const legenda = [...recados.map((r) => r.texto), midia.caption ?? ""].map((t) => t.trim()).filter(Boolean).join(" · ");
-  if (recados.length) await db.from("whatsapp_recados").delete().in("id", recados.map((r) => r.id));
-  await guardar(db, msg.from, "user", `[comprovante enviado]${midia.caption ? ` ${midia.caption}` : ""}`);
-
-  const [{ data: cults }, { data: maqs }] = await Promise.all([
-    db.from("culturas").select("id, nome").order("nome"),
-    db.from("maquinas").select("id, nome, modelo, placa").order("nome"),
-  ]);
-  const culturas = (cults ?? []) as Item[];
-  const maquinas = ((maqs ?? []) as Registro[]).map((m) => ({ id: m.id, nome: [m.nome, m.modelo, m.placa].filter(Boolean).join(" · ") }));
-  const l = await lerComprovante(arquivo, legenda, culturas, maquinas, await historicoDeFavorecidos(db, culturas));
-
-  if (!l.e_comprovante) return `Não lancei nada: isso não parece um comprovante de pagamento${l.motivo ? ` (${l.motivo})` : ""}.`;
-  if (!l.valor || !l.data || !/^\d{4}-\d{2}-\d{2}$/.test(l.data)) {
+/** Comprovante → Despesas. Se for o pagamento de um boleto da programação, marca ele como pago. */
+async function lancarDespesa(c: Contexto, l: Leitura) {
+  const { db } = c;
+  if (!l.valor || !dataValida(l.data)) {
     return `Não consegui ler ${!l.valor ? "o valor" : "a data"} desse comprovante. Mande uma foto mais nítida ou lance no app.${l.duvida ? `\n\n${l.duvida}` : ""}`;
   }
-
-  const cultura = l.centro === "cultura" ? culturas.find((c) => c.id === l.cultura_id) : undefined;
-  const maquina = maquinas.find((m) => m.id === l.maquina_id)
-    ?? ([legenda, l.tipo, l.descricao].some(tem1620) ? maquinas.find((m) => m.id === CAMINHAO_1620) : undefined);
-  const quando = msg.timestamp ? new Date(Number(msg.timestamp) * 1000).toISOString().slice(0, 10) : l.data;
-  const id = await idDoComprovante(l.id_transacao?.replace(/\s/g, "") || msg.id);
+  const data = l.data as string;
+  const cultura = l.centro === "cultura" ? c.culturas.find((x) => x.id === l.cultura_id) : undefined;
+  const maquina = c.maquinas.find((m) => m.id === l.maquina_id)
+    ?? ([c.legenda, l.tipo, l.descricao].some(tem1620) ? c.maquinas.find((m) => m.id === CAMINHAO_1620) : undefined);
+  const id = await idDoComprovante(l.id_transacao?.replace(/\s/g, "") || c.midiaId);
 
   const { data: existente } = await db.from("despesas").select("id, valor, favorecido, data").eq("id", id).maybeSingle();
   if (existente) {
@@ -762,16 +829,16 @@ async function comprovante(db: Banco, msg: Mensagem, nome: string, midia: { id: 
   }
 
   // O arquivo vai para o mesmo lugar dos comprovantes anexados pelo app.
-  const caminho = `despesas/${quando.slice(0, 7)}/${id}.${EXTENSOES[arquivo.tipo]}`;
-  const envio = await db.storage.from(BUCKET).upload(caminho, arquivo.bytes, { contentType: arquivo.tipo, upsert: true });
+  const caminho = `despesas/${c.quando.slice(0, 7)}/${id}.${EXTENSOES[c.arquivo.tipo]}`;
+  const envio = await db.storage.from(BUCKET).upload(caminho, c.arquivo.bytes, { contentType: c.arquivo.tipo, upsert: true });
   if (envio.error) throw new Error(`Não consegui guardar o arquivo do comprovante: ${envio.error.message}`);
 
   const despesa = {
     id,
-    data: l.data,
+    data,
     categoria: CATEGORIAS_DESPESA.includes(l.categoria ?? "") ? l.categoria : "Outros",
-    tipo: l.tipo || (legenda ? null : "Sem legenda no WhatsApp"),
-    descricao: l.descricao || legenda || `Comprovante — ${l.favorecido ?? "sem favorecido"}`,
+    tipo: l.tipo || (c.legenda ? null : "Sem legenda no WhatsApp"),
+    descricao: l.descricao || c.legenda || `Comprovante — ${l.favorecido ?? "sem favorecido"}`,
     valor: Math.round(l.valor * 100) / 100,
     forma_pagamento: FORMAS_PAGAMENTO.includes(l.forma_pagamento ?? "") ? l.forma_pagamento : "PIX",
     favorecido: l.favorecido || null,
@@ -779,9 +846,9 @@ async function comprovante(db: Banco, msg: Mensagem, nome: string, midia: { id: 
     cultura_id: cultura?.id ?? null,
     maquina_id: maquina?.id ?? null,
     pago: true,
-    nota: `WhatsApp · enviado por ${nome || msg.from} em ${dataBr(quando)}${l.id_transacao ? ` · transação ${l.id_transacao}` : ""}`,
+    nota: `WhatsApp · enviado por ${c.nome || c.numero} em ${dataBr(c.quando)}${l.id_transacao ? ` · transação ${l.id_transacao}` : ""}`,
     comprovante: caminho,
-    lancado_por: `WhatsApp · ${nome || msg.from}`,
+    lancado_por: `WhatsApp · ${c.nome || c.numero}`,
   };
 
   const { data: gravado, error } = await db.from("despesas").upsert(despesa, { onConflict: "id", ignoreDuplicates: true }).select("id");
@@ -796,6 +863,17 @@ async function comprovante(db: Banco, msg: Mensagem, nome: string, midia: { id: 
       .ilike("favorecido", despesa.favorecido.replace(/[%_\\]/g, "\\$&")).neq("id", despesa.id).limit(1)
     : { data: [] };
 
+  // Pagamento de um boleto que estava na programação (mesmo código)? Marca como pago.
+  let boletoPago: Registro | null = null;
+  const codigo = soDigitos(l.linha_digitavel);
+  if (codigo.length >= 44) {
+    const { data: abertos } = await db.from("boletos").select("id, empresa, vencimento, linha_digitavel").eq("pago", false);
+    boletoPago = ((abertos ?? []) as Registro[]).find((b) => soDigitos(b.linha_digitavel) === codigo) ?? null;
+    if (boletoPago) {
+      await db.from("boletos").update({ pago: true, data_pagamento: despesa.data, despesa_id: despesa.id, atualizado_em: new Date().toISOString() }).eq("id", boletoPago.id);
+    }
+  }
+
   const linhas = [
     "✅ *Lancei em Despesas:*",
     `• ${reais(despesa.valor)} — ${despesa.forma_pagamento}`,
@@ -805,10 +883,137 @@ async function comprovante(db: Banco, msg: Mensagem, nome: string, midia: { id: 
     `• Centro de custo: ${cultura ? cultura.nome : "Geral da fazenda"}`,
     ...(maquina ? [`• Máquina: ${maquina.nome}`] : []),
   ];
+  if (boletoPago) linhas.push("", `📌 Era o boleto de ${boletoPago.empresa} (vencimento ${dataBr(boletoPago.vencimento)}) da Programação de pagamentos: marquei como *pago*.`);
   if (l.duvida) linhas.push("", `⚠️ Confira: ${l.duvida}`);
   if (parecidas?.length) linhas.push("", "⚠️ Já existia uma despesa igual (mesmo dia, valor e favorecido). Veja no app se não ficou repetida.");
   linhas.push("", "Se algo estiver errado, é só me dizer (ex.: \"muda a categoria para Peças\").", `[registro: despesas ${id}]`);
   return linhas.join("\n");
+}
+
+/** Boleto ainda não pago → Programação de pagamentos, com as mesmas regras da tela de Boletos. */
+async function lancarBoleto(c: Contexto, l: Leitura) {
+  const { db } = c;
+  const avisos: string[] = [];
+
+  // O código de barras traz valor, vencimento e banco com dígito verificador: vale mais que a leitura da IA.
+  const codigo = soDigitos(l.linha_digitavel);
+  let lido: Registro | null = null;
+  if (codigo) {
+    const r = lerCodigoBoleto(codigo);
+    if (r.erro) avisos.push("Não consegui ler o código de barras certinho. Cole a linha digitável no app antes de pagar.");
+    else lido = r;
+  } else {
+    avisos.push("Não achei a linha digitável no arquivo. Cole ela no app antes de pagar.");
+  }
+  const valor = Number(lido?.valor ?? l.valor) || 0;
+  const vencimento = lido?.vencimento ?? (dataValida(l.vencimento) ? l.vencimento : null);
+  if (!valor || !vencimento) {
+    return `Vi que é um boleto, mas não consegui ler ${!valor ? "o valor" : "o vencimento"}. Mande uma foto mais nítida ou lance em Programação de pagamentos no app.${l.duvida ? `\n\n${l.duvida}` : ""}\n[arquivo: midia ${c.midiaId}]`;
+  }
+
+  const [{ data: boletos }, { data: contatos }] = await Promise.all([
+    db.from("boletos").select("*").order("criado_em", { ascending: false }).limit(5000),
+    db.from("contatos").select("id, nome, fantasia, documento, tipo"),
+  ]);
+  const dados: Dados = { boletos: (boletos ?? []) as Registro[], contatos: (contatos ?? []) as Registro[] };
+
+  const id = await idDoComprovante(`boleto:${lido?.linha_digitavel ?? c.midiaId}`);
+  const repetido = dados.boletos.find((b) => b.id === id)
+    ? "já está na Programação de pagamentos."
+    : lido ? boletoJaLancado(dados, lido.linha_digitavel, {}, true) : null;
+  if (repetido) return `Esse boleto ${repetido} Não lancei de novo.`;
+
+  // Empresa: o nome do cadastro de fornecedores quando o CNPJ bate, senão o que a IA leu.
+  const doc = soDigitos(l.cnpj_favorecido);
+  const contato = doc ? dados.contatos.find((x) => soDigitos(x.documento) === doc) : undefined;
+  const empresa = (contato ? contato.fantasia || contato.nome : l.favorecido) || "";
+  if (!empresa) avisos.push("Não achei o nome de quem recebe (beneficiário). Preencha a empresa no app.");
+
+  // Foto pequena vai junto (como a tirada no app); o PDF fica guardado no Storage.
+  const ext = EXTENSOES[c.arquivo.tipo];
+  const caminho = `boletos/${vencimento.slice(0, 7)}/${id}.${ext}`;
+  const envio = await db.storage.from(BUCKET).upload(caminho, c.arquivo.bytes, { contentType: c.arquivo.tipo, upsert: true });
+  if (envio.error) console.error("Não consegui guardar o arquivo do boleto:", envio.error.message);
+  const foto = c.arquivo.tipo.startsWith("image/") && c.arquivo.bytes.length < 700_000
+    ? `data:${c.arquivo.tipo};base64,${encodeBase64(c.arquivo.bytes)}`
+    : null;
+
+  const observacao = [
+    `WhatsApp · enviado por ${c.nome || c.numero} em ${dataBr(c.quando)}`,
+    l.numero_documento ? `Nº do documento: ${l.numero_documento}` : "",
+    doc && !contato ? `CNPJ/CPF do beneficiário: ${l.cnpj_favorecido}` : "",
+    envio.error ? "" : `Arquivo original: ${BUCKET}/${caminho}`,
+  ].filter(Boolean).join(" · ");
+
+  const base = {
+    ...registroNovo("boletos"),
+    empresa: empresa || "(conferir empresa)",
+    descricao: l.descricao || c.legenda || null,
+    valor: Math.round(valor * 100) / 100,
+    vencimento,
+    forma_pagamento: "Boleto",
+    categoria: CATEGORIAS_DESPESA.includes(l.categoria ?? "") ? l.categoria : null,
+    linha_digitavel: lido?.linha_digitavel ?? null,
+    banco: lido?.banco ?? null,
+    fotos: foto ? [foto] : null,
+    observacao,
+    a_conferir: !empresa,
+  };
+  const pronto = prepararRegistro("boletos", base, dados) as { reg: Registro; erro: string | null };
+  if (pronto.erro) return `Vi que é um boleto, mas o sistema não aceitou: ${pronto.erro}\n[arquivo: midia ${c.midiaId}]`;
+
+  const { error } = await db.from("boletos").insert({ ...pronto.reg, id, atualizado_em: new Date().toISOString() });
+  if (error) throw new Error(`O banco recusou o boleto: ${error.message}`);
+
+  const hoje = hojeBR();
+  const prazo = vencimento < hoje ? " ⚠️ *já venceu* (pode ter multa e juros)" : vencimento === hoje ? " ⚠️ *vence hoje*" : "";
+  const linhas = [
+    "📅 *Lancei na Programação de pagamentos:*",
+    `• ${reais(base.valor)} — Boleto${lido?.banco ? ` (${lido.banco})` : ""}`,
+    `• Para: ${empresa || "não identificado"}`,
+    `• Vencimento: ${dataBr(vencimento)}${prazo}`,
+    `• Categoria: ${base.categoria ?? "—"}`,
+    "• Situação: a pagar",
+  ];
+  if (l.duvida) avisos.push(l.duvida);
+  if (avisos.length) linhas.push("", ...avisos.map((a) => `⚠️ ${a}`));
+  linhas.push("", "Quando pagar, mande o comprovante que eu lanço a despesa e marco o boleto como pago.", `[registro: boletos ${id}]`);
+  return linhas.join("\n");
+}
+
+/** Lê o arquivo e manda para o lugar certo. `como`: o que a pessoa disse que ele é (ao pedir para lançar de novo). */
+async function arquivoRecebido(db: Banco, numero: string, nome: string, midiaId: string, opcoes: { legenda?: string; timestamp?: string; como?: Como | null } = {}) {
+  const arquivo = await baixarMidia(midiaId);
+  if (arquivo.tipo !== "application/pdf" && !/^image\/(jpeg|png|webp|gif)$/.test(arquivo.tipo)) {
+    return "Esse tipo de arquivo eu não consigo ler. Mande a foto (print) ou o PDF do comprovante ou do boleto.";
+  }
+  const [{ data: cults }, { data: maqs }] = await Promise.all([
+    db.from("culturas").select("id, nome").order("nome"),
+    db.from("maquinas").select("id, nome, modelo, placa").order("nome"),
+  ]);
+  const culturas = (cults ?? []) as Item[];
+  const maquinas = ((maqs ?? []) as Registro[]).map((m) => ({ id: m.id, nome: [m.nome, m.modelo, m.placa].filter(Boolean).join(" · ") }));
+  const quando = opcoes.timestamp ? new Date(Number(opcoes.timestamp) * 1000).toISOString().slice(0, 10) : hojeBR();
+  const c: Contexto = { db, numero, nome, midiaId, quando, legenda: opcoes.legenda ?? "", arquivo, culturas, maquinas };
+
+  const l = await lerDocumento(c, opcoes.como ?? null, await historicoDeFavorecidos(db, culturas));
+  const marca = `\n[arquivo: midia ${midiaId}]`;
+  if (l.tipo_documento === "boleto") return (await lancarBoleto(c, l)) + marca;
+  if (l.tipo_documento === "comprovante") return (await lancarDespesa(c, l)) + marca;
+  return `Não lancei nada: não parece comprovante de pagamento nem boleto a pagar${l.motivo ? ` (${l.motivo})` : ""}.\nSe for, me diga ("é boleto para pagar" ou "é comprovante") que eu lanço.${marca}`;
+}
+
+/** Arquivo que chegou agora: junta a legenda e os recados mandados logo antes. */
+async function arquivoDaMensagem(db: Banco, msg: Mensagem, nome: string, midia: { id: string; caption?: string; filename?: string }) {
+  const recados = await recadosRecentes(db, msg.from);
+  const legenda = [...recados.map((r) => r.texto), midia.caption ?? ""].map((t) => t.trim()).filter(Boolean).join(" · ");
+  // Vários arquivos mandados juntos usam a mesma legenda: em vez de apagar, ela vale só mais uns minutos.
+  if (recados.length) {
+    const ate = new Date(Date.now() - (MINUTOS_LEGENDA - MINUTOS_LOTE) * 60_000).toISOString();
+    await db.from("whatsapp_recados").update({ criado_em: ate }).in("id", recados.map((r) => r.id)).gt("criado_em", ate);
+  }
+  await guardar(db, msg.from, "user", `[arquivo enviado${midia.filename ? `: ${midia.filename}` : ""}]${midia.caption ? ` ${midia.caption}` : ""}`);
+  return arquivoRecebido(db, msg.from, nome, midia.id, { legenda, timestamp: msg.timestamp });
 }
 
 // ─── Cada mensagem ────────────────────────────────────────────────────────
@@ -820,8 +1025,8 @@ type Mensagem = {
   document?: { id: string; mime_type?: string; caption?: string; filename?: string };
 };
 
-/** O "[registro: …]" fica guardado na conversa (para a IA achar o que acabou de lançar), mas não vai para o WhatsApp. */
-const semMarcas = (texto: string) => texto.replace(/\n?\[registro: [^\]]+\]/g, "").trim();
+/** O "[registro: …]" e o "[arquivo: …]" ficam guardados na conversa (para a IA achar o que acabou de lançar ou o arquivo para ler de novo), mas não vão para o WhatsApp. */
+const semMarcas = (texto: string) => texto.replace(/\n?\[(registro|arquivo): [^\]]+\]/g, "").trim();
 
 async function tratar(msg: Mensagem, nome: string, telefoneId: string) {
   const enviar = (texto: string, citar = true) => responder(telefoneId, msg.from, semMarcas(texto), citar ? msg.id : undefined);
@@ -833,7 +1038,7 @@ async function tratar(msg: Mensagem, nome: string, telefoneId: string) {
   try {
     const midia = msg.image ?? msg.document;
     if (midia) {
-      const resposta = await comprovante(db, msg, nome, midia);
+      const resposta = await arquivoDaMensagem(db, msg, nome, midia);
       await guardar(db, msg.from, "assistant", resposta);
       return await enviar(resposta);
     }
@@ -882,14 +1087,17 @@ Deno.serve(async (req) => {
   }
 
   const evento = JSON.parse(corpo);
-  const tarefas: Promise<unknown>[] = [];
+  const textos: (() => Promise<unknown>)[] = [];
+  const arquivos: (() => Promise<unknown>)[] = [];
   for (const entrada of evento.entry ?? []) {
     for (const mudanca of entrada.changes ?? []) {
       const v = mudanca.value ?? {};
       const nomes = new Map((v.contacts ?? []).map((c: { wa_id: string; profile?: { name?: string } }) => [c.wa_id, c.profile?.name ?? ""]));
-      for (const msg of (v.messages ?? []) as Mensagem[]) {
+      const mensagens = [...((v.messages ?? []) as Mensagem[])].sort((a, b) => Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0));
+      for (const msg of mensagens) {
         console.log(`Mensagem recebida de ${msg.from} (${msg.type})`);
-        tarefas.push(tratar(msg, String(nomes.get(msg.from) ?? ""), v.metadata?.phone_number_id));
+        const tarefa = () => tratar(msg, String(nomes.get(msg.from) ?? ""), v.metadata?.phone_number_id);
+        (msg.image || msg.document ? arquivos : textos).push(tarefa);
       }
       // A Meta aceita a resposta na hora e só depois avisa se não conseguiu entregar.
       for (const st of v.statuses ?? []) {
@@ -901,6 +1109,10 @@ Deno.serve(async (req) => {
   }
 
   // Responde logo para a Meta não reenviar; a leitura continua em segundo plano.
-  EdgeRuntime.waitUntil(Promise.allSettled(tarefas));
+  // Vários arquivos juntos: primeiro os textos (a legenda), depois os arquivos, de 4 em 4.
+  EdgeRuntime.waitUntil((async () => {
+    for (const t of textos) await t().catch((e) => console.error(e));
+    await emLotes(arquivos, 4, (t) => t().catch((e) => console.error(e)));
+  })());
   return new Response("ok");
 });
