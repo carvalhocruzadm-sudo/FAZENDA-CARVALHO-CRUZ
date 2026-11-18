@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { AnexarArquivos } from "../components/AnexosFornecedor";
+import { AnexarArquivos, AnexarVarios } from "../components/AnexosFornecedor";
 import { Icone } from "../components/ui";
 import { novoId } from "../hooks/useDados";
 import { formatarLinha } from "../lib/boleto";
@@ -18,6 +18,16 @@ import { supabase, supabaseConfigurado } from "../lib/supabase";
 
 const DEF = ESQUEMA.boletos_fornecedor;
 const boletoVazio = () => ({ chave: novoId(), valor: "", vencimento: "", linha_digitavel: "", nota: "", descricao: "", arquivos: [] });
+const emBranco = (b) => !b.arquivos.length && !b.valor && !b.vencimento && !b.linha_digitavel && !b.nota && !b.descricao;
+
+/** Boleto já preenchido com o que foi lido do arquivo. */
+const boletoDoArquivo = ({ arquivos, lido }) => ({
+  ...boletoVazio(), arquivos,
+  ...(lido ? {
+    linha_digitavel: formatarLinha(lido.linha_digitavel),
+    valor: lido.valor ?? "", vencimento: lido.vencimento ?? "",
+  } : {}),
+});
 
 function Campo({ rotulo, obrigatorio, dica, children }) {
   return (
@@ -183,6 +193,11 @@ export default function EnviarBoleto() {
           </div>
 
           <h3>Boletos</h3>
+          <AnexarVarios aoAdicionar={(lidos) => {
+            setErro(null);
+            // Os boletos em branco saem: os arquivos novos tomam o lugar deles.
+            setBoletos((l) => [...l.filter((b) => !emBranco(b)), ...lidos.map(boletoDoArquivo)]);
+          }} />
           {boletos.map((b, i) => (
             <Boleto key={b.chave} boleto={b} numero={i + 1} aoMudar={(novo) => mudarBoleto(i, novo)}
               aoRemover={boletos.length > 1 ? () => setBoletos((l) => l.filter((_, j) => j !== i)) : undefined} />
