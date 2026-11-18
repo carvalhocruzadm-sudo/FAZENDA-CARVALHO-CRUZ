@@ -12,6 +12,7 @@ import {
 import { hoje, prepararRegistro } from "../lib/esquema";
 import { nomesTalhoesDaOrdem, talhoesDaOrdem } from "../lib/talhoes";
 import { formatarLinha } from "../lib/boleto";
+import { compartilharPdf, gerarPdfDidatico } from "../lib/pdfPulverizacao";
 import { brl, data as dataBR, nomeRef, numero } from "../lib/formato";
 
 /**
@@ -62,6 +63,46 @@ function Pronto({ texto, irPara }) {
         <div className="check">✅</div>
         <h2>Pronto! <Ouvir texto={texto} className="na-pergunta" /></h2>
         <p>{texto}</p>
+      </div>
+      <footer className="campo-rodape">
+        <button type="button" className="campo-btn verde" onClick={() => irPara("/campo")}>🏠 Início</button>
+      </footer>
+    </>
+  );
+}
+
+/**
+ * Fim da separação: botão grande para gerar o guia de preparo da calda (PDF
+ * com a foto de cada produto e a dose por pipa / por ha) e mandar no WhatsApp.
+ */
+function ProntoComGuia({ dados, ordem, operadorId, irPara }) {
+  const [gerando, setGerando] = useState(false);
+  const [aviso, setAviso] = useState(null);
+  const gerar = async () => {
+    setGerando(true);
+    setAviso(null);
+    try {
+      const pdf = await gerarPdfDidatico(dados, ordem, operadorId);
+      const r = await compartilharPdf(pdf, `Preparo da calda: ${ordem.titulo || "pulverização"}`);
+      if (r === "baixado") setAviso(["ok", `O guia "${pdf.nome}" foi baixado. Abra pelo celular para ver.`]);
+    } catch (e) {
+      setAviso(["erro", `Não deu para gerar o guia: ${e?.message ?? e}`]);
+    } finally {
+      setGerando(false);
+    }
+  };
+  const texto = "Todos os produtos separados. Toque no botão amarelo para ver como preparar a calda.";
+  return (
+    <>
+      <div className="pronto">
+        <div className="check">✅</div>
+        <h2>Pronto! <Ouvir texto={texto} className="na-pergunta" /></h2>
+        <p>Todos os produtos separados. Pode levar para o trator.</p>
+        <button type="button" className="campo-btn amarelo guia-preparo" onClick={gerar} disabled={gerando}>
+          📄 {gerando ? "Preparando o guia…" : "Guia de preparo da calda (PDF)"}
+        </button>
+        <p className="guia-explica">Foto de cada produto e quanto colocar {ordem?.dose_por === "pipa" || Number(ordem?.ha_por_pipa) > 0 ? "em cada pipa" : "por hectare"}.</p>
+        {aviso && <div className={`campo-aviso ${aviso[0] === "erro" ? "erro" : ""}`}>{aviso[1]}</div>}
       </div>
       <footer className="campo-rodape">
         <button type="button" className="campo-btn verde" onClick={() => irPara("/campo")}>🏠 Início</button>
@@ -222,8 +263,10 @@ export function Saida({ dados, salvar, irPara }) {
 
     default:
       return (
-        <Tela passo={passo} figura="📤" titulo="Tirar do depósito" fala="Pronto! Todos os produtos separados. Pode levar para o trator.">
-          <Pronto texto="Todos os produtos separados. Pode levar para o trator." irPara={irPara} />
+        <Tela passo={passo} figura="📤" titulo="Tirar do depósito" fala="Pronto! Todos os produtos separados. Toque no botão amarelo para ver como preparar a calda.">
+          {ordem
+            ? <ProntoComGuia dados={dados} ordem={ordem} operadorId={operadorId} irPara={irPara} />
+            : <Pronto texto="Todos os produtos separados. Pode levar para o trator." irPara={irPara} />}
         </Tela>
       );
   }
