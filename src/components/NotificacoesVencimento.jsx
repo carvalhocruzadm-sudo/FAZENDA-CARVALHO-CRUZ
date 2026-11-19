@@ -35,6 +35,10 @@ export default function NotificacoesVencimento() {
         e outro <b>no dia do vencimento</b> de cada conta — mesmo com o app fechado. Valem os pagamentos
         desta tela e as despesas com vencimento que ainda não foram marcados como pagos.
       </p>
+      <p className="descricao">
+        Também pelo app <b>ntfy</b> (tópico <b>FAZENDA-CC</b>): aviso a cada pagamento novo lançado e,
+        às 7h, as contas que vencem no dia.
+      </p>
       {recado && <div className={`aviso ${recado.tipo}`}>{recado.texto}</div>}
       {situacao === "sem-suporte" && (
         <div className="aviso info">
