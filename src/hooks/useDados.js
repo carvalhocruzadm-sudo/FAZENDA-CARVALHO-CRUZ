@@ -5,7 +5,7 @@ import { COLECOES, apagarItem, enfileirar, enfileirarVarias, gravarArquivo, grav
 import { ESQUEMA } from "../lib/esquema";
 import { SEED } from "../lib/seed";
 import { supabaseConfigurado } from "../lib/supabase";
-import { atualizarContadores, iniciarAutoSync, pedirEnvioEmSegundoPlano, sincronizar } from "../lib/sync";
+import { aplicarFila, atualizarContadores, iniciarAutoSync, pedirEnvioEmSegundoPlano, sincronizar } from "../lib/sync";
 
 const vazio = () => Object.fromEntries(COLECOES.map((c) => [c, []]));
 
@@ -17,20 +17,11 @@ export function novoId() {
 }
 
 /**
- * O que veio da nuvem ainda não tem o que está na fila (feito no aparelho e
- * não enviado). Reaplica a fila por cima, senão o lançamento sumiria da tela
- * até a próxima sincronização.
+ * O que veio da nuvem (ou está no aparelho) ainda não tem o que está na fila.
+ * Reaplica a fila por cima, senão o lançamento sumiria da tela até ser enviado.
  */
 async function comFilaPorCima(dados) {
-  const fila = await lerFila();
-  const d = { ...dados };
-  for (const op of fila) {
-    if (op.acao === "foto" || op.acao === "upload") continue; // arquivo, não registro
-    const lista = d[op.tabela] ?? [];
-    const semEste = lista.filter((x) => x.id !== op.payload.id);
-    d[op.tabela] = op.acao === "delete" ? semEste : [...semEste, op.payload];
-  }
-  return d;
+  return aplicarFila(dados, await lerFila());
 }
 
 /**
@@ -52,7 +43,7 @@ export function useDados(usuario) {
     let parar = () => {};
     (async () => {
       try {
-        const local = await lerTodasColecoes();
+        const local = await comFilaPorCima(await lerTodasColecoes());
         // Modo demonstração: sem nuvem, o cadastro inicial nasce no aparelho.
         // Com Supabase ele vem do schema.sql.
         if (!supabaseConfigurado && local.culturas.length === 0) {
@@ -68,17 +59,16 @@ export function useDados(usuario) {
       } finally {
         setPronto(true);
       }
+      // Cada sincronização que dá certo entrega os dados em receberDaNuvem.
       parar = iniciarAutoSync(receberDaNuvem);
-      const daNuvem = await sincronizar();
-      if (daNuvem) receberDaNuvem(daNuvem);
+      await sincronizar();
     })();
     return () => parar();
   }, [receberDaNuvem]);
 
   const sincronizarAgora = useCallback(async () => {
-    const daNuvem = await sincronizar();
-    if (daNuvem) await receberDaNuvem(daNuvem);
-  }, [receberDaNuvem]);
+    await sincronizar();
+  }, []);
 
   const salvar = useCallback(async (colecao, registro) => {
     const item = { ...registro, id: registro.id || novoId(), atualizado_em: new Date().toISOString() };
