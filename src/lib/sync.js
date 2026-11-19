@@ -246,6 +246,22 @@ async function registrarFalha(op, err) {
 
 // ─── Leitura ────────────────────────────────────────────────────────────────
 
+/**
+ * O que veio da nuvem ainda não tem o que está na fila (feito no aparelho e
+ * ainda não enviado, ou que deu erro ao enviar). Reaplica a fila por cima;
+ * senão o "Pago" marcado agora some da tela e do aparelho até ser enviado.
+ */
+export function aplicarFila(dados, fila) {
+  const d = { ...dados };
+  for (const op of fila) {
+    if (op.acao === "foto" || op.acao === "upload") continue; // arquivo, não registro
+    if (!Array.isArray(d[op.tabela])) continue; // tabela que não veio da nuvem: o aparelho já tem
+    const semEste = d[op.tabela].filter((x) => x.id !== op.payload.id);
+    d[op.tabela] = op.acao === "delete" ? semEste : [...semEste, op.payload];
+  }
+  return d;
+}
+
 // O Supabase devolve no máximo 1000 linhas por pedido: lê em páginas.
 const TAMANHO_PAGINA = 1000;
 
@@ -289,8 +305,9 @@ export async function puxar() {
     })
   );
 
-  // Grava só o que realmente veio.
-  await gravarTodasColecoes(buscados);
+  // Grava só o que realmente veio — com o que ainda está na fila por cima,
+  // para a cópia do aparelho não voltar ao que estava antes da alteração.
+  await gravarTodasColecoes(aplicarFila(buscados, await lerFila()));
 
   // O estado devolvido é o banco local depois da gravação: o que chegou da
   // nuvem, mais o que já estava aqui nas coleções que falharam.
@@ -300,6 +317,9 @@ export async function puxar() {
 // ─── Sincronização completa ─────────────────────────────────────────────────
 
 let emAndamento = null;
+// Quem quer os dados novos depois de cada sincronização que deu certo
+// (inclusive a rodada repetida do fim, que ninguém está esperando).
+const ouvintesDados = new Set();
 // Pedido que chegou com outra sincronização no meio: roda de novo no fim, senão
 // o que entrou na fila depois que ela começou só sairia na rodada seguinte.
 let deNovo = false;
@@ -332,6 +352,7 @@ export async function sincronizar() {
         // com o nome da tabela, na tela de Sincronização.
         erro: falhas.length ? `Não foi possível ler ${falhas.join(" · ")}` : null,
       });
+      for (const fn of ouvintesDados) await fn(dados);
       return dados;
     } catch (err) {
       definirEstado({ erro: String(err?.message ?? err) });
@@ -357,10 +378,8 @@ let timer = null;
 export function iniciarAutoSync(aoReceberDados) {
   if (typeof window === "undefined") return () => {};
 
-  const rodar = async () => {
-    const dados = await sincronizar();
-    if (dados && aoReceberDados) aoReceberDados(dados);
-  };
+  if (aoReceberDados) ouvintesDados.add(aoReceberDados);
+  const rodar = () => sincronizar();
 
   const ficouOnline = () => {
     definirEstado({ online: true });
@@ -398,6 +417,7 @@ export function iniciarAutoSync(aoReceberDados) {
     document.removeEventListener("visibilitychange", voltouAoFoco);
     window.removeEventListener("pagehide", saindo);
     navigator.serviceWorker?.removeEventListener("message", avisoDoServiceWorker);
+    ouvintesDados.delete(aoReceberDados);
     clearInterval(timer);
   };
 }

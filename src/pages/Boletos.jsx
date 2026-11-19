@@ -175,6 +175,20 @@ function datasRecorrentes(inicio, frequencia, vezes) {
 
 // ─── Janela de um boleto (incluir, editar, apagar) ──────────────────────────
 
+/**
+ * Na hora de salvar, parte da versão mais nova do pagamento e põe por cima só
+ * o que a pessoa mudou no formulário. Assim um formulário aberto antes de o
+ * pagamento ser marcado como pago (aqui ou em outro aparelho) não desmarca o
+ * "Pago" ao salvar.
+ */
+function comVersaoAtual(reg, inicial, boletos) {
+  const atual = inicial.id && boletos.find((b) => b.id === inicial.id);
+  if (!atual) return reg;
+  const igual = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const mudou = Object.fromEntries(Object.entries(reg).filter(([k, v]) => !igual(v, inicial[k])));
+  return { ...atual, ...mudou };
+}
+
 function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoPagar, aoFechar }) {
   const [reg, setReg] = useState(inicial);
   const [erro, setErro] = useState(null);
@@ -226,7 +240,7 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
   };
 
   const gravar = async () => {
-    const { reg: pronto, erro: e } = prepararRegistro("boletos", reg, dados);
+    const { reg: pronto, erro: e } = prepararRegistro("boletos", comVersaoAtual(reg, inicial, dados.boletos), dados);
     if (e) { setErro(e); return; }
     // Sem código não dá para ter certeza: mesma empresa, valor e vencimento pede confirmação.
     const nome = (t) => String(t ?? "").trim().toLowerCase();
@@ -323,7 +337,9 @@ function EditorBoleto({ inicial, aviso, fotoParaLer, dados, salvar, remover, aoP
 
 // ─── Pagar: marca como pago e, se quiser, já lança a despesa ───────────────
 
-function PagarBoleto({ boleto, dados, salvar, aoFechar }) {
+function PagarBoleto({ boleto: aberto, dados, salvar, aoFechar }) {
+  // A versão mais nova (outro aparelho pode ter mexido enquanto a janela estava aberta).
+  const boleto = dados.boletos.find((b) => b.id === aberto.id) ?? aberto;
   const jaLancada = boleto.despesa_id && dados.despesas.some((d) => d.id === boleto.despesa_id);
   const [dia, setDia] = useState(diaLocal());
   const [categoria, setCategoria] = useState(boleto.categoria || "Outros");
