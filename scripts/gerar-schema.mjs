@@ -197,6 +197,180 @@ alter table public.push_config enable row level security;
 
 `;
 
+sql += `-- ─── Avisos pelo ntfy (app gratuito ntfy, Android e iPhone) ───────────────
+-- Quem se inscreve no tópico (no app ntfy: "+" e digita o tópico) recebe:
+--   • "Novo pagamento" toda vez que entra conta na Programação de pagamentos
+--     (pelo escritório, pelo Modo Campo ou pelo assessor do WhatsApp);
+--   • às 7h (Brasília), as contas que vencem no dia e ainda não foram pagas.
+-- Quem manda é o próprio banco (extensões pg_net e pg_cron), então funciona
+-- mesmo com o app fechado e com o pagamento lançado offline (avisa quando subir).
+-- O que é rodado aqui no SQL Editor (importações) não avisa.
+--
+-- Trocar o tópico:  update privado.ntfy_config set topico = 'OUTRO-TOPICO' where id = 1;
+-- Desligar:         update privado.ntfy_config set ativo = false where id = 1;
+-- Testar agora:     select privado.ntfy_enviar('Teste', 'Se chegou, o ntfy está funcionando.');
+-- Testar o do dia:  select privado.ntfy_avisar_vencimentos(true);
+create extension if not exists pg_net;
+create schema if not exists privado;
+revoke all on schema privado from public, anon, authenticated;
+
+create table if not exists privado.ntfy_config (
+  id int primary key default 1 check (id = 1),
+  ativo boolean not null default true,
+  servidor text not null default 'https://ntfy.sh',
+  topico text,
+  url_app text,
+  ultimo_dia date
+);
+insert into privado.ntfy_config (id, topico) values (1, 'FAZENDA-CC') on conflict (id) do nothing;
+alter table privado.ntfy_config enable row level security;
+revoke all on privado.ntfy_config from public, anon, authenticated;
+
+-- 1234.5 → "R$ 1.234,50"
+create or replace function privado.ntfy_brl(v numeric) returns text
+language sql immutable set search_path = '' as $$
+  select 'R$ ' || translate(to_char(coalesce(v, 0), 'FM999,999,999,990.00'), ',.', '.,');
+$$;
+
+-- 2026-11-19 → "qui 19/11"
+create or replace function privado.ntfy_dia(d date) returns text
+language sql immutable set search_path = '' as $$
+  select (array['dom','seg','ter','qua','qui','sex','sáb'])[extract(dow from d)::int + 1] || ' ' || to_char(d, 'DD/MM');
+$$;
+
+create or replace function privado.ntfy_enviar(titulo text, mensagem text, etiqueta text default 'money_with_wings')
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  cfg privado.ntfy_config;
+  corpo jsonb;
+begin
+  select * into cfg from privado.ntfy_config where id = 1;
+  if cfg is null or not cfg.ativo or coalesce(trim(cfg.topico), '') = '' then return; end if;
+  corpo := jsonb_build_object('topic', trim(cfg.topico), 'title', titulo, 'message', mensagem, 'tags', jsonb_build_array(etiqueta));
+  if nullif(trim(cfg.url_app), '') is not null then
+    corpo := corpo || jsonb_build_object('click', rtrim(trim(cfg.url_app), '/') || '/boletos');
+  end if;
+  perform net.http_post(
+    url := rtrim(coalesce(nullif(trim(cfg.servidor), ''), 'https://ntfy.sh'), '/') || '/',
+    body := corpo,
+    headers := '{"Content-Type": "application/json"}'::jsonb
+  );
+end $$;
+revoke all on function privado.ntfy_enviar(text, text, text) from public, anon, authenticated;
+
+-- Pagamento novo. Um aviso por envio: vários pagamentos que sobem juntos
+-- (pagamento recorrente, fila do offline) viram um aviso só.
+create or replace function privado.ntfy_boleto_novo()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  qtd int;
+  soma numeric;
+  b record;
+  quem text;
+  lista text;
+begin
+  -- Só o que vem pelo app / funções do Supabase; o SQL Editor não tem login.
+  if coalesce(current_setting('request.jwt.claims', true), '') = '' then return null; end if;
+  begin
+    select count(*), sum(valor) into qtd, soma from novos;
+    if qtd = 0 then return null; end if;
+
+    select nullif(trim(u.nome), '') into quem from public.usuarios u
+     where lower(trim(u.email)) = lower(trim(auth.jwt() ->> 'email')) limit 1;
+    quem := coalesce(quem, nullif(auth.jwt() ->> 'email', ''));
+
+    if qtd = 1 then
+      select * into b from novos;
+      perform privado.ntfy_enviar(
+        'Novo pagamento: ' || coalesce(nullif(trim(b.empresa), ''), 'empresa não informada') || ' — ' || privado.ntfy_brl(b.valor),
+        concat_ws(E'\\n',
+          'Vence ' || coalesce(privado.ntfy_dia(b.vencimento), 'sem data') || ' · ' || coalesce(nullif(trim(b.forma_pagamento), ''), 'Boleto'),
+          nullif(trim(b.descricao), ''),
+          case when b.a_conferir then 'Lido no depósito — falta conferir' end,
+          case when b.pago then 'Já lançado como pago' end,
+          'Lançado por ' || quem),
+        'new');
+    else
+      select string_agg(coalesce(privado.ntfy_dia(x.vencimento), 'sem data') || ' · ' || coalesce(nullif(trim(x.empresa), ''), 'Pagamento') || ' — ' || privado.ntfy_brl(x.valor), E'\\n' order by x.vencimento nulls last)
+        into lista from (select * from novos order by vencimento nulls last limit 8) x;
+      perform privado.ntfy_enviar(
+        qtd || ' pagamentos novos — ' || privado.ntfy_brl(soma),
+        concat_ws(E'\\n', lista, case when qtd > 8 then '+ ' || (qtd - 8) || ' outros' end, 'Lançado por ' || quem),
+        'new');
+    end if;
+  exception when others then
+    -- O aviso nunca pode impedir o pagamento de ser gravado.
+    raise warning 'aviso ntfy de pagamento novo falhou: %', sqlerrm;
+  end;
+  return null;
+end $$;
+revoke all on function privado.ntfy_boleto_novo() from public, anon, authenticated;
+
+drop trigger if exists boletos_ntfy_novo on public.boletos;
+create trigger boletos_ntfy_novo after insert on public.boletos
+  referencing new table as novos
+  for each statement execute function privado.ntfy_boleto_novo();
+
+-- Contas que vencem hoje (Programação de pagamentos + despesas com vencimento
+-- ainda não pagas — a mesma regra da notificação do aparelho). Uma vez por dia;
+-- forcar = true manda de novo (para testar).
+create or replace function privado.ntfy_avisar_vencimentos(forcar boolean default false)
+returns text language plpgsql security definer set search_path = '' as $$
+declare
+  hoje date := (now() at time zone 'America/Sao_Paulo')::date;
+  qtd int;
+  soma numeric;
+  lista text;
+  atras int;
+  atras_soma numeric;
+begin
+  if not forcar then
+    update privado.ntfy_config set ultimo_dia = hoje where id = 1 and (ultimo_dia is null or ultimo_dia < hoje);
+    if not found then return 'já avisado hoje'; end if;
+  end if;
+
+  create temp table if not exists ntfy_contas (vencimento date, valor numeric, texto text) on commit drop;
+  truncate pg_temp.ntfy_contas;
+  insert into pg_temp.ntfy_contas
+    select b.vencimento, coalesce(b.valor, 0),
+           coalesce(nullif(trim(b.empresa), ''), nullif(trim(b.descricao), ''), 'Pagamento') || ' (' || coalesce(nullif(trim(b.forma_pagamento), ''), 'Boleto') || ')'
+      from public.boletos b where not coalesce(b.pago, false) and b.vencimento <= hoje
+    union all
+    select d.vencimento, coalesce(d.valor, 0),
+           coalesce(nullif(trim(d.descricao), ''), nullif(trim(d.tipo), ''), nullif(trim(d.categoria), ''), 'Despesa') || coalesce(' (' || nullif(trim(d.favorecido), '') || ')', '')
+      from public.despesas d where not coalesce(d.pago, false) and d.vencimento <= hoje;
+
+  select count(*), sum(valor) into qtd, soma from pg_temp.ntfy_contas where vencimento = hoje;
+  if qtd = 0 then return 'nada vence hoje'; end if;
+  select string_agg(texto || ' — ' || privado.ntfy_brl(valor), E'\\n' order by valor desc) into lista
+    from (select * from pg_temp.ntfy_contas where vencimento = hoje order by valor desc limit 10) x;
+  select count(*), sum(valor) into atras, atras_soma from pg_temp.ntfy_contas where vencimento < hoje;
+
+  perform privado.ntfy_enviar(
+    'Vence hoje: ' || qtd || case when qtd = 1 then ' conta — ' else ' contas — ' end || privado.ntfy_brl(soma),
+    concat_ws(E'\\n', lista,
+      case when qtd > 10 then '+ ' || (qtd - 10) || ' outras' end,
+      case when atras > 0 then 'Já vencidas e não pagas: ' || atras || ' — ' || privado.ntfy_brl(atras_soma) end),
+    'alarm_clock');
+  return 'avisado: ' || qtd;
+end $$;
+revoke all on function privado.ntfy_avisar_vencimentos(boolean) from public, anon, authenticated;
+
+-- Agenda o aviso do dia: '0 10 * * *' em UTC = todo dia às 7h em Brasília.
+do $ntfy$
+begin
+  begin
+    create extension if not exists pg_cron with schema pg_catalog;
+  exception when others then
+    raise warning 'pg_cron indisponível (%): ligue em Database → Extensions → pg_cron e rode de novo.', sqlerrm;
+    return;
+  end;
+  perform cron.unschedule(jobid) from cron.job where jobname = 'ntfy-vencimentos-dia';
+  perform cron.schedule('ntfy-vencimentos-dia', '0 10 * * *', 'select privado.ntfy_avisar_vencimentos();');
+end $ntfy$;
+
+`;
+
 sql += `-- ─── Fotos (Storage) ──────────────────────────────────────────────────────
 -- Bucket privado: só quem tem login vê. O Modo Campo tira e vê fotos, mas não apaga.
 insert into storage.buckets (id, name, public) values ('fotos', 'fotos', false) on conflict (id) do nothing;
