@@ -787,3 +787,10 @@ img.ampliavel { cursor: zoom-in; }
 /* Pagamento que se repete (todo mês no dia tal…) */
 .recorrencia { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--linha); }
 .recorrencia-resumo { grid-column: 1 / -1; margin: 0; }
+
+/* Ficha do produto (clicar numa linha do Estoque de insumos) */
+.ficha-insumo { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 16px; margin: 0 0 12px; }
+.ficha-insumo div { min-width: 0; }
+.ficha-insumo dt { color: var(--texto-2); font-size: 12px; }
+.ficha-insumo dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.tabela tbody tr.clicavel:hover { background: var(--fundo); }
