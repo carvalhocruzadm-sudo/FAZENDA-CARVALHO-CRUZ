@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import CaixaComprovantes from "../components/CaixaComprovantes";
 import Crud from "../components/Crud";
+import FichaInsumo from "../components/FichaInsumo";
 import LancarComprovante from "../components/LancarComprovante";
 import NotasFiscais from "../components/NotasFiscais";
 import OrdensPulverizacao from "../components/OrdensPulverizacao";
@@ -497,11 +498,14 @@ const achaProduto = (insumo, termo) => {
   return !t || [insumo.nome, insumo.fabricante, insumo.tipo, insumo.principio_ativo].some((v) => String(v ?? "").toLowerCase().includes(t));
 };
 
-function EstoqueQuimicos({ dados }) {
+function EstoqueQuimicos({ dados, salvar }) {
   const [busca, setBusca] = useState("");
+  const [aberto, setAberto] = useState(null);
   const lista = estoqueInsumos(dados).filter((x) => (x.insumo.ativo !== false || x.saldo) && achaProduto(x.insumo, busca));
   const tipos = Object.fromEntries(ESQUEMA.insumos.campos.tipo.opcoes);
   const aConferir = dados.insumo_entradas.filter((e) => e.a_conferir).length;
+  // A ficha segue o produto (não a linha): continua aberta mesmo se a busca mudar.
+  const itemAberto = aberto ? estoqueInsumos(dados).find((x) => x.insumo.id === aberto) : null;
   const [exportando, setExportando] = useState(false);
   const exportar = async () => {
     setExportando(true);
@@ -537,6 +541,7 @@ function EstoqueQuimicos({ dados }) {
       <TabelaSimples
         vazio="Cadastre os produtos na aba Produtos e lance as entradas."
         linhas={lista.sort((a, b) => a.insumo.nome.localeCompare(b.insumo.nome)).map((x) => ({ ...x, id: x.insumo.id }))}
+        aoClicar={(x) => setAberto(x.insumo.id)}
         colunas={[
           { rotulo: "Produto", valor: (x) => x.insumo.nome },
           { rotulo: "Fabricante", valor: (x) => x.insumo.fabricante ?? "—" },
@@ -552,6 +557,7 @@ function EstoqueQuimicos({ dados }) {
         ]}
         rodape={["Total", "", "", "", "", "", "", "", "", "", brl(soma(lista, (x) => x.valorEstoque))]}
       />
+      {itemAberto && <FichaInsumo item={itemAberto} dados={dados} salvar={salvar} aoFechar={() => setAberto(null)} />}
     </div>
   );
 }
