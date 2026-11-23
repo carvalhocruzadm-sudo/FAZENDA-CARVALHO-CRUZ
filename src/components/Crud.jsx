@@ -48,10 +48,11 @@ function exportarCSV(nome, colunas, campos, valorDe, linhas, dados) {
  * `padrao` preenche o registro novo e `acoes` entra como botão extra na barra.
  * `abrirNovo` (vindo do "+ Lançar") já abre o formulário em branco.
  * `aoNovo`: a tela tem a sua própria janela de lançamento novo (ex.: Programação de pagamentos).
+ * `extra(rascunho)`: conteúdo a mais embaixo do formulário (ex.: a senha do login, em Usuários).
  * `calculadas` são colunas só da lista, que não vão para o banco:
  * `{ campos: { chave: { tipo, rotulo… } }, calcular: (dados) => Map(id → { chave: valor }) }`.
  */
-export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes, calculadas, abrirNovo, aoNovo }) {
+export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, colunas: colunasProp, periodoInicial, acoes, calculadas, abrirNovo, aoNovo, extra }) {
   const def = ESQUEMA[colecao];
   const campos = useMemo(() => ({ ...def.campos, ...calculadas?.campos }), [def, calculadas]);
   const valores = useMemo(() => calculadas?.calcular(dados), [calculadas, dados]);
@@ -259,6 +260,7 @@ export default function Crud({ colecao, dados, salvar, remover, filtro, padrao, 
         >
           {erro && <div className="aviso">{erro}</div>}
           <Formulario colecao={colecao} reg={rascunho} setReg={setRascunho} dados={dados} contexto={contexto} escolha={escolha} />
+          {extra?.(rascunho)}
         </Modal>
       )}
     </div>

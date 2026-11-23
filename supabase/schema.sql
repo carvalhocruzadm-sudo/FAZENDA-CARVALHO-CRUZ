@@ -1056,6 +1056,17 @@ create table if not exists public.bling_conexao (
 );
 alter table public.bling_conexao enable row level security;
 
+-- Senhas criadas pela tela Usuários (para o administrador ver depois). Fica
+-- trancada (RLS sem nenhuma regra): só a função "usuarios-senha" lê e grava,
+-- e ela só mostra para quem é Administrador em Usuários.
+create table if not exists public.senhas_usuarios (
+  email text primary key,
+  senha text not null,
+  definida_por text,
+  atualizado_em timestamptz default now()
+);
+alter table public.senhas_usuarios enable row level security;
+
 -- Assessor pelo WhatsApp (só a função whatsapp-comprovantes usa; RLS sem regras).
 -- Conversa: as últimas mensagens de cada número, para ele lembrar do assunto.
 create table if not exists public.whatsapp_conversa (

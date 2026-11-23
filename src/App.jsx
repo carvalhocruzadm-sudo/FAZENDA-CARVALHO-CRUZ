@@ -12,6 +12,7 @@ import { DA_CULTURA, DA_FAZENDA } from "./lib/navegacao";
 import { iniciarNtfy } from "./lib/ntfy";
 import { culturaDaTela, culturasAtivas, dadosDaCultura, emojiDaCultura, telaDaCultura } from "./lib/porCultura";
 import { ehPaginaDeEnvio } from "./lib/linkFornecedor";
+import { chamarSenhas } from "./lib/senhas";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import Boletos from "./pages/Boletos";
 import EnviarBoleto from "./pages/EnviarBoleto";
@@ -252,8 +253,10 @@ function TrocarSenha({ email, aoFechar }) {
     }
     const { error } = await supabase.auth.updateUser({ password: nova });
     setSalvando(false);
-    if (error) setErro(error.message);
-    else setPronto(true);
+    if (error) { setErro(error.message); return; }
+    setPronto(true);
+    // Guarda a nova senha para o administrador ver em Usuários (se a função existir; se falhar, tudo bem).
+    chamarSenhas({ acao: "anotar_minha", senha: nova }).catch(() => {});
   };
 
   return (
