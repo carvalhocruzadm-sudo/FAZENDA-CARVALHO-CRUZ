@@ -91,7 +91,10 @@ async function atender(req: Request) {
   const souAdmin = admins.some((u) => limpo(u.email) === meuEmail);
   const souCampo = (cadastro ?? []).some((u) => limpo(u.email) === meuEmail && ["campo", "ticket"].includes(u.perfil));
   if (!(souAdmin || (admins.length === 0 && !souCampo))) {
-    return json({ erro: "Só o administrador mexe nas senhas dos outros." }, 403);
+    return json({
+      erro: `Você entrou como ${meuEmail}, e esse e-mail não está em Usuários como "Administrador (tudo)" com acesso liberado. `
+        + "Cadastre esse e-mail lá como Administrador (ou entre com o login de um administrador) e tente de novo.",
+    }, 403);
   }
 
   switch (corpo.acao) {
