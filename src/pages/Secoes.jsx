@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import CaixaComprovantes from "../components/CaixaComprovantes";
 import Crud from "../components/Crud";
@@ -18,6 +18,7 @@ import { compradoresDoBling, textoDoArquivo } from "../lib/importarCompradores";
 import { gerarPlanilhaAgronomo } from "../lib/planilhaAgronomo";
 import { principioDe } from "../lib/principiosAtivos";
 import { contarNovas } from "../lib/recomendacoes";
+import { chamarSenhas, gerarSenha } from "../lib/senhas";
 import { supabase } from "../lib/supabase";
 import AprovarEntradas from "./AprovarEntradas";
 import { AplicacoesAgronomo, LinkAgronomo } from "./Recomendacoes";
@@ -1108,8 +1109,102 @@ export function Financeiro(props) {
   );
 }
 
+/** Senha do login, dentro da janela de editar usuário: ver, criar o login e trocar. */
+function SenhaDoUsuario({ email, info, aoMudar }) {
+  const [nova, setNova] = useState("");
+  const [ver, setVer] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const alvo = String(email ?? "").trim().toLowerCase();
+
+  const salvar = async () => {
+    setMsg(null);
+    if (nova.length < 6) { setMsg({ erro: "A senha precisa ter pelo menos 6 caracteres." }); return; }
+    setSalvando(true);
+    try {
+      const r = await chamarSenhas({ acao: "definir", email: alvo, senha: nova });
+      setMsg({ ok: r.criado ? `Login criado. A pessoa já pode entrar com ${alvo} e a senha ${nova}.` : "Senha trocada. A senha antiga não vale mais." });
+      setNova("");
+      aoMudar();
+    } catch (e) {
+      setMsg({ erro: e.message });
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  if (!alvo.includes("@")) {
+    return <div className="cartao" style={{ marginTop: 12 }}><strong>Senha de acesso</strong><p className="descricao">Preencha o e-mail para criar a senha.</p></div>;
+  }
+  return (
+    <div className="cartao" style={{ marginTop: 12, display: "grid", gap: 8 }}>
+      <strong>Senha de acesso</strong>
+      {info?.erro ? <div className="aviso">{info.erro}</div> : !info ? <span className="descricao">Consultando…</span> : (
+        <span>
+          {info.tem_login ? "Login já criado. " : "Ainda não tem login: crie uma senha abaixo. "}
+          {info.tem_login && (info.senha
+            ? <>Senha atual: <strong style={{ fontFamily: "monospace" }}>{ver ? info.senha : "••••••"}</strong>{" "}
+              <button type="button" className="btn" onClick={() => setVer((v) => !v)}>{ver ? "Esconder" : "Ver senha"}</button></>
+            : <span className="descricao">(senha criada fora daqui — não dá para ver; crie uma nova se precisar)</span>)}
+        </span>
+      )}
+      <div className="barra" style={{ margin: 0 }}>
+        <input className="entrada" style={{ flex: 1, fontFamily: "monospace" }} placeholder="Nova senha (mín. 6)" value={nova}
+          onChange={(e) => setNova(e.target.value.trim())} autoComplete="off" aria-label="Nova senha" />
+        <button type="button" className="btn" onClick={() => setNova(gerarSenha())}>Gerar</button>
+        <button type="button" className="btn primario" onClick={salvar} disabled={salvando || !nova}>
+          <Icone nome="chave" /> {salvando ? "Salvando…" : info?.tem_login === false ? "Criar login" : "Trocar senha"}
+        </button>
+      </div>
+      {msg?.erro && <div className="aviso">{msg.erro}</div>}
+      {msg?.ok && <div className="descricao" style={{ color: "var(--verde, #2e7d32)" }}>{msg.ok}</div>}
+    </div>
+  );
+}
+
 export function Usuarios(props) {
-  return <Crud colecao="usuarios" {...props} />;
+  // email → { tem_login, senha }; ou { erro } quando não deu para consultar.
+  const [senhas, setSenhas] = useState(null);
+  const [mostrar, setMostrar] = useState(false);
+  const [versao, setVersao] = useState(0);
+  useEffect(() => {
+    if (!supabase) return undefined;
+    let vivo = true;
+    chamarSenhas({ acao: "ver_todos" })
+      .then((r) => vivo && setSenhas(new Map(r.usuarios.map((u) => [u.email, u]))))
+      .catch((e) => vivo && setSenhas({ erro: e.message }));
+    return () => { vivo = false; };
+  }, [versao]);
+  const recarregar = useCallback(() => setVersao((v) => v + 1), []);
+  const deEmail = useCallback((email) => {
+    if (!senhas || senhas.erro) return senhas;
+    return senhas.get(String(email ?? "").trim().toLowerCase()) ?? null;
+  }, [senhas]);
+
+  const calculadas = useMemo(() => (senhas instanceof Map ? {
+    campos: { tem_login: { tipo: "texto", rotulo: "Login criado" }, senha: { tipo: "texto", rotulo: "Senha" } },
+    calcular: (dados) => new Map((dados.usuarios ?? []).map((u) => {
+      const s = deEmail(u.email);
+      const senha = !s?.tem_login ? "" : !s.senha ? "(não anotada)" : mostrar ? s.senha : "••••••";
+      return [u.id, { tem_login: s?.tem_login ? "Sim" : "Não", senha }];
+    })),
+  } : undefined), [senhas, deEmail, mostrar]);
+
+  const colunas = calculadas ? [...ESQUEMA.usuarios.colunas, "tem_login", "senha"] : undefined;
+  const acoes = !supabase ? null : senhas?.erro
+    ? <span className="aviso" style={{ margin: 0 }}>Senhas: {senhas.erro}</span>
+    : calculadas && (
+      <button className="btn" onClick={() => setMostrar((m) => !m)}>
+        <Icone nome="chave" /> {mostrar ? "Esconder senhas" : "Mostrar senhas"}
+      </button>
+    );
+
+  return (
+    <Crud colecao="usuarios" {...props} calculadas={calculadas} colunas={colunas} acoes={acoes}
+      extra={supabase ? (reg) => (
+        <SenhaDoUsuario email={reg.email} info={senhas?.erro ? senhas : senhas && (deEmail(reg.email) ?? { tem_login: false })} aoMudar={recarregar} />
+      ) : undefined} />
+  );
 }
 
 // ─── Pluviômetro ────────────────────────────────────────────────────────────
