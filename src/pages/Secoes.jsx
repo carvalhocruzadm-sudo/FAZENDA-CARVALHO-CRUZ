@@ -1156,7 +1156,7 @@ function SenhaDoUsuario({ email, info, aoMudar }) {
           <Icone nome="chave" /> {salvando ? "Salvando…" : info?.tem_login === false ? "Criar login" : "Trocar senha"}
         </button>
       </div>
-      {msg?.erro && <div className="aviso">{msg.erro}</div>}
+      {msg?.erro && msg.erro !== info?.erro && <div className="aviso">{msg.erro}</div>}
       {msg?.ok && <div className="descricao" style={{ color: "var(--verde, #2e7d32)" }}>{msg.ok}</div>}
     </div>
   );
@@ -1167,6 +1167,8 @@ export function Usuarios(props) {
   const [senhas, setSenhas] = useState(null);
   const [mostrar, setMostrar] = useState(false);
   const [versao, setVersao] = useState(0);
+  // Mudou o cadastro (ex.: acabou de se cadastrar como Administrador): pergunta de novo.
+  const assinatura = (props.dados.usuarios ?? []).map((u) => `${u.email}|${u.perfil}|${u.ativo}`).sort().join(",");
   useEffect(() => {
     if (!supabase) return undefined;
     let vivo = true;
@@ -1174,7 +1176,7 @@ export function Usuarios(props) {
       .then((r) => vivo && setSenhas(new Map(r.usuarios.map((u) => [u.email, u]))))
       .catch((e) => vivo && setSenhas({ erro: e.message }));
     return () => { vivo = false; };
-  }, [versao]);
+  }, [versao, assinatura]);
   const recarregar = useCallback(() => setVersao((v) => v + 1), []);
   const deEmail = useCallback((email) => {
     if (!senhas || senhas.erro) return senhas;
