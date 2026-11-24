@@ -128,8 +128,9 @@ function Campo({ chave, campo, reg, dados, aoMudar }) {
     case "opcoes":
       controle = (
         <select id={id} value={valor ?? ""} onChange={(e) => set(e.target.value || null)}>
-          {!obrig && <option value="">—</option>}
-          {campo.opcoes.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
+          {/* Obrigatório sem valor: pede para escolher, em vez de parecer já escolhido. */}
+          {(!obrig || valor == null || valor === "") && <option value="">{obrig ? "— escolha —" : "—"}</option>}
+          {campo.opcoes.filter(([v]) => !campo.opcoesDoCodigo?.includes(v)).map(([v, r]) => <option key={v} value={v}>{r}</option>)}
         </select>
       );
       break;

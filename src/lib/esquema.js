@@ -12,7 +12,8 @@
  *              `ladoMaior` muda o tamanho (documento precisa de mais), e
  *              `lerCodigo: [campo, tamanhos]` lê o código de barras da foto
  *              e grava os números nesse campo
- *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`)
+ *   opcoes   → lista fixa (`opcoes: [[valor, rótulo], …]`); `opcoesDoCodigo`
+ *              lista valores que só o código grava (não aparecem para escolher)
  *   sugestao → texto livre com sugestões (dá para criar uma categoria nova);
  *              `sugestoesDe: [coleção, coluna]` puxa o que já foi digitado, ou
  *              uma lista delas, cada uma com um filtro opcional na 3ª posição
@@ -42,6 +43,17 @@ export const CATEGORIAS_DESPESA = [
   "Combustíveis", "Salários", "Taxas", "Benfeitorias", "Investimentos",
   "Arrendamentos", "Empréstimos", "Retirada / dividendos", "Fretes", "Compra de laranja", "Cartão de crédito", "Outros",
 ];
+
+/** Categoria da despesa que cada tipo de produto gera quando é comprado. */
+export const CATEGORIA_DO_INSUMO = {
+  herbicida: "Produtos químicos", inseticida: "Produtos químicos", fungicida: "Produtos químicos",
+  adubo: "Adubos", corretivo: "Adubos", foliar: "Adubos", semente: "Sementes",
+  racao: "Alimentação", medicamento: "Produtos químicos",
+};
+
+/** Toda despesa diz se é gasto na hora ou compra que vai para um estoque. */
+export const USOS_DESPESA = [["imediato", "Uso imediato (já é custo)"], ["estoque", "Entra no estoque (custo quando usar)"]];
+export const vaiParaEstoque = (r) => r.uso === "estoque";
 
 export const FORMAS_PAGAMENTO = ["PIX", "Boleto", "Cartão", "Dinheiro", "Transferência", "Cheque"];
 
@@ -423,7 +435,7 @@ export const ESQUEMA = {
 
   despesas: {
     titulo: "Despesas", singular: "despesa", icone: "dinheiro", lancamento: true,
-    descricao: "Como na planilha FINANCEIRO: categoria, tipo, forma de pagamento e favorecido. Toda despesa vai para um centro de custo: geral, uma cultura ou um talhão. Compra de diesel para o tanque e de químicos para o estoque se lança nas telas deles, não aqui.",
+    descricao: "Como na planilha FINANCEIRO: categoria, tipo, forma de pagamento e favorecido. Toda despesa precisa dizer se é de uso imediato ou se entra no estoque. Uso imediato vai na hora para o centro de custo (geral, uma cultura ou um talhão). O que entra no estoque (químicos, adubos, sementes, ração, diesel do tanque…) aparece aqui como saída de dinheiro, mas só vira custo do talhão quando for aplicado ou abastecido.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       categoria: { tipo: "sugestao", rotulo: "Categoria", sugestoes: CATEGORIAS_DESPESA, obrigatorio: true },
@@ -433,12 +445,20 @@ export const ESQUEMA = {
       forma_pagamento: { tipo: "sugestao", rotulo: "Forma de pagamento", sugestoes: FORMAS_PAGAMENTO, padrao: "PIX" },
       favorecido: { tipo: "sugestao", rotulo: "Favorecido", sugestoesDe: [["despesas", "favorecido"], ["contatos", "fantasia", (c) => c.tipo !== "cliente"], ["contatos", "nome", (c) => c.tipo !== "cliente"]] },
       fazenda_id: { tipo: "ref", colecao: "fazendas", rotulo: "Fazenda" },
-      centro: { tipo: "opcoes", rotulo: "Centro de custo", padrao: "geral", opcoes: [["geral", "Geral da fazenda"], ["cultura", "Cultura"], ["talhao", "Talhão"]] },
-      cultura_id: { ...refCultura, mostrarSe: (r) => r.centro !== "geral", obrigatorio: (r) => r.centro === "cultura" },
+      uso: { tipo: "opcoes", rotulo: "Uso imediato ou estoque?", obrigatorio: true, opcoes: USOS_DESPESA, dica: "Estoque: o custo vai para o talhão só quando o produto for usado" },
+      estoque: { tipo: "opcoes", rotulo: "Qual estoque", mostrarSe: vaiParaEstoque, obrigatorio: true, opcoes: [["insumos", "Químicos, adubos, sementes, ração…"], ["diesel", "Tanque de diesel"]] },
+      insumo_id: { tipo: "ref", colecao: "insumos", rotulo: "Produto", mostrarSe: (r) => vaiParaEstoque(r) && r.estoque === "insumos", obrigatorio: true, dica: "Produto novo? Cadastre antes em Químicos → Produtos" },
+      quantidade: { tipo: "numero", rotulo: "Quantidade que entra no estoque", casas: 2, mostrarSe: (r) => vaiParaEstoque(r) && r.estoque === "insumos", obrigatorio: true, dica: "Na unidade do produto (L, kg, saco…)" },
+      centro: { tipo: "opcoes", rotulo: "Centro de custo", obrigatorio: true, mostrarSe: (r) => !vaiParaEstoque(r), opcoes: [["geral", "Geral da fazenda"], ["cultura", "Cultura"], ["talhao", "Talhão"], ["estoque", "Estoque (vira custo no uso)"]], opcoesDoCodigo: ["estoque"] },
+      cultura_id: { ...refCultura, mostrarSe: (r) => ["cultura", "talhao"].includes(r.centro), obrigatorio: (r) => r.centro === "cultura" },
       talhao_id: { ...refTalhao, mostrarSe: (r) => r.centro === "talhao", obrigatorio: (r) => r.centro === "talhao" },
-      maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / caminhão (se for dela)" },
-      funcionario_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Funcionário (se for pagamento)" },
-      litros: { tipo: "numero", rotulo: "Litros", casas: 2, mostrarSe: (r) => r.categoria === "Combustíveis" },
+      maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / caminhão (se for dela)", mostrarSe: (r) => !vaiParaEstoque(r) },
+      funcionario_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Funcionário (se for pagamento)", mostrarSe: (r) => !vaiParaEstoque(r) },
+      litros: {
+        tipo: "numero", rotulo: "Litros", casas: 2,
+        mostrarSe: (r) => r.categoria === "Combustíveis" || (vaiParaEstoque(r) && r.estoque === "diesel"),
+        obrigatorio: (r) => vaiParaEstoque(r) && r.estoque === "diesel",
+      },
       vencimento: { tipo: "data", rotulo: "Vencimento" },
       pago: { tipo: "booleano", rotulo: "Pago", padrao: true },
       nota: { tipo: "texto", rotulo: "Nota / documento" },
@@ -446,8 +466,16 @@ export const ESQUEMA = {
     aoMudar: {
       ...culturaDoTalhao,
       centro: (r) => (r.centro === "geral" ? { cultura_id: null, talhao_id: null } : r.centro === "cultura" ? { talhao_id: null } : {}),
+      // Indo para o estoque, a categoria sai do tipo do produto (ou Combustíveis no diesel).
+      estoque: (r) => (r.estoque === "diesel" ? { categoria: "Combustíveis" } : {}),
+      insumo_id: (r, dados) => {
+        const i = dados.insumos.find((x) => x.id === r.insumo_id);
+        return i ? { categoria: CATEGORIA_DO_INSUMO[i.tipo] ?? "Produtos químicos", descricao: r.descricao || `Compra de ${i.nome}` } : {};
+      },
     },
-    colunas: ["data", "categoria", "tipo", "descricao", "forma_pagamento", "favorecido", "cultura_id", "valor", "pago"],
+    // O que entra no estoque fica no centro "estoque"; ao voltar para uso imediato, escolhe-se o centro de novo.
+    calcular: (r) => ({ centro: vaiParaEstoque(r) ? "estoque" : r.centro === "estoque" ? null : r.centro }),
+    colunas: ["data", "categoria", "tipo", "descricao", "favorecido", "uso", "centro", "valor", "pago"],
   },
 
   entradas: {

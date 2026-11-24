@@ -3,6 +3,8 @@
  * Assim um lançamento corrigido corrige na hora o saldo, o custo e o alerta.
  */
 
+import { CATEGORIA_DO_INSUMO } from "./esquema.js";
+
 const n = (v) => Number(v) || 0;
 const soma = (lista, f) => lista.reduce((t, x) => t + n(f(x)), 0);
 
@@ -63,10 +65,20 @@ export function situacaoRevisao(dados, maquina) {
   return { atual, proxima, faltam, estado };
 }
 
+// ─── Compras lançadas em Despesas que vão para o estoque ────────────────────
+
+/** Despesa marcada "entra no estoque" naquele estoque (insumos ou diesel). */
+export const despesasDoEstoque = (dados, estoque) =>
+  dados.despesas.filter((d) => d.uso === "estoque" && d.estoque === estoque);
+
 // ─── Diesel ─────────────────────────────────────────────────────────────────
 
+/** Tanque: compras de diesel + despesas de diesel para o tanque − saídas do tanque. */
 export function diesel(dados) {
-  const entradas = dados.diesel_entradas;
+  const entradas = [
+    ...dados.diesel_entradas,
+    ...despesasDoEstoque(dados, "diesel").map((d) => ({ litros: d.litros, valor: d.valor })),
+  ];
   const litrosEntrada = soma(entradas, (e) => e.litros);
   const valorEntrada = soma(entradas, (e) => e.valor);
   const saidas = dados.abastecimentos.filter((a) => a.origem === "tanque");
@@ -105,7 +117,8 @@ export function consumoPorMaquina(dados, periodo) {
 export function estoqueInsumos(dados) {
   const mapa = new Map();
   for (const i of dados.insumos) mapa.set(i.id, { insumo: i, entrada: 0, saida: 0, valorEntrada: 0 });
-  for (const e of dados.insumo_entradas) {
+  // Entradas = telas de Entradas de químicos + Despesas marcadas "entra no estoque".
+  for (const e of [...dados.insumo_entradas, ...despesasDoEstoque(dados, "insumos")]) {
     const x = mapa.get(e.insumo_id);
     if (x) { x.entrada += n(e.quantidade); x.valorEntrada += n(e.valor); }
   }
@@ -128,11 +141,13 @@ export function estoqueInsumos(dados) {
 
 /**
  * Custo por cultura e por talhão no período, pelo que foi CONSUMIDO:
- *   despesas com centro de custo na cultura/talhão
+ *   despesas de uso imediato com centro de custo na cultura/talhão
  *   + químicos aplicados (quantidade × custo médio do produto)
- *   + diesel dos abastecimentos marcados com talhão/cultura
- * O que não tem cultura (despesa geral, revisões, diesel sem talhão) fica em
- * "Geral da fazenda".
+ *   + diesel dos abastecimentos: com talhão vai direto; sem talhão é dividido
+ *     pelas horas/km que a máquina trabalhou em cada talhão no período
+ * Despesa que entrou no estoque NÃO conta aqui: vira custo quando é aplicada
+ * ou abastecida. O que não tem cultura (despesa geral, revisões, diesel de
+ * máquina sem horímetro lançado) fica em "Geral da fazenda".
  */
 export function custos(dados, periodo) {
   const custoMedio = new Map(estoqueInsumos(dados).map((x) => [x.insumo.id, x.custoMedio]));
@@ -141,13 +156,23 @@ export function custos(dados, periodo) {
 
   const linhas = []; // { cultura_id, talhao_id, origem, valor }
   for (const d of noPeriodo(dados.despesas, periodo)) {
+    if (d.uso === "estoque") continue; // o custo vem da aplicação / do abastecimento
     linhas.push({ cultura_id: d.centro === "geral" ? null : d.cultura_id, talhao_id: d.centro === "talhao" ? d.talhao_id : null, origem: d.categoria || "Despesa", valor: n(d.valor) });
   }
   for (const a of noPeriodo(dados.aplicacoes, periodo)) {
     linhas.push({ cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id, origem: "Químicos/insumos aplicados", valor: n(a.quantidade) * (custoMedio.get(a.insumo_id) ?? 0) });
   }
+  const usoDaMaquina = usoPorTalhao(dados, periodo);
   for (const a of noPeriodo(dados.abastecimentos, periodo)) {
-    linhas.push({ cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id ?? null, origem: "Diesel", valor: custoAbastecimento(a, precoMedio) });
+    const valor = custoAbastecimento(a, precoMedio);
+    const usos = usoDaMaquina.get(a.maquina_id);
+    if (a.talhao_id || a.cultura_id || !usos) {
+      linhas.push({ cultura_id: a.cultura_id ?? talhaoPorId.get(a.talhao_id)?.cultura_id ?? null, talhao_id: a.talhao_id ?? null, origem: "Diesel", valor });
+      continue;
+    }
+    for (const u of usos.partes) {
+      linhas.push({ cultura_id: u.cultura_id, talhao_id: u.talhao_id, origem: "Diesel (pelo horímetro)", valor: (valor * u.peso) / usos.total });
+    }
   }
   for (const r of noPeriodo(dados.revisoes, periodo)) {
     linhas.push({ cultura_id: null, talhao_id: null, origem: "Manutenção de máquinas", valor: n(r.valor) });
@@ -189,12 +214,30 @@ export function custos(dados, periodo) {
   };
 }
 
-// ─── Financeiro (caixa) ─────────────────────────────────────────────────────
+/**
+ * Onde cada máquina trabalhou no período, pelo horímetro/km lançado pelos
+ * operadores: máquina → { total, partes: [{ talhao_id, cultura_id, peso }] }.
+ * Só entra operação com talhão ou cultura (a de terceiros tem só a cultura).
+ */
+function usoPorTalhao(dados, periodo) {
+  const talhaoPorId = new Map(dados.talhoes.map((t) => [t.id, t]));
+  const mapa = new Map();
+  for (const o of noPeriodo(dados.operacoes, periodo)) {
+    const peso = n(o.trabalhado);
+    const cultura_id = o.cultura_id ?? talhaoPorId.get(o.talhao_id)?.cultura_id ?? null;
+    if (!peso || (!o.talhao_id && !cultura_id)) continue;
+    if (!mapa.has(o.maquina_id)) mapa.set(o.maquina_id, { total: 0, porChave: new Map() });
+    const m = mapa.get(o.maquina_id);
+    const chave = `${o.talhao_id ?? ""}|${cultura_id ?? ""}`;
+    const parte = m.porChave.get(chave) ?? { talhao_id: o.talhao_id ?? null, cultura_id, peso: 0 };
+    parte.peso += peso;
+    m.porChave.set(chave, parte);
+    m.total += peso;
+  }
+  return new Map([...mapa].map(([id, m]) => [id, { total: m.total, partes: [...m.porChave.values()] }]));
+}
 
-const CATEGORIA_DO_INSUMO = {
-  adubo: "Adubos", corretivo: "Adubos", foliar: "Adubos", semente: "Sementes",
-  racao: "Alimentação", medicamento: "Produtos químicos",
-};
+// ─── Financeiro (caixa) ─────────────────────────────────────────────────────
 
 /**
  * Todas as saídas de dinheiro do período, nas categorias da planilha
@@ -248,7 +291,7 @@ export function resumoFretes(dados, periodo) {
     const abast = noPeriodo(dados.abastecimentos, periodo).filter((a) => a.maquina_id === c.id);
     const litros = soma(abast, (a) => a.litros);
     const combustivel = soma(abast, (a) => custoAbastecimento(a, precoMedio));
-    const outros = soma(noPeriodo(dados.despesas, periodo).filter((d) => d.maquina_id === c.id), (d) => d.valor)
+    const outros = soma(noPeriodo(dados.despesas, periodo).filter((d) => d.maquina_id === c.id && d.uso !== "estoque"), (d) => d.valor)
       + soma(noPeriodo(dados.revisoes, periodo).filter((r) => r.maquina_id === c.id), (r) => r.valor);
     return { caminhao: c, viagens: fretes.length, faturamento, km, litros, combustivel, outros, resultado: faturamento - combustivel - outros, porKm: km ? faturamento / km : null };
   });

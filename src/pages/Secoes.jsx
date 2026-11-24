@@ -147,6 +147,7 @@ export function Diesel(props) {
       <Secao props={props} abas={[
         ["abastecimentos", "Abastecimentos"],
         ["diesel_entradas", "Compras (entrada no tanque)"],
+        ["despesas_diesel", "Compras lançadas em Despesas", { colecao: "despesas", filtro: (x) => x.uso === "estoque" && x.estoque === "diesel", padrao: { uso: "estoque", estoque: "diesel", categoria: "Combustíveis" } }],
         ["consumo", "Consumo por máquina", ConsumoDiesel],
       ]} />
     </>
@@ -211,6 +212,7 @@ export function Quimicos(props) {
     ["estoque", "Estoque", EstoqueQuimicos],
     ["aplicacoes", "Aplicações / saídas"],
     ["insumo_entradas", "Entradas / compras"],
+    ["despesas_estoque", "Compras lançadas em Despesas", { colecao: "despesas", filtro: (x) => x.uso === "estoque" && x.estoque === "insumos", padrao: { uso: "estoque", estoque: "insumos" } }],
     ["insumos", "Produtos"],
   ];
   return <Secao props={props} abas={pendentes ? [aprovar, ...abas] : [...abas, aprovar]} />;
@@ -422,8 +424,10 @@ function Custos({ dados }) {
     <>
       <div className="barra"><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
       <p className="descricao">
-        Custo pelo que foi consumido: despesas com centro de custo + químicos aplicados (a custo médio) + diesel
-        dos abastecimentos com talhão/cultura. O que não tem cultura fica em "Geral da fazenda".
+        Custo pelo que foi consumido: despesas de uso imediato com centro de custo + químicos aplicados (a custo médio)
+        + diesel abastecido (com talhão vai direto; sem talhão é dividido pelas horas de cada máquina em cada talhão,
+        lançadas no horímetro). Compras que entraram no estoque só viram custo quando são usadas.
+        O que não tem cultura fica em "Geral da fazenda".
       </p>
       <div className="grade">
         <Stat rotulo="Receita de vendas (líquida)" valor={brl(c.receitaTotal)} />

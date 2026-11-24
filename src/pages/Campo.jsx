@@ -78,6 +78,8 @@ export default function Campo({ indicador, sair }) {
     const lista = [
       ["operacoes", "Horímetro / serviço", { colecao: "operacoes", filtro: doOperador, padrao: { operador_id: pessoa.id } }],
       ["abastecimentos", "Abastecimento", { colecao: "abastecimentos", filtro: doOperador, padrao: { operador_id: pessoa.id } }],
+      // Retirada de produto do estoque para um talhão: é o que leva o custo do químico ao talhão.
+      ["aplicacoes", "Retirada / aplicação", { colecao: "aplicacoes", filtro: (r) => r.responsavel_id === pessoa.id, padrao: { responsavel_id: pessoa.id } }],
     ];
     if (ehMotorista(pessoa)) {
       lista.push(["fretes", "Fretes", { colecao: "fretes", filtro: (r) => r.motorista_id === pessoa.id, padrao: { motorista_id: pessoa.id } }]);
