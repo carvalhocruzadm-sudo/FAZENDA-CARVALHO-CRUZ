@@ -55,6 +55,14 @@ export const CATEGORIA_DO_INSUMO = {
 export const USOS_DESPESA = [["imediato", "Uso imediato (já é custo)"], ["estoque", "Entra no estoque (custo quando usar)"]];
 export const vaiParaEstoque = (r) => r.uso === "estoque";
 
+/**
+ * Diluição do custo da despesa de uso imediato: em quantos meses ou anos o
+ * valor vira custo (o caixa continua saindo inteiro na data da despesa).
+ */
+export const DILUICOES = [["mensal", "Meses"], ["anual", "Anos"]];
+/** Total de meses da diluição; despesa antiga, sem diluição, conta 1 mês. */
+export const mesesDeDiluicao = (r) => Math.max(1, Math.round(Number(r.diluicao_qtd) || 1) * (r.diluicao === "anual" ? 12 : 1));
+
 export const FORMAS_PAGAMENTO = ["PIX", "Boleto", "Cartão", "Dinheiro", "Transferência", "Cheque"];
 
 export const FASES = [
@@ -435,7 +443,7 @@ export const ESQUEMA = {
 
   despesas: {
     titulo: "Despesas", singular: "despesa", icone: "dinheiro", lancamento: true,
-    descricao: "Como na planilha FINANCEIRO: categoria, tipo, forma de pagamento e favorecido. Toda despesa precisa dizer se é de uso imediato ou se entra no estoque. Uso imediato vai na hora para o centro de custo (geral, uma cultura ou um talhão). O que entra no estoque (químicos, adubos, sementes, ração, diesel do tanque…) aparece aqui como saída de dinheiro, mas só vira custo do talhão quando for aplicado ou abastecido.",
+    descricao: "Como na planilha FINANCEIRO: categoria, tipo, forma de pagamento e favorecido. Toda despesa precisa dizer se é de uso imediato ou se entra no estoque. Uso imediato vai para o centro de custo (geral, uma cultura ou um talhão), diluído nos meses ou anos informados (seguro do ano = 12 meses; máquina nova = 10 anos). O que entra no estoque (químicos, adubos, sementes, ração, diesel do tanque…) aparece aqui como saída de dinheiro, mas só vira custo do talhão quando for aplicado ou abastecido.",
     campos: {
       data: { tipo: "data", rotulo: "Data", obrigatorio: true, padrao: hoje },
       categoria: { tipo: "sugestao", rotulo: "Categoria", sugestoes: CATEGORIAS_DESPESA, obrigatorio: true },
@@ -452,6 +460,8 @@ export const ESQUEMA = {
       centro: { tipo: "opcoes", rotulo: "Centro de custo", obrigatorio: true, mostrarSe: (r) => !vaiParaEstoque(r), opcoes: [["geral", "Geral da fazenda"], ["cultura", "Cultura"], ["talhao", "Talhão"], ["estoque", "Estoque (vira custo no uso)"]], opcoesDoCodigo: ["estoque"] },
       cultura_id: { ...refCultura, mostrarSe: (r) => ["cultura", "talhao"].includes(r.centro), obrigatorio: (r) => r.centro === "cultura" },
       talhao_id: { ...refTalhao, mostrarSe: (r) => r.centro === "talhao", obrigatorio: (r) => r.centro === "talhao" },
+      diluicao: { tipo: "opcoes", rotulo: "Diluir o custo em", obrigatorio: true, mostrarSe: (r) => !vaiParaEstoque(r), opcoes: DILUICOES, dica: "Ex.: seguro do ano = 12 meses; trator novo = 10 anos" },
+      diluicao_qtd: { tipo: "numero", rotulo: "Quantos meses / anos", casas: 0, obrigatorio: true, mostrarSe: (r) => !vaiParaEstoque(r), dica: "1 mês = o custo todo no mês da despesa" },
       maquina_id: { tipo: "ref", colecao: "maquinas", rotulo: "Máquina / caminhão (se for dela)", mostrarSe: (r) => !vaiParaEstoque(r) },
       funcionario_id: { tipo: "ref", colecao: "funcionarios", rotulo: "Funcionário (se for pagamento)", mostrarSe: (r) => !vaiParaEstoque(r) },
       litros: {
@@ -475,6 +485,13 @@ export const ESQUEMA = {
     },
     // O que entra no estoque fica no centro "estoque"; ao voltar para uso imediato, escolhe-se o centro de novo.
     calcular: (r) => ({ centro: vaiParaEstoque(r) ? "estoque" : r.centro === "estoque" ? null : r.centro }),
+    validar: (r) => {
+      if (vaiParaEstoque(r)) return null;
+      const q = r.diluicao_qtd;
+      if (!Number.isInteger(q) || q < 1) return "Diluição: informe um número inteiro de meses ou anos (1 ou mais).";
+      if (mesesDeDiluicao(r) > 600) return "Diluição: no máximo 50 anos (600 meses).";
+      return null;
+    },
     colunas: ["data", "categoria", "tipo", "descricao", "favorecido", "uso", "centro", "valor", "pago"],
   },
 

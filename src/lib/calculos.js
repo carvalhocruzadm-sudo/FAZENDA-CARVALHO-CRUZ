@@ -3,7 +3,7 @@
  * Assim um lançamento corrigido corrige na hora o saldo, o custo e o alerta.
  */
 
-import { CATEGORIA_DO_INSUMO } from "./esquema.js";
+import { CATEGORIA_DO_INSUMO, mesesDeDiluicao } from "./esquema.js";
 
 const n = (v) => Number(v) || 0;
 const soma = (lista, f) => lista.reduce((t, x) => t + n(f(x)), 0);
@@ -31,6 +31,29 @@ export function noPeriodo(lista, periodo) {
   const [de, ate] = intervalo(periodo);
   if (!de) return lista;
   return lista.filter((x) => x.data && x.data >= de && x.data <= ate);
+}
+
+/** A mesma data `meses` meses depois (dia 31 vira o último dia do mês, se precisar). */
+function somarMeses(iso, meses) {
+  const [a, m, d] = iso.split("-").map(Number);
+  const ultimoDia = new Date(Date.UTC(a, m - 1 + meses + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(a, m - 1 + meses, Math.min(d, ultimoDia))).toISOString().slice(0, 10);
+}
+
+/**
+ * Despesas de uso imediato como CUSTO: cada uma vira uma parcela por mês da
+ * diluição (valor ÷ meses), com a data de cada mês. Assim o seguro anual pago
+ * em janeiro pesa 1/12 em cada mês, e o "Tudo" continua somando o valor cheio.
+ * Despesa que entrou no estoque fica de fora (vira custo no uso).
+ */
+export function despesasComoCusto(dados, periodo) {
+  const parcelas = [];
+  for (const d of dados.despesas) {
+    if (d.uso === "estoque" || !d.data) continue;
+    const meses = mesesDeDiluicao(d);
+    for (let i = 0; i < meses; i++) parcelas.push({ ...d, data: somarMeses(d.data, i), valor: n(d.valor) / meses });
+  }
+  return noPeriodo(parcelas, periodo);
 }
 
 // ─── Máquinas ───────────────────────────────────────────────────────────────
@@ -141,7 +164,8 @@ export function estoqueInsumos(dados) {
 
 /**
  * Custo por cultura e por talhão no período, pelo que foi CONSUMIDO:
- *   despesas de uso imediato com centro de custo na cultura/talhão
+ *   despesas de uso imediato com centro de custo na cultura/talhão, já
+ *     diluídas pelos meses/anos informados (só a parte do período)
  *   + químicos aplicados (quantidade × custo médio do produto)
  *   + diesel dos abastecimentos: com talhão vai direto; sem talhão é dividido
  *     pelas horas/km que a máquina trabalhou em cada talhão no período
@@ -155,8 +179,7 @@ export function custos(dados, periodo) {
   const talhaoPorId = new Map(dados.talhoes.map((t) => [t.id, t]));
 
   const linhas = []; // { cultura_id, talhao_id, origem, valor }
-  for (const d of noPeriodo(dados.despesas, periodo)) {
-    if (d.uso === "estoque") continue; // o custo vem da aplicação / do abastecimento
+  for (const d of despesasComoCusto(dados, periodo)) {
     linhas.push({ cultura_id: d.centro === "geral" ? null : d.cultura_id, talhao_id: d.centro === "talhao" ? d.talhao_id : null, origem: d.categoria || "Despesa", valor: n(d.valor) });
   }
   for (const a of noPeriodo(dados.aplicacoes, periodo)) {
@@ -291,7 +314,7 @@ export function resumoFretes(dados, periodo) {
     const abast = noPeriodo(dados.abastecimentos, periodo).filter((a) => a.maquina_id === c.id);
     const litros = soma(abast, (a) => a.litros);
     const combustivel = soma(abast, (a) => custoAbastecimento(a, precoMedio));
-    const outros = soma(noPeriodo(dados.despesas, periodo).filter((d) => d.maquina_id === c.id && d.uso !== "estoque"), (d) => d.valor)
+    const outros = soma(despesasComoCusto(dados, periodo).filter((d) => d.maquina_id === c.id), (d) => d.valor)
       + soma(noPeriodo(dados.revisoes, periodo).filter((r) => r.maquina_id === c.id), (r) => r.valor);
     return { caminhao: c, viagens: fretes.length, faturamento, km, litros, combustivel, outros, resultado: faturamento - combustivel - outros, porKm: km ? faturamento / km : null };
   });

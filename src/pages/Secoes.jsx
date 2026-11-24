@@ -424,7 +424,8 @@ function Custos({ dados }) {
     <>
       <div className="barra"><SeletorPeriodo periodos={PERIODOS} valor={periodo} aoMudar={setPeriodo} /></div>
       <p className="descricao">
-        Custo pelo que foi consumido: despesas de uso imediato com centro de custo + químicos aplicados (a custo médio)
+        Custo pelo que foi consumido: despesas de uso imediato com centro de custo (só a parte do período, pela
+        diluição em meses/anos) + químicos aplicados (a custo médio)
         + diesel abastecido (com talhão vai direto; sem talhão é dividido pelas horas de cada máquina em cada talhão,
         lançadas no horímetro). Compras que entraram no estoque só viram custo quando são usadas.
         O que não tem cultura fica em "Geral da fazenda".

@@ -335,6 +335,8 @@ alter table public.despesas add column if not exists quantidade numeric;
 alter table public.despesas add column if not exists centro text;
 alter table public.despesas add column if not exists cultura_id uuid;
 alter table public.despesas add column if not exists talhao_id uuid;
+alter table public.despesas add column if not exists diluicao text;
+alter table public.despesas add column if not exists diluicao_qtd numeric;
 alter table public.despesas add column if not exists maquina_id uuid;
 alter table public.despesas add column if not exists funcionario_id uuid;
 alter table public.despesas add column if not exists litros numeric;
